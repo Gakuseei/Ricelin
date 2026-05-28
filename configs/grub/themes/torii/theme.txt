@@ -1,0 +1,60 @@
+# Torii — Ricelin GRUB theme
+# Background: AI-generated night-shrine (2560x1440)
+
+desktop-image: "background.png"
+desktop-image-scale-method: "stretch"
+title-text: ""
+message-color: "#ead9cf"
+message-bg-color: "#00000000"
+
+# --- Japanese title ---
++ label {
+    left   = 6%
+    top    = 24%
+    width  = 50%
+    align  = "left"
+    text   = "門を選べ"
+    font   = "ToriiTitle Regular 50"
+    color  = "#ffe0d2"
+}
+
+# --- subtitle ---
++ label {
+    left   = 6%
+    top    = 33%
+    width  = 50%
+    align  = "left"
+    text   = "CHOOSE YOUR GATE"
+    font   = "Cormorant Bold 17"
+    color  = "#e08a8a"
+}
+
+# --- boot menu ---
++ boot_menu {
+    left            = 6%
+    top             = 40%
+    width           = 38%
+    height          = 46%
+    item_font       = "Cormorant Bold 30"
+    item_color      = "#ead9cf"
+    selected_item_color = "#ff5f70"
+    item_height     = 48
+    item_padding    = 4
+    item_spacing    = 14
+    icon_width      = 0
+    icon_height     = 0
+    item_icon_space = 0
+    scrollbar       = false
+}
+
+# --- countdown ---
++ label {
+    id    = "__timeout__"
+    left  = 6%
+    top   = 88%
+    width = 50%
+    align = "left"
+    text  = "Booting in %d s   ·   ↑ ↓   ·   ↵"
+    font  = "Cormorant Bold 17"
+    color = "#b89890"
+}

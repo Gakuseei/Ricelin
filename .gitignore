@@ -15,9 +15,13 @@ Thumbs.db
 
 # Personal notes / transcripts / planning — local only
 memory/
+Claude.md
 
 # Machine-specific install/partition plan — local only
 configs/partition-day-sequence.md
 
 # Hyprland auto-generates this stub if no .conf found — never track
 configs/hypr/hyprland.conf
+
+# Brainstorm mockups — local only
+.superpowers/

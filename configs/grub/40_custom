@@ -1,0 +1,14 @@
+#!/bin/sh
+exec tail -n +3 $0
+# This file provides an easy way to add custom menu entries.  Simply type the
+# menu entries you want to add after this comment.  Be careful not to change
+# the 'exec tail' line above.
+
+menuentry 'CachyOS (old · sda4)' --class cachyos --class gnu-linux --class gnu --class os {
+    insmod gzio
+    insmod part_gpt
+    insmod btrfs
+    search --no-floppy --fs-uuid --set=root cd3a19af-99cc-4728-8602-d5909b6923da
+    linux  /@/boot/vmlinuz-linux-cachyos root=UUID=cd3a19af-99cc-4728-8602-d5909b6923da rw rootflags=subvol=@ nowatchdog nvme_load=YES loglevel=3
+    initrd /@/boot/initramfs-linux-cachyos.img
+}
