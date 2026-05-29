@@ -27,6 +27,8 @@ ShellRoot {
     property var moveStart: null
     property var hoverWindow: null
     property var windowRects: []
+    property bool dialogMode: false
+    property string savedAuto: ""
 
     function textSize() { return activeWidth * 5 + 8; }
 
@@ -364,7 +366,15 @@ ShellRoot {
         });
     }
 
-    function doSave() { saveDialog.open(); }
+    function doSave() {
+        var auto = root.defaultPath;
+        grabTo(auto, function (ok) {
+            if (!ok) { Qt.quit(); return; }
+            root.savedAuto = auto;
+            root.dialogMode = true;
+            saveDialog.open();
+        });
+    }
 
     function doUpload() {
         var tmp = "/tmp/rishot-upload.png";
@@ -374,26 +384,29 @@ ShellRoot {
         });
     }
 
-    function commitSave(chosen) {
-        var auto = defaultPath;
-        grabTo(auto, function (ok) {
-            if (ok && chosen && chosen !== auto) grabTo(chosen, function () { Qt.quit(); });
-            else Qt.quit();
-        });
-    }
-
     Process {
         id: saveDialog
         stdout: StdioCollector { id: saveOut }
         function open() {
-            command = ["kdialog", "--getsavefilename", root.defaultPath, "*.png"];
+            command = ["kdialog", "--getsavefilename", root.savedAuto, "*.png"];
             running = true;
         }
         onExited: (code) => {
             var chosen = saveOut.text.trim();
             console.log("rishot: kdialog exit " + code + " path=" + JSON.stringify(chosen));
-            if (code === 0 && chosen.length > 0) root.commitSave(chosen);
+            if (code === 0 && chosen.length > 0) {
+                if (chosen !== root.savedAuto) copyFileProc.run(root.savedAuto, chosen);
+                else Qt.quit();
+            } else {
+                root.dialogMode = false;
+            }
         }
+    }
+
+    Process {
+        id: copyFileProc
+        function run(src, dst) { command = ["cp", "--", src, dst]; running = true; }
+        onExited: () => Qt.quit()
     }
 
     Process {
@@ -477,6 +490,7 @@ ShellRoot {
             id: win
             required property var modelData
             screen: modelData
+            visible: !root.dialogMode
 
             anchors { top: true; left: true; right: true; bottom: true }
             color: "transparent"
