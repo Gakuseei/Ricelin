@@ -25,6 +25,8 @@ ShellRoot {
     property var selectedIndex: null
     property var moveOffset: null
     property var moveStart: null
+    property var hoverWindow: null
+    property var windowRects: []
 
     function textSize() { return activeWidth * 5 + 8; }
 
@@ -50,8 +52,12 @@ ShellRoot {
     function endSelection() {
         capturing = false;
         pressPoint = null;
-        if (globalSel && globalSel.w > 2 && globalSel.h > 2) phase = "editing";
-        else globalSel = null;
+        if (globalSel && globalSel.w > 2 && globalSel.h > 2) { phase = "editing"; hoverWindow = null; }
+        else if (hoverWindow) {
+            globalSel = { x: hoverWindow.x, y: hoverWindow.y, w: hoverWindow.w, h: hoverWindow.h };
+            phase = "editing";
+            hoverWindow = null;
+        } else globalSel = null;
     }
 
     function clampToSel(gx, gy) {
@@ -222,6 +228,43 @@ ShellRoot {
     function undo() { if (model.undo()) { selectedIndex = null; moveOffset = null; moveStart = null; bumpAnn(); } }
     function redo() { if (model.redo()) { selectedIndex = null; moveOffset = null; moveStart = null; bumpAnn(); } }
 
+    function windowAt(gx, gy) {
+        var best = null;
+        for (var i = 0; i < windowRects.length; i++) {
+            var r = windowRects[i];
+            if (gx >= r.x && gx < r.x + r.w && gy >= r.y && gy < r.y + r.h) {
+                if (best === null || r.z < best.z) best = r;
+            }
+        }
+        return best ? { x: best.x, y: best.y, w: best.w, h: best.h } : null;
+    }
+    function pointerHover(gx, gy) {
+        if (phase !== "selecting") { if (hoverWindow !== null) hoverWindow = null; return; }
+        hoverWindow = windowAt(gx, gy);
+    }
+    function parseWindows(activeWs, json) {
+        var rects = [];
+        try {
+            var arr = JSON.parse(json);
+            for (var i = 0; i < arr.length; i++) {
+                var c = arr[i];
+                if (!c.mapped || c.hidden) continue;
+                if (!c.workspace || activeWs.indexOf(c.workspace.id) === -1) continue;
+                if (!c.size || c.size[0] <= 0 || c.size[1] <= 0) continue;
+                rects.push({ x: c.at[0], y: c.at[1], w: c.size[0], h: c.size[1], z: c.focusHistoryID });
+            }
+        } catch (e) { console.log("rishot: parseWindows failed: " + e); }
+        windowRects = rects;
+    }
+    function parseActiveWs(json) {
+        var ids = [];
+        try {
+            var arr = JSON.parse(json);
+            for (var i = 0; i < arr.length; i++)
+                if (arr[i].activeWorkspace) ids.push(arr[i].activeWorkspace.id);
+        } catch (e) { console.log("rishot: parseActiveWs failed: " + e); }
+        return ids;
+    }
     function pointerPressed(gx, gy) {
         if (phase === "selecting") beginSelection(gx, gy);
         else if (activeTool === "select") beginSelect(gx, gy);
@@ -288,6 +331,14 @@ ShellRoot {
 
     function doSave() { saveDialog.open(); }
 
+    function doUpload() {
+        var tmp = "/tmp/rishot-upload.png";
+        grabTo(tmp, function (ok) {
+            if (ok) uploadProc.run(tmp);
+            else Qt.quit();
+        });
+    }
+
     function commitSave(chosen) {
         var auto = defaultPath;
         grabTo(auto, function (ok) {
@@ -317,6 +368,48 @@ ShellRoot {
             running = true;
         }
         onExited: (code) => { console.log("rishot: wl-copy exit " + code); Qt.quit(); }
+    }
+
+    Process {
+        id: uploadProc
+        stdout: StdioCollector { id: uploadOut }
+        function run(file) {
+            command = ["curl", "-sf", "-A", "Mozilla/5.0", "-F", "reqtype=fileupload",
+                "-F", "time=72h", "-F", "fileToUpload=@" + file,
+                "https://litterbox.catbox.moe/resources/internals/api.php"];
+            running = true;
+        }
+        onExited: (code) => {
+            var url = uploadOut.text.trim();
+            console.log("rishot: upload exit " + code + " url=" + JSON.stringify(url));
+            if (code === 0 && url.indexOf("http") === 0) urlCopyProc.run(url);
+            else Qt.quit();
+        }
+    }
+
+    Process {
+        id: urlCopyProc
+        function run(url) {
+            command = ["sh", "-c", "printf %s " + JSON.stringify(url) + " | wl-copy"];
+            running = true;
+        }
+        onExited: () => Qt.quit()
+    }
+
+    Process {
+        id: monitorsProc
+        running: true
+        command: ["hyprctl", "monitors", "-j"]
+        stdout: StdioCollector { id: monitorsOut }
+        onExited: { clientsProc.activeWs = root.parseActiveWs(monitorsOut.text); clientsProc.running = true; }
+    }
+
+    Process {
+        id: clientsProc
+        property var activeWs: []
+        command: ["hyprctl", "clients", "-j"]
+        stdout: StdioCollector { id: clientsOut }
+        onExited: root.parseWindows(activeWs, clientsOut.text)
     }
 
     function noteFrozen() {
@@ -383,9 +476,11 @@ ShellRoot {
                     textEditing: root.textEditing
                     selectedIndex: root.selectedIndex
                     moveOffset: root.moveOffset
+                    hoverWindow: root.hoverWindow
 
                     onPressedAt: (gx, gy) => root.pointerPressed(gx, gy)
                     onMovedTo: (gx, gy) => root.pointerMoved(gx, gy)
+                    onHovered: (gx, gy) => root.pointerHover(gx, gy)
                     onReleased: root.pointerReleased()
                     onFrozen: root.noteFrozen()
                     onTextChanged: (t) => { if (root.draft && root.draft.type === "text") { root.draft.text = t; root.bumpAnn(); } }
@@ -421,6 +516,7 @@ ShellRoot {
                     onRedoRequested: root.redo()
                     onCopyRequested: root.doCopy()
                     onSaveRequested: root.doSave()
+                    onUploadRequested: root.doUpload()
                     onSettingsRequested: root.settingsOpen = toolbar.settingsOpen
                 }
 

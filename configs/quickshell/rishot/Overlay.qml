@@ -19,9 +19,11 @@ Item {
     property bool textEditing: false
     property var selectedIndex: null
     property var moveOffset: null
+    property var hoverWindow: null
 
     signal pressedAt(real gx, real gy)
     signal movedTo(real gx, real gy)
+    signal hovered(real gx, real gy)
     signal released()
     signal frozen()
     signal textChanged(string t)
@@ -233,6 +235,26 @@ Item {
     }
 
     Item {
+        id: winHighlight
+        readonly property var hw: overlay.hoverWindow
+            ? Coords.intersectRect(overlay.hoverWindow, { x: overlay.sx, y: overlay.sy, width: overlay.width, height: overlay.height })
+            : null
+        visible: overlay.ready && overlay.globalSel === null && hw !== null
+        x: hw ? hw.x : 0
+        y: hw ? hw.y : 0
+        width: hw ? hw.w : 0
+        height: hw ? hw.h : 0
+
+        Rectangle {
+            anchors.fill: parent
+            color: Qt.rgba(0.88, 0.34, 0.23, 0.16)
+            border.color: overlay.vermilion
+            border.width: 2.5
+            antialiasing: true
+        }
+    }
+
+    Item {
         id: annSelection
         visible: overlay.ready && overlay.selBox !== null
         x: overlay.selBox ? overlay.selBox.x : 0
@@ -298,10 +320,14 @@ Item {
     MouseArea {
         anchors.fill: parent
         enabled: overlay.ready
+        hoverEnabled: true
         acceptedButtons: Qt.LeftButton
         cursorShape: Qt.CrossCursor
         onPressed: (m) => overlay.pressedAt(m.x + overlay.sx, m.y + overlay.sy)
-        onPositionChanged: (m) => { if (overlay.capturing) overlay.movedTo(m.x + overlay.sx, m.y + overlay.sy); }
+        onPositionChanged: (m) => {
+            if (overlay.capturing) overlay.movedTo(m.x + overlay.sx, m.y + overlay.sy);
+            else overlay.hovered(m.x + overlay.sx, m.y + overlay.sy);
+        }
         onReleased: overlay.released()
     }
 

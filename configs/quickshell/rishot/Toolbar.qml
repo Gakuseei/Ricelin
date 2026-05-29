@@ -22,6 +22,7 @@ Item {
     signal redoRequested()
     signal copyRequested()
     signal saveRequested()
+    signal uploadRequested()
     signal settingsRequested()
 
     readonly property color glassBg: Qt.rgba(20 / 255, 24 / 255, 34 / 255, 0.92)
@@ -128,6 +129,7 @@ Item {
 
             IconButton { icon: "copy"; onClicked: tb.copyRequested() }
             IconButton { icon: "save"; onClicked: tb.saveRequested() }
+            IconButton { icon: "upload"; onClicked: tb.uploadRequested() }
 
             Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 20; color: tb.sep; Layout.leftMargin: 3; Layout.rightMargin: 3 }
 
