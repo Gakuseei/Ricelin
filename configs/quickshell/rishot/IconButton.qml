@@ -26,6 +26,7 @@ Rectangle {
         id: ma
         anchors.fill: parent
         hoverEnabled: true
+        enabled: !btn.dim
         onClicked: btn.clicked()
     }
 }

@@ -342,7 +342,7 @@ ShellRoot {
     function commitSave(chosen) {
         var auto = defaultPath;
         grabTo(auto, function (ok) {
-            if (chosen && chosen !== auto) grabTo(chosen, function () { Qt.quit(); });
+            if (ok && chosen && chosen !== auto) grabTo(chosen, function () { Qt.quit(); });
             else Qt.quit();
         });
     }
@@ -374,7 +374,7 @@ ShellRoot {
         id: uploadProc
         stdout: StdioCollector { id: uploadOut }
         function run(file) {
-            command = ["curl", "-sf", "-A", "Mozilla/5.0", "-F", "reqtype=fileupload",
+            command = ["curl", "-sf", "--max-time", "30", "-A", "Mozilla/5.0", "-F", "reqtype=fileupload",
                 "-F", "time=72h", "-F", "fileToUpload=@" + file,
                 "https://litterbox.catbox.moe/resources/internals/api.php"];
             running = true;
