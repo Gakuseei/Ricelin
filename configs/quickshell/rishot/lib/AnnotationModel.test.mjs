@@ -1,4 +1,3 @@
-// rishot — node test for the annotation store + undo/redo. Run: node AnnotationModel.test.mjs
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { create } = require("./AnnotationModel.js");
@@ -38,13 +37,11 @@ m.redo();
 eq(m.items.length, 2, "redo re-applies");
 eq(m.items[1].points[1].x, 5, "redone item is the right one");
 
-// add() after undo must clear the redo stack
 m.undo();
 m.add(r);
 eq(m.canRedo(), false, "add clears redo stack");
 eq(m.items.length, 2, "add-after-undo count correct");
 
-// undo past the bottom is a safe no-op
 m.undo(); m.undo(); m.undo();
 eq(m.items.length, 0, "undo to empty");
 eq(m.undo(), false, "undo past bottom is false");

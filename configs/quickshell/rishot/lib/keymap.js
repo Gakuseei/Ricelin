@@ -36,13 +36,19 @@ var MODIFIER_KEYS = {
 
 var F1 = 0x01000030, F35 = 0x01000052;
 
+var PUNCT = {
+    0x2e: "period", 0x2c: "comma", 0x2f: "slash", 0x5c: "backslash",
+    0x3b: "semicolon", 0x27: "apostrophe", 0x60: "grave",
+    0x5b: "bracketleft", 0x5d: "bracketright", 0x2d: "minus", 0x3d: "equal"
+};
+
 function keyName(key, text) {
     if (MODIFIER_KEYS[key]) return null;
     if (NAMED_KEYS[key]) return NAMED_KEYS[key];
+    if (PUNCT[key]) return PUNCT[key];
     if (key >= F1 && key <= F35) return "F" + (key - F1 + 1);
     if (key >= 0x41 && key <= 0x5a) return String.fromCharCode(key + 32);
     if (key >= 0x30 && key <= 0x39) return String.fromCharCode(key);
-    if (text && text.length === 1 && text.charCodeAt(0) >= 0x20) return text;
     return null;
 }
 
