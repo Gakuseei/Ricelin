@@ -28,3 +28,6 @@ configs/hypr/hyprland.conf
 
 # Wallpapers — local until final curated 2560x1440 set exists, then un-ignore + commit
 wallpapers/
+
+# Specs / brainstorm docs — local only (user rule: never commit docs/)
+docs/
