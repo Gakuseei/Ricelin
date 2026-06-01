@@ -1,0 +1,16 @@
+[SddmGreeterTheme]
+Name=Torii
+Description=Floating shrine-column greeter for the Ricelin Hyprland rice — vermilion lacquer, drifting embers and sakura over a looping video backdrop.
+Author=Gakuseei
+License=MIT
+Type=sddm-theme
+Version=1.0
+Website=https://github.com/Gakuseei
+Screenshot=
+MainScript=Main.qml
+ConfigFile=theme.conf
+TranslationsDirectory=
+Email=255211761+Gakuseei@users.noreply.github.com
+Theme-Id=torii
+Theme-API=2.0
+QtVersion=6
