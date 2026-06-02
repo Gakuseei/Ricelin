@@ -6,7 +6,9 @@ import QtMultimedia
 Item {
     id: root
 
-    property rect pg: Qt.rect(0, 0, Screen.width, Screen.height)
+    readonly property bool hasScreens: (typeof screenModel !== "undefined") && (typeof primaryScreen !== "undefined")
+    readonly property rect primaryGeometry: hasScreens ? screenModel.geometry(primaryScreen) : Qt.rect(0, 0, Screen.width, Screen.height)
+    readonly property bool onPrimary: !hasScreens || (Screen.virtualX === primaryGeometry.x && Screen.virtualY === primaryGeometry.y)
 
     readonly property bool hasSddm: typeof sddm !== "undefined"
     readonly property bool hasConfig: typeof config !== "undefined"
@@ -19,7 +21,7 @@ Item {
     }
 
     readonly property real userScale: parseFloat(cfg("scale", "1.0")) || 1.0
-    readonly property real s: (root.pg.height > 0 ? root.pg.height / 1080 : 1) * userScale
+    readonly property real s: (root.height > 0 ? root.height / 1080 : 1) * userScale
 
     readonly property color verm: cfg("accent", "#c0442b")
     readonly property color vermDeep: "#a3371f"
@@ -117,16 +119,6 @@ Item {
         cursorShape: Qt.ArrowCursor
     }
 
-    Repeater {
-        model: (typeof screenModel !== "undefined") ? screenModel : 0
-        delegate: Item {
-            Component.onCompleted: {
-                if (index === ((typeof primaryScreen !== "undefined") ? primaryScreen : 0))
-                    root.pg = Qt.rect(geometry.x, geometry.y, geometry.width, geometry.height)
-            }
-        }
-    }
-
     Rectangle {
         anchors.fill: parent
         color: root.emberBase
@@ -135,10 +127,8 @@ Item {
 
     Item {
         id: stage
-        x: root.pg.x
-        y: root.pg.y
-        width: root.pg.width
-        height: root.pg.height
+        anchors.fill: parent
+        visible: root.onPrimary
         clip: true
 
     MediaPlayer {
@@ -146,7 +136,16 @@ Item {
         source: Qt.resolvedUrl(root.cfg("background", "assets/bg.mp4"))
         videoOutput: bgVideo
         loops: MediaPlayer.Infinite
-        Component.onCompleted: bgPlayer.play()
+        Component.onCompleted: if (root.onPrimary) bgPlayer.play()
+    }
+
+    Image {
+        anchors.fill: parent
+        source: Qt.resolvedUrl("assets/bg_poster.jpg")
+        fillMode: Image.PreserveAspectCrop
+        asynchronous: true
+        cache: false
+        z: -1001
     }
 
     VideoOutput {
@@ -171,7 +170,7 @@ Item {
         anchors.fill: parent
         z: 5
         Repeater {
-            model: 10
+            model: root.onPrimary ? 5 : 0
             delegate: Rectangle {
                 id: ember
                 required property int index
@@ -225,7 +224,7 @@ Item {
         anchors.fill: parent
         z: 4
         Repeater {
-            model: 8
+            model: root.onPrimary ? 4 : 0
             delegate: Rectangle {
                 id: petal
                 required property int index
