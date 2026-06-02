@@ -10,15 +10,13 @@ Item {
     property real s: 1
     property var barWindow
 
-    readonly property color verm: "#c0442b"
-    readonly property color vermDeep: "#a3371f"
     readonly property color vermLit: "#e0563b"
     readonly property color cream: "#e6d6cb"
     readonly property color dim: "#8a7d74"
     readonly property color hair: Qt.rgba(150 / 255, 172 / 255, 212 / 255, 0.16)
     readonly property color sheen: Qt.rgba(230 / 255, 214 / 255, 203 / 255, 0.07)
-    readonly property color barTop: "#251b15"
-    readonly property color barBot: "#1b120e"
+    readonly property color barTop: "#2e231b"
+    readonly property color barBot: "#221813"
     readonly property color barBorder: "#3a2a22"
 
     readonly property var actions: [

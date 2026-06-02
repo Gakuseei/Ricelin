@@ -10,8 +10,6 @@ Item {
     property real s: 1
     property var barWindow
 
-    readonly property color verm: "#c0442b"
-    readonly property color vermDeep: "#a3371f"
     readonly property color vermLit: "#e0563b"
     readonly property color cream: "#e6d6cb"
     readonly property color dim: "#8a7d74"
