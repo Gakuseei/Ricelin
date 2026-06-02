@@ -126,6 +126,7 @@ Item {
 
                 SidebarButton {
                     s: bar.s
+                    screenName: bar.screenName
                 }
 
                 Power {

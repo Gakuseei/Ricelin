@@ -6,6 +6,7 @@ Item {
     id: btn
 
     property real s: 1
+    property string screenName: ""
 
     readonly property color vermLit: "#e0563b"
     readonly property color sheen: Qt.rgba(230 / 255, 214 / 255, 203 / 255, 0.07)
@@ -50,6 +51,6 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: Quickshell.execDetached(["sh", "-c", "qs -c sidebar ipc call sidebar toggle 2>/dev/null || true"])
+        onClicked: Quickshell.execDetached(["sh", "-c", "qs -c sidebar ipc call sidebar toggle '" + btn.screenName + "' 2>/dev/null || true"])
     }
 }
