@@ -16,7 +16,7 @@ const float w3 = 0.054054;
 const float w4 = 0.016216;
 
 void main() {
-    vec2 texel = (blurDir * 6.0) / resolution;
+    vec2 texel = (blurDir * 1.5) / resolution;
     vec4 col = texture(source, qt_TexCoord0) * w0;
     col += texture(source, qt_TexCoord0 + texel * 1.0) * w1;
     col += texture(source, qt_TexCoord0 - texel * 1.0) * w1;
