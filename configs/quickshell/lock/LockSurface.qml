@@ -8,27 +8,66 @@ Item {
     clip: true
 
     Image {
+        id: bgImg
         anchors.fill: parent
-        source: "file:///tmp/lock-dev-bg.jpg"
+        source: "file:///tmp/lock-dev-sharp.jpg"
         fillMode: Image.PreserveAspectCrop
         smooth: true
         mipmap: true
         cache: false
+        visible: false
     }
 
-    Rectangle {
+    ShaderEffectSource {
+        id: bgSrc
         anchors.fill: parent
-        color: Theme.accent
-        opacity: Theme.gradeIntensity
+        sourceItem: bgImg
+        hideSource: true
+        live: false
     }
 
-    Rectangle {
+    ShaderEffect {
+        id: blurH
         anchors.fill: parent
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Theme.scrimTop }
-            GradientStop { position: 0.45; color: "transparent" }
-            GradientStop { position: 1.0; color: Theme.scrimBottom }
-        }
+        visible: false
+        property var source: bgSrc
+        property vector2d resolution: Qt.vector2d(width, height)
+        property vector2d blurDir: Qt.vector2d(1, 0)
+        fragmentShader: "shaders/blur.frag.qsb"
+    }
+
+    ShaderEffectSource {
+        id: blurHSrc
+        anchors.fill: parent
+        sourceItem: blurH
+        hideSource: true
+        live: true
+    }
+
+    ShaderEffect {
+        id: blurV
+        anchors.fill: parent
+        visible: false
+        property var source: blurHSrc
+        property vector2d resolution: Qt.vector2d(width, height)
+        property vector2d blurDir: Qt.vector2d(0, 1)
+        fragmentShader: "shaders/blur.frag.qsb"
+    }
+
+    ShaderEffectSource {
+        id: blurVSrc
+        anchors.fill: parent
+        sourceItem: blurV
+        hideSource: true
+        live: true
+    }
+
+    ShaderEffect {
+        anchors.fill: parent
+        property var source: blurVSrc
+        property color accent: Theme.accent
+        property real intensity: Theme.gradeIntensity
+        fragmentShader: "shaders/grade.frag.qsb"
     }
 
     Content {

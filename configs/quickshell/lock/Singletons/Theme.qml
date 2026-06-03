@@ -12,7 +12,7 @@ Singleton {
     readonly property string font: "Inter"
 
     property color accent: "#c0442b"
-    property real gradeIntensity: 0.22
+    property real gradeIntensity: 0.5
 
     readonly property color text:     "#f7f0ea"
     readonly property color textDim:  "#ecdfd6"
