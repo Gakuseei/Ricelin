@@ -9,6 +9,8 @@ Rectangle {
     property bool opened: false
     property string greet: greeting()
     property string uptime: ""
+    property bool notif: false
+    property int unread: 0
 
     function greeting() {
         var h = new Date().getHours();
@@ -78,7 +80,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2 * root.s
             Text {
-                text: root.greet
+                text: root.notif ? "Notifications" : root.greet
                 color: Theme.cream
                 font.family: Theme.font
                 font.pixelSize: 15 * root.s
@@ -115,6 +117,7 @@ Rectangle {
             Row {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 4 * root.s
+                visible: !root.notif
                 Text {
                     text: "up"
                     color: Theme.dim
@@ -128,6 +131,26 @@ Rectangle {
                     font.family: Theme.font
                     font.pixelSize: 11 * root.s
                     font.weight: Font.DemiBold
+                }
+            }
+
+            Row {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 4 * root.s
+                visible: root.notif
+                Text {
+                    text: String(root.unread)
+                    color: Theme.cream
+                    font.family: Theme.font
+                    font.pixelSize: 11 * root.s
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    text: "unread"
+                    color: Theme.dim
+                    font.family: Theme.font
+                    font.pixelSize: 11 * root.s
+                    font.weight: Font.Medium
                 }
             }
         }
