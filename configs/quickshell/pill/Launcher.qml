@@ -182,7 +182,7 @@ Item {
             id: appRow
             required property int index
             width: list.width
-            height: 42 * root.s
+            height: 34 * root.s
 
             readonly property var entry: root.results[index]
             readonly property bool selected: index === root.selectedIndex
@@ -202,7 +202,7 @@ Item {
 
             Rectangle {
                 anchors.fill: parent
-                radius: 12 * root.s
+                radius: 10 * root.s
                 visible: appRow.selected
                 gradient: Gradient {
                     GradientStop { position: 0.0; color: Theme.verm }
@@ -223,23 +223,23 @@ Item {
 
             Item {
                 anchors.fill: parent
-                anchors.leftMargin: 12 * root.s
-                anchors.rightMargin: 12 * root.s
+                anchors.leftMargin: 11 * root.s
+                anchors.rightMargin: 11 * root.s
 
                 Rectangle {
                     id: iconBg
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 24 * root.s
-                    height: 24 * root.s
-                    radius: 6 * root.s
+                    width: 20 * root.s
+                    height: 20 * root.s
+                    radius: 5 * root.s
                     color: Qt.rgba(1, 1, 1, 0.05)
                     visible: !(icon.status === Image.Ready && icon.source != "")
                 }
                 Image {
                     id: icon
                     anchors.fill: iconBg
-                    sourceSize.width: Math.round(48 * root.s)
-                    sourceSize.height: Math.round(48 * root.s)
+                    sourceSize.width: Math.round(40 * root.s)
+                    sourceSize.height: Math.round(40 * root.s)
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
                     smooth: true
@@ -251,14 +251,14 @@ Item {
                     id: nameText
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: icon.right
-                    anchors.leftMargin: 11 * root.s
+                    anchors.leftMargin: 10 * root.s
                     text: appRow.entry ? appRow.entry.name : ""
                     color: appRow.selected ? Theme.onAccent : Theme.cream
                     font.family: Theme.font
-                    font.pixelSize: 14 * root.s
+                    font.pixelSize: 13 * root.s
                     font.weight: appRow.selected ? Font.DemiBold : Font.Normal
                     elide: Text.ElideRight
-                    width: Math.min(implicitWidth, parent.width - icon.width - 11 * root.s - sec.width - ret.width - 14 * root.s)
+                    width: Math.min(implicitWidth, parent.width - icon.width - 10 * root.s - sec.width - ret.width - 12 * root.s)
                 }
                 Text {
                     id: ret
@@ -267,7 +267,7 @@ Item {
                     text: "↵"
                     color: Theme.onAccent
                     font.family: Theme.font
-                    font.pixelSize: 13 * root.s
+                    font.pixelSize: 12 * root.s
                     visible: appRow.selected
                     width: visible ? implicitWidth + 6 * root.s : 0
                     horizontalAlignment: Text.AlignRight
@@ -279,7 +279,7 @@ Item {
                     text: appRow.secondary
                     color: appRow.selected ? Qt.rgba(1, 0.965, 0.941, 0.7) : Theme.faint
                     font.family: Theme.font
-                    font.pixelSize: 11 * root.s
+                    font.pixelSize: 10.5 * root.s
                     horizontalAlignment: Text.AlignRight
                 }
             }

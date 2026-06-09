@@ -47,7 +47,7 @@ Item {
     readonly property real calendarW: 318 * s
     readonly property real calendarH: 262 * s
     readonly property real launcherW: 360 * s
-    readonly property real launcherH: 366 * s
+    readonly property real launcherH: 332 * s
     readonly property real restCorner: 18 * s
     readonly property real openCorner: 22 * s
 
