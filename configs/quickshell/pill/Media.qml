@@ -52,10 +52,14 @@ Item {
         return player.trackArtist ? player.trackArtist : "";
     }
     readonly property string artUrl: hasPlayer && player.trackArtUrl ? player.trackArtUrl : ""
-    readonly property bool hasArt: cover.status === Image.Ready && artUrl != ""
+    readonly property bool hasArt: cover.status === Image.Ready && artUrl !== ""
+        && cover.source.toString() === artUrl
     readonly property real lengthSec: hasPlayer && player.length > 0 ? player.length : 0
     readonly property real positionSec: hasPlayer ? player.position : 0
-    readonly property real frac: lengthSec > 0 ? Math.max(0, Math.min(1, positionSec / lengthSec)) : 0
+    readonly property real playFrac: lengthSec > 0 ? Math.max(0, Math.min(1, positionSec / lengthSec)) : 0
+    property real dragFrac: 0
+    property bool dragging: false
+    readonly property real frac: dragging ? dragFrac : playFrac
 
     readonly property real seamHeadX: seamFill.mapToItem(root, seamFill.width, seamFill.height / 2).x
     readonly property real seamHeadY: seamFill.mapToItem(root, seamFill.width, seamFill.height / 2).y
@@ -299,7 +303,14 @@ Item {
                     enabled: Math.abs(root.frac - seamFill.lastFrac) < 0.02
                     NumberAnimation { duration: 500; easing.type: Easing.Linear }
                 }
-                onTargetWChanged: seamFill.lastFrac = root.frac
+                onTargetWChanged: Qt.callLater(() => { seamFill.lastFrac = root.frac; })
+            }
+
+            Timer {
+                id: dragWrite
+                interval: 150
+                repeat: true
+                onTriggered: seekArea.commit()
             }
 
             MouseArea {
@@ -308,13 +319,28 @@ Item {
                 anchors.margins: -8 * root.s
                 enabled: root.hasPlayer && root.player.canSeek && root.lengthSec > 0
                 cursorShape: Qt.PointingHandCursor
-                function seekTo(mx) {
-                    var f = Math.max(0, Math.min(1, (mx + 8 * root.s) / seam.width));
-                    if (root.player)
-                        root.player.position = f * root.lengthSec;
+                function fracAt(mx) {
+                    return Math.max(0, Math.min(1, (mx + 8 * root.s) / seam.width));
                 }
-                onClicked: (e) => seekTo(e.x)
-                onPositionChanged: (e) => { if (pressed) seekTo(e.x); }
+                function commit() {
+                    if (root.player)
+                        root.player.position = root.dragFrac * root.lengthSec;
+                }
+                onClicked: (e) => {
+                    root.dragFrac = fracAt(e.x);
+                    commit();
+                }
+                onPressed: (e) => {
+                    root.dragFrac = fracAt(e.x);
+                    root.dragging = true;
+                    dragWrite.restart();
+                }
+                onPositionChanged: (e) => { if (pressed) root.dragFrac = fracAt(e.x); }
+                onReleased: {
+                    dragWrite.stop();
+                    commit();
+                    root.dragging = false;
+                }
             }
         }
     }

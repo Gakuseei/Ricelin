@@ -163,8 +163,8 @@ Item {
         pulse: Cava.values && Cava.values.length
             ? Cava.values.reduce((a, b) => a + b, 0) / Cava.values.length
             : 0
-        dockPoint: Qt.point(media.seamHeadX, media.seamHeadY)
-        flyTarget: Qt.point(media.seamHeadX, media.seamHeadY)
+        dockPoint: Qt.point(media.x + media.seamHeadX, media.y + media.seamHeadY)
+        flyTarget: Qt.point(media.x + media.seamHeadX, media.y + media.seamHeadY)
         mode: pill.mediaOpen ? pill.mediaFlamePhase
             : (pill.surfaceOpen ? "off"
             : (pill.expanded && musicActive ? "held" : "orbit"))
