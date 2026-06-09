@@ -78,10 +78,11 @@ Item {
     }
 
     FrameAnimation {
-        running: root.visible && (root.mode === "orbit" || root.mode === "held")
+        running: root.visible && root.mode === "orbit"
         onTriggered: {
-            if (root.mode === "orbit")
-                root.t += frameTime * (root.musicActive ? 0.085 : 0.03);
+            root.t += frameTime * (root.musicActive ? 0.085 : 0.03);
+            if (root.t > 1)
+                root.t -= 1;
             const p = root.pathPoint(root.t);
             root.px = p.x;
             root.py = p.y;
