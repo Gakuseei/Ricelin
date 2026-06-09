@@ -147,8 +147,8 @@ ShellRoot {
                 anchors.fill: parent
                 focus: overlay.surfaceOpen
                 Keys.onEscapePressed: root.close()
-                Keys.onUpPressed: (e) => { e.accepted = pill.mixerStep(3); }
-                Keys.onDownPressed: (e) => { e.accepted = pill.mixerStep(-3); }
+                Keys.onUpPressed: (e) => { e.accepted = pill.mixerStep(1); }
+                Keys.onDownPressed: (e) => { e.accepted = pill.mixerStep(-1); }
                 Keys.onLeftPressed: (e) => { if (pill.mixerOpen) { pill.mixerFocusMove(-1); e.accepted = true; } }
                 Keys.onRightPressed: (e) => { if (pill.mixerOpen) { pill.mixerFocusMove(1); e.accepted = true; } }
 

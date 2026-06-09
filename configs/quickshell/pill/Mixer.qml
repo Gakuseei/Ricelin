@@ -238,7 +238,6 @@ Item {
             width: parent.width / 4
             s: root.s
             icon: "sun"
-            showValue: root.surfaceHovered
             focused: root.focusIndex === 0
             value: root.brightness / 100
             valueLabel: root.brightness + "%"
@@ -250,7 +249,6 @@ Item {
             width: parent.width / 4
             s: root.s
             icon: "monitor"
-            showValue: root.surfaceHovered
             focused: root.focusIndex === 1
             value: root.vibrance / 100
             valueLabel: root.vibrance + "%"
@@ -262,7 +260,6 @@ Item {
             width: parent.width / 4
             s: root.s
             icon: "speaker"
-            showValue: root.surfaceHovered
             focused: root.focusIndex === 2
             value: root.sink && root.sink.audio ? root.sink.audio.volume : 0
             valueLabel: Math.round((root.sink && root.sink.audio ? root.sink.audio.volume : 0) * 100) + "%"
@@ -273,7 +270,6 @@ Item {
             width: parent.width / 4
             s: root.s
             icon: (root.source && root.source.audio && root.source.audio.muted) ? "mic-off" : "mic"
-            showValue: root.surfaceHovered
             focused: root.focusIndex === 3
             value: root.source && root.source.audio ? root.source.audio.volume : 0
             valueLabel: (root.source && root.source.audio && root.source.audio.muted)
@@ -300,7 +296,7 @@ Item {
         onWheel: (event) => {
             acc += event.angleDelta.y / 120;
             const notches = Math.trunc(acc);
-            if (notches !== 0 && root.stepFocused(notches * 3))
+            if (notches !== 0 && root.stepFocused(notches))
                 acc -= notches;
             event.accepted = true;
         }

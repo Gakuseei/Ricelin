@@ -483,6 +483,7 @@ Item {
         active: pill.mixerOpen
         enabled: pill.mixerOpen
         opacity: pill.mixerOpen ? 1 : 0
+        visible: opacity > 0.01
         Behavior on opacity {
             NumberAnimation { duration: 260; easing.type: Easing.OutCubic }
         }
@@ -499,6 +500,7 @@ Item {
         active: pill.calendarOpen
         enabled: pill.calendarOpen
         opacity: pill.calendarOpen ? 1 : 0
+        visible: opacity > 0.01
         Behavior on opacity {
             NumberAnimation { duration: 260; easing.type: Easing.OutCubic }
         }
@@ -515,6 +517,7 @@ Item {
         active: pill.launcherOpen
         enabled: pill.launcherOpen
         opacity: pill.launcherOpen ? 1 : 0
+        visible: opacity > 0.01
         Behavior on opacity {
             NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
         }
@@ -532,6 +535,7 @@ Item {
         active: pill.powerOpen
         enabled: pill.powerOpen
         opacity: pill.powerOpen ? 1 : 0
+        visible: opacity > 0.01
         Behavior on opacity {
             NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
         }
@@ -546,6 +550,7 @@ Item {
         active: pill.mediaOpen
         enabled: pill.mediaOpen
         opacity: pill.mediaOpen ? 1 : 0
+        visible: opacity > 0.01
         Behavior on opacity {
             NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
         }

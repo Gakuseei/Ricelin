@@ -15,7 +15,6 @@ Item {
     property real value: 0.5
     property string valueLabel: ""
     property bool focused: false
-    property bool showValue: false
 
     signal moved(real v)
     signal committed(real v)
@@ -103,7 +102,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         text: root.valueLabel
         color: root.lit ? Theme.cream : Theme.dim
-        opacity: root.lit || root.showValue ? 1 : 0
+        opacity: root.lit ? 1 : 0
         font.family: Theme.font
         font.pixelSize: 9 * root.s
         font.weight: Font.DemiBold
