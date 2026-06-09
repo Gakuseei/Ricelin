@@ -101,18 +101,6 @@ Item {
         precision: SystemClock.Minutes
     }
 
-    property real cometFrac: 0
-
-    NumberAnimation {
-        target: pill
-        property: "cometFrac"
-        from: 0
-        to: 1
-        duration: 60000
-        loops: Animation.Infinite
-        running: !pill.expanded
-    }
-
     property real morphRadius: (mixerOpen || calendarOpen || launcherOpen || powerOpen || mediaOpen) ? openCorner : restCorner
 
     width: mode === "calendar" ? calendarW
@@ -164,95 +152,17 @@ Item {
         }
     }
 
-    Item {
-        id: comet
+    Flame {
+        id: flame
         anchors.fill: parent
-        anchors.margins: 1
-        visible: opacity > 0.01
-        opacity: pill.expanded ? 0 : 1
-        Behavior on opacity { NumberAnimation { duration: 180 } }
-
-        Path {
-            id: ring
-            startX: pill.restCorner
-            startY: 0
-            PathLine { x: comet.width - pill.restCorner; y: 0 }
-            PathArc { x: comet.width; y: pill.restCorner; radiusX: pill.restCorner; radiusY: pill.restCorner }
-            PathLine { x: comet.width; y: comet.height - pill.restCorner }
-            PathArc { x: comet.width - pill.restCorner; y: comet.height; radiusX: pill.restCorner; radiusY: pill.restCorner }
-            PathLine { x: pill.restCorner; y: comet.height }
-            PathArc { x: 0; y: comet.height - pill.restCorner; radiusX: pill.restCorner; radiusY: pill.restCorner }
-            PathLine { x: 0; y: pill.restCorner }
-            PathArc { x: pill.restCorner; y: 0; radiusX: pill.restCorner; radiusY: pill.restCorner }
-        }
-
-        readonly property int trailCount: 26
-        readonly property real trailStep: 0.0052
-        readonly property var trail: {
-            var a = [];
-            for (var k = 0; k < comet.trailCount; k++) {
-                var t = k / (comet.trailCount - 1);
-                a.push({
-                    behind: k * comet.trailStep,
-                    rad: 2.5 - 1.9 * t,
-                    a: Math.pow(1 - t, 1.7)
-                });
-            }
-            return a;
-        }
-
-        Repeater {
-            model: comet.trail
-
-            delegate: Item {
-                id: spark
-                required property var modelData
-                anchors.fill: parent
-
-                PathInterpolator {
-                    id: along
-                    path: ring
-                    progress: {
-                        var p = pill.cometFrac - spark.modelData.behind;
-                        return p < 0 ? p + 1 : p;
-                    }
-                }
-
-                Rectangle {
-                    width: spark.modelData.rad * 2 * pill.s
-                    height: width
-                    radius: width / 2
-                    antialiasing: true
-                    x: along.x - width / 2
-                    y: along.y - height / 2
-                    color: Qt.rgba(Theme.vermLit.r, Theme.vermLit.g, Theme.vermLit.b, spark.modelData.a)
-                }
-            }
-        }
-
-        Rectangle {
-            id: head
-            width: 5.4 * pill.s
-            height: width
-            radius: width / 2
-            antialiasing: true
-            x: headPath.x - width / 2
-            y: headPath.y - height / 2
-            color: Theme.onAccent
-
-            PathInterpolator {
-                id: headPath
-                path: ring
-                progress: pill.cometFrac
-            }
-        }
-
-        layer.enabled: true
-        layer.effect: MultiEffect {
-            blurEnabled: true
-            blur: 0.42
-            blurMax: 10
-        }
+        s: pill.s
+        pillW: pill.width
+        pillH: pill.height
+        musicActive: pill.hasMedia
+        pulse: Cava.values && Cava.values.length
+            ? Cava.values.reduce((a, b) => a + b, 0) / Cava.values.length
+            : 0
+        mode: pill.surfaceOpen ? "off" : (pill.expanded && musicActive ? "held" : "orbit")
     }
 
     HoverHandler {
@@ -646,5 +556,15 @@ Item {
             NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
         }
         onRequestClose: pill.requestClose()
+    }
+
+    MouseArea {
+        visible: flame.mode === "held"
+        x: flame.px - 16 * pill.s
+        y: flame.py - 16 * pill.s
+        width: 32 * pill.s
+        height: 32 * pill.s
+        cursorShape: Qt.PointingHandCursor
+        onClicked: pill.requestSurface("media")
     }
 }
