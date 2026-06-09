@@ -2,15 +2,16 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Effects
+import QtQuick.Shapes
 import Quickshell.Widgets
 import Quickshell.Services.Mpris
 import "Singletons"
 
 /**
- * Media surface: an art-forward now-playing card. The album art is blurred and
- * warm-tinted to fill the whole surface, with a sharp square cover, track text,
- * transport controls and a full-width seek bar laid over it. Driven by the
- * active MPRIS player; fills the body of the morphing pill edge to edge.
+ * Media surface: the playback progress is traced as a glowing terracotta arc
+ * along the pill's own rounded edge — the same edge language as the rest comet —
+ * over a warm lacquer interior holding a sharp album cover, the track text and
+ * transport controls. Driven by the active MPRIS player.
  */
 Item {
     id: root
@@ -48,7 +49,7 @@ Item {
         return player.trackArtist ? player.trackArtist : "";
     }
     readonly property string artUrl: hasPlayer && player.trackArtUrl ? player.trackArtUrl : ""
-    readonly property bool hasArt: artSource.status === Image.Ready && artUrl != ""
+    readonly property bool hasArt: cover.status === Image.Ready && artUrl != ""
     readonly property real lengthSec: hasPlayer && player.length > 0 ? player.length : 0
     readonly property real positionSec: hasPlayer ? player.position : 0
     readonly property real frac: lengthSec > 0 ? Math.max(0, Math.min(1, positionSec / lengthSec)) : 0
@@ -69,100 +70,134 @@ Item {
         onTriggered: if (root.player) root.player.positionChanged();
     }
 
-    Image {
-        id: artSource
-        source: root.artUrl
-        asynchronous: true
-        cache: true
-        visible: false
+    Shape {
+        id: edge
+        anchors.fill: parent
+        anchors.margins: 1.6 * root.s
+        preferredRendererType: Shape.CurveRenderer
+        visible: root.frac > 0.001
+
+        readonly property real cr: Math.max(2, root.radius - 1.6 * root.s)
+        readonly property real sw: 2.6 * root.s
+        readonly property real perim: 2 * (width - 2 * cr) + 2 * (height - 2 * cr) + 2 * Math.PI * cr
+
+        ShapePath {
+            strokeColor: Theme.vermLit
+            strokeWidth: edge.sw
+            fillColor: "transparent"
+            capStyle: ShapePath.RoundCap
+            joinStyle: ShapePath.RoundJoin
+            strokeStyle: ShapePath.DashLine
+            dashPattern: [root.frac * edge.perim / edge.sw, (1 - root.frac) * edge.perim / edge.sw + 0.001]
+            dashOffset: 0
+
+            startX: edge.width / 2
+            startY: 0
+            PathLine { x: edge.width - edge.cr; y: 0 }
+            PathArc { x: edge.width; y: edge.cr; radiusX: edge.cr; radiusY: edge.cr }
+            PathLine { x: edge.width; y: edge.height - edge.cr }
+            PathArc { x: edge.width - edge.cr; y: edge.height; radiusX: edge.cr; radiusY: edge.cr }
+            PathLine { x: edge.cr; y: edge.height }
+            PathArc { x: 0; y: edge.height - edge.cr; radiusX: edge.cr; radiusY: edge.cr }
+            PathLine { x: 0; y: edge.cr }
+            PathArc { x: edge.cr; y: 0; radiusX: edge.cr; radiusY: edge.cr }
+            PathLine { x: edge.width / 2; y: 0 }
+        }
+
+        layer.enabled: true
+        layer.effect: MultiEffect {
+            blurEnabled: true
+            blur: 0.5
+            blurMax: 12
+        }
     }
 
-    ClippingRectangle {
+    Item {
         anchors.fill: parent
-        radius: root.radius
-        color: Theme.cardBot
+        anchors.margins: 15 * root.s
 
-        Image {
-            id: bgFill
-            anchors.fill: parent
-            source: root.artUrl
-            fillMode: Image.PreserveAspectCrop
-            asynchronous: true
-            cache: true
-            visible: false
-        }
-        MultiEffect {
-            anchors.fill: parent
-            source: bgFill
-            visible: root.hasArt
-            blurEnabled: true
-            blur: 1.0
-            blurMax: 64
-            brightness: -0.18
-            saturation: 0.08
-        }
-        Rectangle {
-            anchors.fill: parent
-            visible: !root.hasArt
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Theme.cardTop }
-                GradientStop { position: 1.0; color: Theme.cardBot }
+        ClippingRectangle {
+            id: coverBox
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: height
+            height: parent.height
+            radius: 12 * root.s
+            color: Theme.tileBg
+
+            Image {
+                id: cover
+                anchors.fill: parent
+                source: root.artUrl
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: true
+                visible: root.hasArt
+            }
+            GlyphIcon {
+                anchors.centerIn: parent
+                width: parent.width * 0.34
+                height: width
+                name: "music"
+                color: Theme.subtle
+                visible: !root.hasArt
             }
         }
+
         Rectangle {
-            anchors.fill: parent
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Qt.rgba(0.16, 0.11, 0.08, 0.52) }
-                GradientStop { position: 1.0; color: Qt.rgba(0.09, 0.06, 0.04, 0.84) }
+            anchors.fill: coverBox
+            radius: coverBox.radius
+            color: "transparent"
+            z: -1
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: Qt.rgba(0, 0, 0, 0.55)
+                shadowBlur: 0.6
+                shadowVerticalOffset: 2 * root.s
             }
         }
 
         Item {
-            anchors.fill: parent
-            anchors.topMargin: 15 * root.s
-            anchors.leftMargin: 15 * root.s
-            anchors.rightMargin: 15 * root.s
-            anchors.bottomMargin: 28 * root.s
-
-            ClippingRectangle {
-                id: cover
-                anchors.left: parent.left
-                anchors.top: parent.top
-                width: height
-                height: parent.height
-                radius: 11 * root.s
-                color: Qt.rgba(1, 1, 1, 0.05)
-
-                Image {
-                    anchors.fill: parent
-                    source: root.artUrl
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
-                    cache: true
-                    visible: root.hasArt
-                }
-                GlyphIcon {
-                    anchors.centerIn: parent
-                    width: parent.width * 0.34
-                    height: width
-                    name: "music"
-                    color: Theme.subtle
-                    visible: !root.hasArt
-                }
-            }
+            anchors.left: coverBox.right
+            anchors.leftMargin: 16 * root.s
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
 
             Column {
-                anchors.left: cover.right
-                anchors.leftMargin: 15 * root.s
-                anchors.right: parent.right
+                id: meta
                 anchors.top: parent.top
-                anchors.topMargin: 3 * root.s
+                anchors.left: parent.left
+                anchors.right: parent.right
                 spacing: 3 * root.s
+
+                Row {
+                    spacing: 7 * root.s
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "奏"
+                        color: Theme.vermLit
+                        font.family: Theme.font
+                        font.pixelSize: 13 * root.s
+                    }
+                    Text {
+                        text: root.playing ? "NOW PLAYING" : "PAUSED"
+                        color: Theme.faint
+                        font.family: Theme.font
+                        font.pixelSize: 8.5 * root.s
+                        font.weight: Font.DemiBold
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: 1.5 * root.s
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
 
                 Text {
                     width: parent.width
+                    topPadding: 4 * root.s
                     text: root.title
-                    color: Theme.onAccent
+                    color: Theme.cream
                     font.family: Theme.font
                     font.pixelSize: 16 * root.s
                     font.weight: Font.DemiBold
@@ -171,28 +206,27 @@ Item {
                 Text {
                     width: parent.width
                     text: root.artist
-                    color: Qt.rgba(0.95, 0.91, 0.88, 0.7)
+                    color: Theme.dim
                     font.family: Theme.font
-                    font.pixelSize: 12 * root.s
+                    font.pixelSize: 11.5 * root.s
                     elide: Text.ElideRight
                     visible: text.length > 0
                 }
             }
 
             Row {
-                anchors.left: cover.right
-                anchors.leftMargin: 15 * root.s
+                anchors.left: parent.left
                 anchors.bottom: parent.bottom
                 spacing: 18 * root.s
 
                 Item {
-                    width: 22 * root.s
-                    height: 22 * root.s
+                    width: 21 * root.s
+                    height: 21 * root.s
                     anchors.verticalCenter: parent.verticalCenter
                     GlyphIcon {
                         anchors.fill: parent
                         name: "prev"
-                        color: prevArea.containsMouse ? Theme.vermLit : (prevArea.enabled ? Theme.onAccent : Qt.rgba(1, 1, 1, 0.3))
+                        color: prevArea.containsMouse ? Theme.vermLit : (prevArea.enabled ? Theme.cream : Theme.disabled)
                     }
                     MouseArea {
                         id: prevArea
@@ -206,8 +240,8 @@ Item {
                 }
 
                 Rectangle {
-                    width: 34 * root.s
-                    height: 34 * root.s
+                    width: 33 * root.s
+                    height: 33 * root.s
                     radius: width / 2
                     anchors.verticalCenter: parent.verticalCenter
                     color: ppArea.containsMouse ? Theme.vermLit : Theme.verm
@@ -215,7 +249,7 @@ Item {
 
                     GlyphIcon {
                         anchors.centerIn: parent
-                        width: 16 * root.s
+                        width: 15 * root.s
                         height: width
                         name: root.playing ? "pause" : "play"
                         color: Theme.onAccent
@@ -231,13 +265,13 @@ Item {
                 }
 
                 Item {
-                    width: 22 * root.s
-                    height: 22 * root.s
+                    width: 21 * root.s
+                    height: 21 * root.s
                     anchors.verticalCenter: parent.verticalCenter
                     GlyphIcon {
                         anchors.fill: parent
                         name: "next"
-                        color: nextArea.containsMouse ? Theme.vermLit : (nextArea.enabled ? Theme.onAccent : Qt.rgba(1, 1, 1, 0.3))
+                        color: nextArea.containsMouse ? Theme.vermLit : (nextArea.enabled ? Theme.cream : Theme.disabled)
                     }
                     MouseArea {
                         id: nextArea
@@ -251,68 +285,15 @@ Item {
                 }
             }
 
-        }
-
-        Item {
-            id: progress
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.leftMargin: 15 * root.s
-            anchors.rightMargin: 15 * root.s
-            anchors.bottomMargin: 11 * root.s
-            height: 12 * root.s
-
             Text {
-                id: tcur
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.fmt(root.positionSec)
-                color: Qt.rgba(1, 1, 1, 0.6)
-                font.family: Theme.font
-                font.pixelSize: 9.5 * root.s
-                font.features: { "tnum": 1 }
-            }
-            Text {
-                id: ttot
                 anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.fmt(root.lengthSec)
-                color: Qt.rgba(1, 1, 1, 0.6)
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 4 * root.s
+                text: root.fmt(root.positionSec) + "  /  " + root.fmt(root.lengthSec)
+                color: Theme.faint
                 font.family: Theme.font
                 font.pixelSize: 9.5 * root.s
                 font.features: { "tnum": 1 }
-            }
-            Rectangle {
-                id: track
-                anchors.left: tcur.right
-                anchors.leftMargin: 9 * root.s
-                anchors.right: ttot.left
-                anchors.rightMargin: 9 * root.s
-                anchors.verticalCenter: parent.verticalCenter
-                height: 3 * root.s
-                radius: height / 2
-                color: Qt.rgba(1, 1, 1, 0.22)
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: parent.width * root.frac
-                    radius: parent.radius
-                    color: Theme.vermLit
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -7 * root.s
-                    enabled: root.hasPlayer && root.player.canSeek && root.lengthSec > 0
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: (e) => {
-                        var f = Math.max(0, Math.min(1, (e.x + 7 * root.s) / track.width));
-                        if (root.player)
-                            root.player.position = f * root.lengthSec;
-                    }
-                }
             }
         }
     }
