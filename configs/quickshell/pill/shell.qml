@@ -6,6 +6,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import Quickshell.Services.Mpris
+import "Singletons"
 
 /**
  * Washi pill top shell. Each monitor carries two layer-shell windows:
@@ -37,7 +38,44 @@ ShellRoot {
         Hyprland.refreshToplevels();
     }
 
-    Component.onCompleted: refresh()
+    Component.onCompleted: {
+        refresh();
+        var raw = vibState.text();
+        if (raw && raw.trim().length) {
+            var pct = parseInt(raw.trim());
+            if (!isNaN(pct)) {
+                var v = Math.round(pct * 1023 / 100);
+                Quickshell.execDetached(["nvibrant", String(v), "0", String(v)]);
+            }
+        }
+    }
+
+    FileView {
+        id: vibState
+        path: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/ricelin/nvibrant-value"
+        blockLoading: true
+        printErrors: false
+    }
+
+    Binding {
+        target: Notifs
+        property: "dnd"
+        value: Flags.dnd
+    }
+
+    PanelWindow {
+        id: inhibitWin
+        visible: Flags.keepAwake
+        implicitWidth: 1
+        implicitHeight: 1
+        color: "transparent"
+        exclusionMode: ExclusionMode.Ignore
+        WlrLayershell.layer: WlrLayer.Background
+        WlrLayershell.namespace: "pill-inhibit"
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+        anchors { top: true; left: true }
+        IdleInhibitor { window: inhibitWin; enabled: Flags.keepAwake }
+    }
 
     Connections {
         target: Hyprland
@@ -68,6 +106,7 @@ ShellRoot {
         function calendar(mon: string): void { root.toggleSurface(mon, "calendar"); }
         function launcher(mon: string): void { root.toggleSurface(mon, "launcher"); }
         function power(mon: string): void { root.toggleSurface(mon, "power"); }
+        function link(mon: string): void { root.toggleSurface(mon, "link"); }
         function media(mon: string): void {
             if (Mpris.players.values.length > 0)
                 root.toggleSurface(mon, "media");
@@ -146,7 +185,7 @@ ShellRoot {
                 id: focusScope
                 anchors.fill: parent
                 focus: overlay.surfaceOpen
-                Keys.onEscapePressed: root.close()
+                Keys.onEscapePressed: if (!pill.linkBack()) root.close()
                 Keys.onUpPressed: (e) => { e.accepted = pill.mixerStep(1); }
                 Keys.onDownPressed: (e) => { e.accepted = pill.mixerStep(-1); }
                 Keys.onLeftPressed: (e) => { if (pill.mixerOpen) { pill.mixerFocusMove(-1); e.accepted = true; } }

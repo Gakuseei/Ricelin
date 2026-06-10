@@ -50,13 +50,6 @@ hl.layer_rule({
 })
 
 hl.layer_rule({
-    name         = "launcher-blur",
-    match        = { namespace = "launcher" },
-    blur         = true,
-    ignore_alpha = 0.6,
-})
-
-hl.layer_rule({
     name    = "topbar-power-noanim",
     match   = { namespace = "topbar-power" },
     no_anim = true,

@@ -37,12 +37,14 @@ Item {
     readonly property bool launcherOpen: surface === "launcher"
     readonly property bool powerOpen: surface === "power"
     readonly property bool mediaOpen: surface === "media"
+    readonly property bool linkOpen: surface === "link"
     readonly property bool hasMedia: Mpris.players.values.length > 0
     readonly property bool surfaceOpen: surface.length > 0
     property bool hoverLatch: false
     readonly property bool expanded: surfaceOpen || held || hoverLatch
+    readonly property bool toastActive: Notifs.popups.length > 0
     property string surfaceFlamePhase: "fly"
-    readonly property bool flameSurface: mediaOpen || launcherOpen || calendarOpen || powerOpen || mixerOpen
+    readonly property bool flameSurface: mediaOpen || launcherOpen || calendarOpen || powerOpen || mixerOpen || linkOpen
 
     readonly property real restW: 160 * s
     readonly property real restH: 38 * s
@@ -59,6 +61,7 @@ Item {
     readonly property real powerH: 150 * s
     readonly property real mediaW: 336 * s
     readonly property real mediaH: 122 * s
+    readonly property real toastW: 342 * s
     readonly property real restCorner: 18 * s
     readonly property real openCorner: 22 * s
 
@@ -66,7 +69,10 @@ Item {
         : (launcherOpen ? "launcher"
         : (powerOpen ? "power"
         : (mediaOpen ? "media"
-        : (mixerOpen ? "mixer" : (expanded ? "hover" : "rest")))))
+        : (mixerOpen ? "mixer"
+        : (linkOpen ? "link"
+        : (toastActive && !held ? "toast"
+        : (expanded ? "hover" : "rest")))))))
 
     signal requestSurface(string name)
     signal requestClose()
@@ -88,6 +94,15 @@ Item {
             mixer.moveFocus(dir);
     }
 
+    /**
+     * Pop the open link surface one subview back. Returns true when the step was
+     * consumed, false when the surface is already at its root (or not open) and
+     * Escape should close the surface instead.
+     */
+    function linkBack() {
+        return pill.linkOpen ? link.back() : false;
+    }
+
     onSurfaceOpenChanged: if (surfaceOpen) pinned = false
 
     QtObject {
@@ -103,13 +118,15 @@ Item {
         precision: SystemClock.Minutes
     }
 
-    property real morphRadius: (mixerOpen || calendarOpen || launcherOpen || powerOpen || mediaOpen) ? openCorner : restCorner
+    property real morphRadius: (mixerOpen || calendarOpen || launcherOpen || powerOpen || mediaOpen || linkOpen || mode === "toast") ? openCorner : restCorner
 
     width: mode === "calendar" ? calendarW
         : mode === "launcher" ? launcherW
         : mode === "power" ? powerW
         : mode === "media" ? mediaW
         : mode === "mixer" ? mixerW
+        : mode === "link" ? link.desiredW
+        : mode === "toast" ? toastW
         : mode === "hover" ? hoverW
         : Math.max(restW, restRow.implicitWidth + 36 * s)
     height: mode === "calendar" ? calendarH
@@ -117,6 +134,8 @@ Item {
         : mode === "power" ? powerH
         : mode === "media" ? mediaH
         : mode === "mixer" ? mixerH
+        : mode === "link" ? link.implicitHeight + 26 * s
+        : mode === "toast" ? (toastLoader.item ? toastLoader.item.implicitHeight + 24 * s : restH)
         : mode === "hover" ? hoverH : restH
 
     Behavior on width { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph } }
@@ -173,7 +192,9 @@ Item {
             ? Qt.point(launcher.x + launcher.caretX, launcher.y + launcher.caretY)
             : (pill.powerOpen
             ? Qt.point(power.x + power.heatX, power.y + power.heatY)
-            : Qt.point(media.x + media.seamHeadX, media.y + media.seamHeadY)))
+            : (pill.linkOpen
+            ? Qt.point(link.x + link.emberX, link.y + link.emberY)
+            : Qt.point(media.x + media.seamHeadX, media.y + media.seamHeadY))))
         flyTarget: pill.mixerOpen
             ? Qt.point(mixer.x + mixer.width / 2, mixer.y + mixer.height / 2)
             : (pill.calendarOpen
@@ -184,7 +205,9 @@ Item {
             ? Qt.point(launcher.x + launcher.caretX, launcher.y + launcher.caretY)
             : (pill.powerOpen
             ? Qt.point(power.x + power.heatX, power.y + power.heatY)
-            : Qt.point(media.x + media.seamHeadX, media.y + media.seamHeadY))))
+            : (pill.linkOpen
+            ? Qt.point(link.x + link.emberX, link.y + link.emberY)
+            : Qt.point(media.x + media.seamHeadX, media.y + media.seamHeadY)))))
         mode: pill.flameSurface ? pill.surfaceFlamePhase
             : (pill.surfaceOpen ? "off"
             : (pill.expanded && musicActive ? "held" : "orbit"))
@@ -195,6 +218,7 @@ Item {
     onCalendarOpenChanged: if (calendarOpen) surfaceFlamePhase = "fly"
     onPowerOpenChanged: if (powerOpen) surfaceFlamePhase = "fly"
     onMixerOpenChanged: if (mixerOpen) surfaceFlamePhase = "fly"
+    onLinkOpenChanged: if (linkOpen) surfaceFlamePhase = "fly"
 
     Connections {
         target: flame
@@ -212,7 +236,8 @@ Item {
                     return Qt.point(mixer.x + p.x, mixer.y + p.y);
                 });
                 pill.surfaceFlamePhase = "spark";
-            }
+            } else if (pill.linkOpen)
+                pill.surfaceFlamePhase = "dock";
         }
     }
 
@@ -245,7 +270,7 @@ Item {
     Item {
         id: rest
         anchors.fill: parent
-        opacity: pill.expanded ? 0 : 1
+        opacity: (pill.expanded || pill.mode === "toast") ? 0 : 1
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: 150 } }
 
@@ -275,11 +300,11 @@ Item {
     Item {
         id: hover
         anchors.fill: parent
-        opacity: (pill.expanded && !pill.surfaceOpen) ? 1 : 0
+        opacity: pill.mode === "hover" ? 1 : 0
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: 150 } }
 
-        readonly property bool live: pill.expanded && !pill.surfaceOpen
+        readonly property bool live: pill.mode === "hover"
 
         Row {
             id: hoverRow
@@ -422,6 +447,42 @@ Item {
                 }
 
                 Item {
+                    id: inboxIcon
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 17 * pill.s
+                    height: 17 * pill.s
+
+                    GlyphIcon {
+                        anchors.fill: parent
+                        name: "inbox"
+                        color: inboxArea.containsMouse ? Theme.cream : Theme.iconDim
+                        stroke: 1.7
+                    }
+
+                    Rectangle {
+                        visible: Notifs.unread > 0
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.topMargin: -2 * pill.s
+                        anchors.rightMargin: -2 * pill.s
+                        width: 5 * pill.s
+                        height: 5 * pill.s
+                        radius: width / 2
+                        color: Theme.flameGlow
+                    }
+
+                    MouseArea {
+                        id: inboxArea
+                        anchors.fill: parent
+                        anchors.margins: -6 * pill.s
+                        hoverEnabled: true
+                        enabled: hover.live
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: pill.requestSurface("link")
+                    }
+                }
+
+                Item {
                     id: mixerIcon
                     anchors.verticalCenter: parent.verticalCenter
                     width: 17 * pill.s
@@ -555,6 +616,64 @@ Item {
             NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
         }
         onRequestClose: pill.requestClose()
+    }
+
+    Link {
+        id: link
+        anchors.fill: parent
+        anchors.topMargin: 13 * pill.s
+        anchors.leftMargin: 16 * pill.s
+        anchors.rightMargin: 16 * pill.s
+        anchors.bottomMargin: 13 * pill.s
+        s: pill.s
+        active: pill.linkOpen
+        enabled: pill.linkOpen
+        opacity: pill.linkOpen ? 1 : 0
+        visible: opacity > 0.01
+        Behavior on opacity {
+            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+        }
+    }
+
+    Loader {
+        id: toastLoader
+        active: pill.toastActive
+        anchors.fill: parent
+        anchors.topMargin: 12 * pill.s
+        anchors.leftMargin: 16 * pill.s
+        anchors.rightMargin: 16 * pill.s
+        anchors.bottomMargin: 12 * pill.s
+        enabled: pill.mode === "toast"
+        opacity: pill.mode === "toast" ? 1 : 0
+        visible: opacity > 0.01
+        Behavior on opacity {
+            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+        }
+
+        sourceComponent: Item {
+            implicitHeight: toastContent.implicitHeight
+
+            Toast {
+                id: toastContent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                s: pill.s
+                notif: Notifs.popups.length > 0 ? Notifs.popups[Notifs.popups.length - 1] : null
+                onOpenCenter: pill.requestSurface("link")
+            }
+
+            Text {
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                visible: Notifs.popups.length > 1
+                text: "+" + (Notifs.popups.length - 1)
+                color: Theme.dim
+                font.family: Theme.font
+                font.pixelSize: 9 * pill.s
+                font.weight: Font.DemiBold
+            }
+        }
     }
 
     MouseArea {
