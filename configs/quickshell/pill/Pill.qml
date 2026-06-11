@@ -61,7 +61,6 @@ Item {
     readonly property real mediaW: 336 * s
     readonly property real mediaH: 122 * s
     readonly property real toastW: 342 * s
-    readonly property real osdH: 44 * s
     readonly property real restCorner: 18 * s
     readonly property real openCorner: 22 * s
 
@@ -137,7 +136,7 @@ Item {
         : mode === "media" ? mediaH
         : mode === "mixer" ? mixerH
         : mode === "link" ? link.implicitHeight + 26 * s
-        : mode === "osd" ? osdH
+        : mode === "osd" ? osd.desiredH
         : mode === "toast" ? (toastLoader.item ? toastLoader.item.implicitHeight + 24 * s : restH)
         : mode === "hover" ? hoverH : restH
 

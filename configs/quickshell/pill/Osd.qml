@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell.Widgets
 import Quickshell.Services.Pipewire
 import Quickshell.Services.Mpris
 import "Singletons"
@@ -13,6 +14,7 @@ Item {
     property bool armed: false
     property string shownTrackLine: ""
     property bool shownPlaying: false
+    property string shownArtUrl: ""
 
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property bool muted: sink && sink.audio ? sink.audio.muted : false
@@ -41,7 +43,8 @@ Item {
         return a.length > 0 ? t + " — " + a : t;
     }
 
-    readonly property real desiredW: kind === "track" ? 304 * s : 248 * s
+    readonly property real desiredW: kind === "track" ? 332 * s : 248 * s
+    readonly property real desiredH: kind === "track" ? 56 * s : 44 * s
 
     function flash(which) {
         if (!armed || suppressed || cooldownTimer.running)
@@ -49,6 +52,7 @@ Item {
         if (which === "track") {
             shownTrackLine = trackLine;
             shownPlaying = playing;
+            shownArtUrl = player && player.trackArtUrl ? player.trackArtUrl : "";
         }
         kind = which;
         flashing = true;
@@ -159,9 +163,38 @@ Item {
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: 150 } }
 
+        ClippingRectangle {
+            id: coverBox
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: 30 * root.s
+            height: 30 * root.s
+            radius: 8 * root.s
+            color: Theme.tileBg
+
+            Image {
+                id: cover
+                anchors.fill: parent
+                source: root.shownArtUrl
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: true
+                visible: status === Image.Ready && root.shownArtUrl !== ""
+            }
+            GlyphIcon {
+                anchors.centerIn: parent
+                width: parent.width * 0.45
+                height: width
+                name: "music"
+                color: Theme.subtle
+                visible: !cover.visible
+            }
+        }
+
         GlyphIcon {
             id: trackGlyph
-            anchors.left: parent.left
+            anchors.left: coverBox.right
+            anchors.leftMargin: 11 * root.s
             anchors.verticalCenter: parent.verticalCenter
             width: 16 * root.s
             height: 16 * root.s
@@ -172,7 +205,7 @@ Item {
 
         Text {
             anchors.left: trackGlyph.right
-            anchors.leftMargin: 11 * root.s
+            anchors.leftMargin: 10 * root.s
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             text: root.shownTrackLine
