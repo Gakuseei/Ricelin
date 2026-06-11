@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Shapes
 import "Singletons"
 
 /**
@@ -15,7 +14,7 @@ import "Singletons"
  * entries render their cached thumbnail beside the binary descriptor. Holding
  * the 掃 glyph for the heat duration wipes the entire history — press-and-hold
  * is the pill's native confirmation, mirroring the destructive power tiles;
- * releasing or leaving early drains the progress ring and cancels.
+ * progress sweeps along the header divider and drains on early release.
  */
 Item {
     id: root
@@ -163,27 +162,6 @@ Item {
             property real hold: 0
             readonly property bool holding: hold > 0.001
 
-            Shape {
-                anchors.fill: parent
-                visible: wipeBtn.holding
-                preferredRendererType: Shape.CurveRenderer
-
-                ShapePath {
-                    strokeColor: Theme.vermLit
-                    strokeWidth: 1.5 * root.s
-                    fillColor: "transparent"
-                    capStyle: ShapePath.RoundCap
-                    PathAngleArc {
-                        centerX: wipeBtn.width / 2
-                        centerY: wipeBtn.height / 2
-                        radiusX: wipeBtn.width / 2
-                        radiusY: wipeBtn.height / 2
-                        startAngle: -90
-                        sweepAngle: 360 * wipeBtn.hold
-                    }
-                }
-            }
-
             Text {
                 anchors.centerIn: parent
                 text: "掃"
@@ -244,6 +222,19 @@ Item {
         anchors.right: parent.right
         height: 1
         color: Theme.hair
+
+        Rectangle {
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.right: parent.right
+            width: parent.width * wipeBtn.hold
+            visible: wipeBtn.holding
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: Qt.alpha(Theme.vermLit, 0.15) }
+                GradientStop { position: 1.0; color: Theme.vermLit }
+            }
+        }
     }
 
     ListView {
