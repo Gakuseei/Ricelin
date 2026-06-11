@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Shapes
 import "Singletons"
 
 /**
@@ -11,7 +12,10 @@ import "Singletons"
  * morphing. Typing filters by substring, Return copies the selected entry back
  * to the clipboard and closes, hovering a row cross-fades a dismiss glyph that
  * deletes the entry (Ctrl+X does the same for the keyboard selection). Image
- * entries render their cached thumbnail beside the binary descriptor.
+ * entries render their cached thumbnail beside the binary descriptor. Holding
+ * the 掃 glyph for the heat duration wipes the entire history — press-and-hold
+ * is the pill's native confirmation, mirroring the destructive power tiles;
+ * releasing or leaving early drains the progress ring and cancels.
  */
 Item {
     id: root
@@ -140,12 +144,95 @@ Item {
         Text {
             id: counter
             anchors.verticalCenter: parent.verticalCenter
-            anchors.right: parent.right
+            anchors.right: wipeBtn.left
+            anchors.rightMargin: 10 * root.s
             text: root.results.length + " / " + Cliphist.count
             color: Theme.faint
             font.family: Theme.font
             font.pixelSize: 10.5 * root.s
             font.features: { "tnum": 1 }
+        }
+
+        Item {
+            id: wipeBtn
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: parent.right
+            width: 16 * root.s
+            height: 16 * root.s
+
+            property real hold: 0
+            readonly property bool holding: hold > 0.001
+
+            Shape {
+                anchors.fill: parent
+                visible: wipeBtn.holding
+                preferredRendererType: Shape.CurveRenderer
+
+                ShapePath {
+                    strokeColor: Theme.vermLit
+                    strokeWidth: 1.5 * root.s
+                    fillColor: "transparent"
+                    capStyle: ShapePath.RoundCap
+                    PathAngleArc {
+                        centerX: wipeBtn.width / 2
+                        centerY: wipeBtn.height / 2
+                        radiusX: wipeBtn.width / 2
+                        radiusY: wipeBtn.height / 2
+                        startAngle: -90
+                        sweepAngle: 360 * wipeBtn.hold
+                    }
+                }
+            }
+
+            Text {
+                anchors.centerIn: parent
+                text: "掃"
+                color: wipeBtn.holding ? Theme.vermLit : (wipeArea.containsMouse ? Theme.cream : Theme.faint)
+                font.family: Theme.fontJp
+                font.pixelSize: 12 * root.s
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
+            }
+
+            NumberAnimation {
+                id: wipeFill
+                target: wipeBtn
+                property: "hold"
+                from: 0
+                to: 1
+                duration: Motion.heat
+                onFinished: {
+                    Cliphist.wipe();
+                    wipeDrain.restart();
+                }
+            }
+            NumberAnimation {
+                id: wipeDrain
+                target: wipeBtn
+                property: "hold"
+                to: 0
+                duration: 180
+            }
+
+            MouseArea {
+                id: wipeArea
+                anchors.fill: parent
+                anchors.margins: -5 * root.s
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onPressed: {
+                    wipeDrain.stop();
+                    wipeFill.restart();
+                }
+                onReleased: {
+                    wipeFill.stop();
+                    if (wipeBtn.hold < 1)
+                        wipeDrain.restart();
+                }
+                onExited: {
+                    wipeFill.stop();
+                    wipeDrain.restart();
+                }
+            }
         }
     }
 

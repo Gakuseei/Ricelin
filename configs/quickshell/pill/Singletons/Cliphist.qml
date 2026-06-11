@@ -43,6 +43,11 @@ Singleton {
         Quickshell.execDetached(["sh", "-c", "printf '%s' \"$1\" | cliphist decode | wl-copy", "_", String(entry.id)]);
     }
 
+    function wipe() {
+        entries = [];
+        wipeProc.running = true;
+    }
+
     function remove(entry) {
         if (!/^\d+$/.test(String(entry.id)))
             return;
@@ -74,6 +79,12 @@ Singleton {
         id: debounce
         interval: 300
         onTriggered: root.refresh()
+    }
+
+    Process {
+        id: wipeProc
+        command: ["cliphist", "wipe"]
+        onExited: root.refresh()
     }
 
     Process {
