@@ -535,19 +535,19 @@ Item {
 
             if (f === "rowseam") {
                 const sh = 18 * S * (settling ? (0.6 + 0.4 * e) : 1);
-                const sw = 3.2 * S;
+                const sw = 4.2 * S;
                 const sg3 = ctx.createLinearGradient(0, by - sh / 2, 0, by + sh / 2);
-                sg3.addColorStop(0, Qt.rgba(0.753, 0.267, 0.169, 0.75));
-                sg3.addColorStop(0.5, Theme.vermLit);
-                sg3.addColorStop(1, Qt.rgba(0.753, 0.267, 0.169, 0.75));
+                sg3.addColorStop(0, Qt.rgba(0.878, 0.337, 0.231, 0.92));
+                sg3.addColorStop(0.5, "#f0795a");
+                sg3.addColorStop(1, Qt.rgba(0.878, 0.337, 0.231, 0.92));
                 ctx.beginPath();
                 ctx.roundedRect(bx - sw / 2, by - sh / 2, sw, sh, sw / 2, sw / 2);
                 ctx.fillStyle = sg3;
-                ctx.globalAlpha = Math.max(0.5, fadeIn);
+                ctx.globalAlpha = Math.max(0.85, fadeIn);
                 ctx.fill();
                 ctx.beginPath();
-                ctx.ellipse(bx - sw * 0.28, by - sh * 0.3, sw * 0.3, sh * 0.18);
-                ctx.fillStyle = Qt.rgba(1, 0.965, 0.941, 0.5);
+                ctx.ellipse(bx - sw * 0.26, by - sh * 0.3, sw * 0.28, sh * 0.18);
+                ctx.fillStyle = Qt.rgba(1, 0.965, 0.941, 0.6);
                 ctx.fill();
                 ctx.globalAlpha = 1;
                 if (fadeIn < 0.7)

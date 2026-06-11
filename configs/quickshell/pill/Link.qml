@@ -63,8 +63,8 @@ Item {
         void mainCol.implicitHeight;
         void root.focusRowItem;
         if (!focusRowItem)
-            return Qt.point(8 * s, root.height / 2);
-        return focusRowItem.mapToItem(root, 9 * s, focusRowItem.height / 2);
+            return Qt.point(4 * s, root.height / 2);
+        return focusRowItem.mapToItem(root, 4 * s, focusRowItem.height / 2);
     }
 
     implicitHeight: subview === "wifi" ? wifiPage.implicitHeight
