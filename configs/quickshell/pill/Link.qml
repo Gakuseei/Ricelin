@@ -43,12 +43,27 @@ Item {
      * when nothing is focused. Only the main subview participates.
      */
     property Item focusRowItem: null
+    property Item pendingClearItem: null
 
     function reportRowHover(item, hovered) {
-        if (hovered)
+        if (hovered) {
+            unhoverGrace.stop();
+            pendingClearItem = null;
             focusRowItem = item;
-        else if (focusRowItem === item)
-            focusRowItem = null;
+        } else if (focusRowItem === item) {
+            pendingClearItem = item;
+            unhoverGrace.restart();
+        }
+    }
+
+    Timer {
+        id: unhoverGrace
+        interval: 140
+        onTriggered: {
+            if (root.focusRowItem === root.pendingClearItem)
+                root.focusRowItem = null;
+            root.pendingClearItem = null;
+        }
     }
 
     readonly property bool rowFocused: focusRowItem !== null && subview === "main" && active

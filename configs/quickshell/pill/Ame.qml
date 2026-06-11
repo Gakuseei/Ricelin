@@ -57,6 +57,7 @@ Item {
     property string activeForm: "rest"
     property bool hidden: false
     property bool arcFlip: false
+    property bool quickFlight: false
     property point lastTarget: Qt.point(0, 0)
 
     property real prog: 1
@@ -117,7 +118,8 @@ Item {
         glideT = 1;
     }
 
-    function startFlight(targetForm) {
+    function startFlight(targetForm, quick) {
+        quickFlight = quick === true;
         fromPoint = Qt.point(bx, by);
         arcFlip = point.x > fromPoint.x;
         updateFlightGeo();
@@ -164,7 +166,7 @@ Item {
         bx = wake.x;
         by = wake.y;
         if (Math.hypot(point.x - bx, point.y - by) > root.flightThreshold) {
-            startFlight(form);
+            startFlight(form, true);
         } else {
             bx = point.x;
             by = point.y;
@@ -253,7 +255,7 @@ Item {
         property: "prog"
         from: 0
         to: 1
-        duration: Motion.shapeshift
+        duration: root.quickFlight ? 460 : Motion.shapeshift
         easing.type: Easing.Linear
     }
 
@@ -485,12 +487,6 @@ Item {
 
             if (f === "seam") {
                 const R = (3.5 + 1.5 * (1 - fadeIn)) * S;
-                const sg2 = ctx.createRadialGradient(bx, by, 0, bx, by, 12 * S);
-                sg2.addColorStop(0, Qt.rgba(1, 0.851, 0.761, 0.9 * fadeIn));
-                sg2.addColorStop(0.5, Qt.rgba(1, 0.604, 0.392, 0.4 * fadeIn));
-                sg2.addColorStop(1, Qt.rgba(1, 0.604, 0.392, 0));
-                ctx.fillStyle = sg2;
-                ctx.fillRect(bx - 12 * S, by - 12 * S, 24 * S, 24 * S);
                 bead(ctx, bx, by, R * (settling ? (0.8 + 0.2 * e) : 1), 0, 0);
                 return;
             }
@@ -539,15 +535,19 @@ Item {
 
             if (f === "rowseam") {
                 const sh = 18 * S * (settling ? (0.6 + 0.4 * e) : 1);
-                const sw = 2.6 * S;
+                const sw = 3.2 * S;
                 const sg3 = ctx.createLinearGradient(0, by - sh / 2, 0, by + sh / 2);
-                sg3.addColorStop(0, Qt.rgba(0.753, 0.267, 0.169, 0.25 * fadeIn));
-                sg3.addColorStop(0.5, Theme.flameCore);
-                sg3.addColorStop(1, Qt.rgba(0.753, 0.267, 0.169, 0.25 * fadeIn));
+                sg3.addColorStop(0, Qt.rgba(0.753, 0.267, 0.169, 0.75));
+                sg3.addColorStop(0.5, Theme.vermLit);
+                sg3.addColorStop(1, Qt.rgba(0.753, 0.267, 0.169, 0.75));
                 ctx.beginPath();
                 ctx.roundedRect(bx - sw / 2, by - sh / 2, sw, sh, sw / 2, sw / 2);
                 ctx.fillStyle = sg3;
-                ctx.globalAlpha = Math.max(0.3, fadeIn);
+                ctx.globalAlpha = Math.max(0.5, fadeIn);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(bx - sw * 0.28, by - sh * 0.3, sw * 0.3, sh * 0.18);
+                ctx.fillStyle = Qt.rgba(1, 0.965, 0.941, 0.5);
                 ctx.fill();
                 ctx.globalAlpha = 1;
                 if (fadeIn < 0.7)

@@ -124,7 +124,7 @@ Item {
 
     property real morphRadius: (mixerOpen || calendarOpen || launcherOpen || clipboardOpen || powerOpen || mediaOpen || linkOpen || mode === "toast" || mode === "osd") ? openCorner : restCorner
 
-    width: mode === "calendar" ? calendarW
+    readonly property real targetW: mode === "calendar" ? calendarW
         : mode === "launcher" ? launcherW
         : mode === "clipboard" ? clipboardW
         : mode === "power" ? powerW
@@ -135,7 +135,7 @@ Item {
         : mode === "toast" ? toastW
         : mode === "hover" ? hoverW
         : Math.max(restW, restRow.implicitWidth + 36 * s)
-    height: mode === "calendar" ? calendarH
+    readonly property real targetH: mode === "calendar" ? calendarH
         : mode === "launcher" ? launcherH
         : mode === "clipboard" ? clipboardH
         : mode === "power" ? powerH
@@ -146,9 +146,43 @@ Item {
         : mode === "toast" ? (toastLoader.item ? toastLoader.item.implicitHeight + 24 * s : restH)
         : mode === "hover" ? hoverH : restH
 
-    Behavior on width { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph } }
-    Behavior on height { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph } }
-    Behavior on morphRadius { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph } }
+    width: targetW
+    height: targetH
+
+    /**
+     * How settled the pill is into its current target geometry, 0 while the
+     * morph is still far away and 1 when it has arrived. Content opacities are
+     * driven by this instead of independent timers, so a surface materialises
+     * out of the morphing form rather than fading in over a half-grown pill.
+     */
+    readonly property real morphCloseness: {
+        const d = Math.max(Math.abs(width - targetW), Math.abs(height - targetH));
+        return 1 - Math.min(1, d / (110 * s));
+    }
+
+    /**
+     * The soul wakes only after the hover morph has arrived and its icons are
+     * visible — otherwise the bead flies toward targets that do not exist yet.
+     * Latched so small width changes inside hover (workspace dot growing, tray
+     * icons appearing) cannot flicker the bead back to sleep.
+     */
+    property bool hoverSoulGate: false
+    readonly property bool hoverArrived: mode === "hover" && morphCloseness > 0.55
+    onHoverArrivedChanged: if (hoverArrived) hoverSoulGate = true
+    onModeChanged: if (mode !== "hover") hoverSoulGate = false
+    onHoverSoulGateChanged: if (hoverSoulGate) kanjiFlashAnim.restart()
+
+    property real kanjiFlash: 0
+
+    SequentialAnimation {
+        id: kanjiFlashAnim
+        NumberAnimation { target: pill; property: "kanjiFlash"; to: 1; duration: 90; easing.type: Easing.OutCubic }
+        NumberAnimation { target: pill; property: "kanjiFlash"; to: 0; duration: 320; easing.type: Easing.OutCubic }
+    }
+
+    Behavior on width { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
+    Behavior on height { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
+    Behavior on morphRadius { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
 
     Rectangle {
         id: bud
@@ -284,7 +318,7 @@ Item {
             : (pill.mixerOpen ? "tick"
             : (pill.powerOpen ? (power.holdingIndex >= 0 ? "dock" : (power.hovered.length ? "soul" : "off"))
             : (pill.linkOpen ? (link.rowFocused ? "rowseam" : "off")
-            : (pill.mode === "hover" ? "soul"
+            : (pill.mode === "hover" && pill.hoverSoulGate ? "soul"
             : "off"))))))
         point: pill.mediaOpen
             ? Qt.point(media.x + media.seamHeadX, media.y + media.seamHeadY)
@@ -336,25 +370,38 @@ Item {
     Item {
         id: rest
         anchors.fill: parent
-        opacity: (pill.expanded || pill.mode === "toast" || pill.mode === "osd") ? 0 : 1
+        opacity: (pill.expanded || pill.mode === "toast" || pill.mode === "osd") ? 0 : Math.pow(pill.morphCloseness, 1.5)
         visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: Motion.standard } }
+        Behavior on opacity { NumberAnimation { duration: pill.mode === "rest" ? Motion.fast : 260 } }
 
         Row {
             id: restRow
             anchors.centerIn: parent
             spacing: 9 * pill.s
-            Text {
+            Item {
                 id: restKanji
                 anchors.verticalCenter: parent.verticalCenter
-                text: "時"
-                color: Theme.dim
-                font.family: Theme.fontJp
-                font.weight: Font.Medium
-                font.pixelSize: 15 * pill.s
-                style: Text.Outline
-                styleColor: Qt.alpha(Theme.vermLit, pill.mode === "rest" ? 0.32 : 0)
-                Behavior on styleColor { ColorAnimation { duration: Motion.standard } }
+                width: kanjiFill.implicitWidth
+                height: kanjiFill.implicitHeight
+
+                Text {
+                    anchors.fill: parent
+                    text: kanjiFill.text
+                    color: "transparent"
+                    font: kanjiFill.font
+                    style: Text.Outline
+                    styleColor: Qt.alpha(Theme.vermLit,
+                        Math.min(1, (pill.mode === "rest" || !pill.hoverSoulGate ? 0.5 : 0) + pill.kanjiFlash))
+                }
+
+                Text {
+                    id: kanjiFill
+                    text: "時"
+                    color: Theme.cream
+                    font.family: Theme.fontJp
+                    font.weight: Font.Medium
+                    font.pixelSize: 15 * pill.s
+                }
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
@@ -371,9 +418,9 @@ Item {
     Item {
         id: hover
         anchors.fill: parent
-        opacity: pill.mode === "hover" ? 1 : 0
+        opacity: pill.mode === "hover" ? Math.pow(pill.morphCloseness, 1.2) : 0
         visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: Motion.standard } }
+        Behavior on opacity { NumberAnimation { duration: pill.mode === "hover" ? Motion.fast : 40 } }
 
         readonly property bool live: pill.mode === "hover"
 
@@ -614,7 +661,7 @@ Item {
         s: pill.s
         active: pill.mixerOpen
         enabled: pill.mixerOpen
-        opacity: pill.mixerOpen ? 1 : 0
+        opacity: pill.mixerOpen ? Math.pow(pill.morphCloseness, 1.3) : 0
         visible: opacity > 0.01
         Behavior on opacity {
             NumberAnimation { duration: Motion.standard; easing.type: Easing.OutCubic }
@@ -631,7 +678,7 @@ Item {
         s: pill.s
         active: pill.calendarOpen
         enabled: pill.calendarOpen
-        opacity: pill.calendarOpen ? 1 : 0
+        opacity: pill.calendarOpen ? Math.pow(pill.morphCloseness, 1.3) : 0
         visible: opacity > 0.01
         Behavior on opacity {
             NumberAnimation { duration: Motion.standard; easing.type: Easing.OutCubic }
@@ -648,7 +695,7 @@ Item {
         s: pill.s
         active: pill.launcherOpen
         enabled: pill.launcherOpen
-        opacity: pill.launcherOpen ? 1 : 0
+        opacity: pill.launcherOpen ? Math.pow(pill.morphCloseness, 1.3) : 0
         visible: opacity > 0.01
         Behavior on opacity {
             NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
@@ -666,7 +713,7 @@ Item {
         s: pill.s
         active: pill.clipboardOpen
         enabled: pill.clipboardOpen
-        opacity: pill.clipboardOpen ? 1 : 0
+        opacity: pill.clipboardOpen ? Math.pow(pill.morphCloseness, 1.3) : 0
         visible: opacity > 0.01
         Behavior on opacity {
             NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
@@ -684,7 +731,7 @@ Item {
         s: pill.s
         active: pill.powerOpen
         enabled: pill.powerOpen
-        opacity: pill.powerOpen ? 1 : 0
+        opacity: pill.powerOpen ? Math.pow(pill.morphCloseness, 1.3) : 0
         visible: opacity > 0.01
         Behavior on opacity {
             NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
@@ -699,7 +746,7 @@ Item {
         s: pill.s
         active: pill.mediaOpen
         enabled: pill.mediaOpen
-        opacity: pill.mediaOpen ? 1 : 0
+        opacity: pill.mediaOpen ? Math.pow(pill.morphCloseness, 1.3) : 0
         visible: opacity > 0.01
         Behavior on opacity {
             NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
@@ -717,7 +764,7 @@ Item {
         s: pill.s
         active: pill.linkOpen
         enabled: pill.linkOpen
-        opacity: pill.linkOpen ? 1 : 0
+        opacity: pill.linkOpen ? Math.pow(pill.morphCloseness, 1.3) : 0
         visible: opacity > 0.01
         onRequestClose: pill.requestClose()
         Behavior on opacity {
