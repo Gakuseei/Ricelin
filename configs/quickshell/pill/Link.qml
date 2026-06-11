@@ -12,7 +12,7 @@ import "Singletons"
  * 繋 LINK surface: connectivity rows (auto-detected Netz, Bluetooth) over the
  * 報 INBOX notification center, with WLAN and Bluetooth drill-in subviews that
  * cross-fade in place. Owns the `subview` state machine and exposes
- * `desiredW`, `emberX`/`emberY` (flame dock point on the 報 marker) and
+ * `desiredW`, `emberX`/`emberY` (flame dock point beside the 報 marker) and
  * `back()` for the pill's morph and Escape plumbing. Opening marks all
  * notifications seen after a short beat so unread embers register first.
  */
@@ -23,6 +23,8 @@ Item {
     property bool active: false
     property string subview: "main"
 
+    signal requestClose()
+
     readonly property real desiredW: (subview === "wifi" ? 272 : subview === "bt" ? 286 : 330) * s
 
     readonly property point emberPoint: {
@@ -30,7 +32,7 @@ Item {
         void root.height;
         void mainCol.implicitHeight;
         void root.subview;
-        return inboxKanji.mapToItem(root, inboxKanji.width / 2, inboxKanji.height / 2);
+        return emberAnchor.mapToItem(root, emberAnchor.width / 2, emberAnchor.height / 2);
     }
     readonly property real emberX: emberPoint.x
     readonly property real emberY: emberPoint.y
@@ -187,6 +189,154 @@ Item {
         }
     }
 
+    /**
+     * Single inbox entry: icon tile or diamond, body text, ×N coalesce badge,
+     * age label that cross-fades into a dismiss glyph on hover. Critical
+     * entries gain a vermilion left hairline and cream emphasis.
+     */
+    component NotifRow: Rectangle {
+        id: nrow
+
+        required property var entry
+        property bool critical: false
+        readonly property var n: entry.n
+
+        width: parent ? parent.width : 0
+        height: 26 * root.s
+        radius: 7 * root.s
+        color: nrowHover.hovered ? Theme.frameBg : "transparent"
+
+        HoverHandler { id: nrowHover }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                Notifs.activateEntry(nrow.entry);
+                root.requestClose();
+            }
+        }
+
+        Rectangle {
+            visible: nrow.critical
+            anchors.left: parent.left
+            anchors.leftMargin: 1 * root.s
+            anchors.verticalCenter: parent.verticalCenter
+            width: 2 * root.s
+            height: parent.height - 10 * root.s
+            radius: 999
+            color: Theme.verm
+        }
+
+        Rectangle {
+            id: nrowTile
+            anchors.left: parent.left
+            anchors.leftMargin: 8 * root.s
+            anchors.verticalCenter: parent.verticalCenter
+            width: 16 * root.s
+            height: 16 * root.s
+            radius: 5 * root.s
+            color: Theme.tileBg
+            border.width: 1
+            border.color: Theme.border
+
+            Image {
+                id: nrowImg
+                anchors.fill: parent
+                anchors.margins: nrow.n.image ? 0 : 2 * root.s
+                source: Notifs.iconFor(nrow.n)
+                sourceSize.width: 64
+                sourceSize.height: 64
+                fillMode: Image.PreserveAspectCrop
+                smooth: true
+                visible: source.toString().length > 0
+            }
+
+            Rectangle {
+                anchors.centerIn: parent
+                visible: !nrowImg.visible
+                width: 5 * root.s
+                height: 5 * root.s
+                radius: 1.5 * root.s
+                rotation: 45
+                color: nrow.critical ? Theme.vermLit : Theme.verm
+            }
+        }
+
+        Text {
+            anchors.left: nrowTile.right
+            anchors.leftMargin: 8 * root.s
+            anchors.right: nrowRight.left
+            anchors.rightMargin: 8 * root.s
+            anchors.verticalCenter: parent.verticalCenter
+            text: nrow.n.body.length > 0 ? nrow.n.body : nrow.n.summary
+            color: nrow.critical ? Theme.cream : Theme.subtle
+            font.family: Theme.font
+            font.pixelSize: 10.5 * root.s
+            font.weight: nrow.critical ? Font.DemiBold : Font.Medium
+            elide: Text.ElideRight
+            maximumLineCount: 1
+            textFormat: Text.PlainText
+        }
+
+        Row {
+            id: nrowRight
+            anchors.right: parent.right
+            anchors.rightMargin: 8 * root.s
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6 * root.s
+
+            Text {
+                visible: nrow.entry.count > 1
+                anchors.verticalCenter: parent.verticalCenter
+                text: "×" + nrow.entry.count
+                color: nrow.critical ? Theme.vermLit : Theme.vermDim
+                font.family: Theme.font
+                font.pixelSize: 9 * root.s
+                font.weight: Font.Bold
+            }
+
+            Item {
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(nrowAge.implicitWidth, nrowX.implicitWidth)
+                height: Math.max(nrowAge.implicitHeight, nrowX.implicitHeight)
+
+                Text {
+                    id: nrowAge
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    opacity: nrowHover.hovered ? 0 : 1
+                    text: Notifs.ageLabel(nrow.n)
+                    color: Theme.faint
+                    font.family: Theme.font
+                    font.pixelSize: 9 * root.s
+                    Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                }
+
+                Text {
+                    id: nrowX
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    opacity: nrowHover.hovered ? 1 : 0
+                    text: "✕"
+                    color: nrowXArea.containsMouse ? Theme.cream : Theme.dim
+                    font.pixelSize: 10 * root.s
+                    Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+
+                    MouseArea {
+                        id: nrowXArea
+                        anchors.fill: parent
+                        anchors.margins: -6 * root.s
+                        enabled: nrowHover.hovered
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: Notifs.dismissEntry(nrow.entry)
+                    }
+                }
+            }
+        }
+    }
+
     Item {
         id: mainView
         anchors.fill: parent
@@ -217,7 +367,8 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "繋"
                         color: Theme.cream
-                        font.family: Theme.font
+                        font.family: Theme.fontJp
+                        font.weight: Font.Medium
                         font.pixelSize: 16 * root.s
                     }
                     Text {
@@ -456,12 +607,20 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6 * root.s
 
+                    Item {
+                        id: emberAnchor
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 10 * root.s
+                        height: 10 * root.s
+                    }
+
                     Text {
                         id: inboxKanji
                         anchors.verticalCenter: parent.verticalCenter
                         text: "報"
                         color: Theme.dim
-                        font.family: Theme.font
+                        font.family: Theme.fontJp
+                        font.weight: Font.Medium
                         font.pixelSize: 11.5 * root.s
                     }
                     Text {
@@ -475,25 +634,40 @@ Item {
                     }
                 }
 
-                Text {
+                Row {
+                    id: clearRow
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     visible: Notifs.count > 0
-                    text: "払 CLEAR"
-                    color: clearArea.containsMouse ? Theme.vermLit : Theme.vermDim
-                    font.family: Theme.font
-                    font.pixelSize: 9 * root.s
-                    font.weight: Font.Bold
-                    font.letterSpacing: 1.4 * root.s
+                    spacing: 4 * root.s
 
-                    MouseArea {
-                        id: clearArea
-                        anchors.fill: parent
-                        anchors.margins: -5 * root.s
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: Notifs.clearAll()
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "払"
+                        color: clearArea.containsMouse ? Theme.vermLit : Theme.vermDim
+                        font.family: Theme.fontJp
+                        font.pixelSize: 9 * root.s
+                        font.weight: Font.Bold
                     }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "CLEAR"
+                        color: clearArea.containsMouse ? Theme.vermLit : Theme.vermDim
+                        font.family: Theme.font
+                        font.pixelSize: 9 * root.s
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.4 * root.s
+                    }
+                }
+
+                MouseArea {
+                    id: clearArea
+                    anchors.fill: clearRow
+                    anchors.margins: -5 * root.s
+                    visible: Notifs.count > 0
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: Notifs.clearAll()
                 }
             }
 
@@ -505,15 +679,16 @@ Item {
                 Flickable {
                     id: notifFlick
                     width: parent.width
-                    height: Math.min(notifCol.implicitHeight, 280 * root.s)
+                    height: Math.min(notifCol.implicitHeight, 320 * root.s)
                     contentHeight: notifCol.implicitHeight
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
+                    onContentHeightChanged: returnToBounds()
 
                     Column {
                         id: notifCol
                         width: notifFlick.width
-                        spacing: 8 * root.s
+                        spacing: 6 * root.s
 
                         Repeater {
                             model: Notifs.groups
@@ -521,242 +696,158 @@ Item {
                             Column {
                                 id: group
                                 required property var modelData
-                                readonly property bool collapsed: Notifs.collapsedApps[modelData.app] === true
+                                readonly property bool expanded: Notifs.expandedApps[modelData.app] === true
                                 width: notifCol.width
-                                spacing: 4 * root.s
+                                spacing: 2 * root.s
 
-                                Item {
+                                Repeater {
+                                    model: group.modelData.criticals
+
+                                    NotifRow {
+                                        required property var modelData
+                                        entry: modelData
+                                        critical: true
+                                    }
+                                }
+
+                                Rectangle {
+                                    id: groupHead
                                     width: parent.width
-                                    height: 14 * root.s
+                                    height: 32 * root.s
+                                    radius: 8 * root.s
+                                    color: headHover.hovered ? Theme.frameBg : "transparent"
 
-                                    Row {
-                                        anchors.left: parent.left
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 6 * root.s
-
-                                        Text {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: group.modelData.app
-                                            color: Theme.dim
-                                            font.family: Theme.font
-                                            font.pixelSize: 8.5 * root.s
-                                            font.weight: Font.Bold
-                                            font.capitalization: Font.AllUppercase
-                                            font.letterSpacing: 1.4 * root.s
-                                        }
-                                        Text {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: "· " + group.modelData.items.length
-                                            color: Theme.faint
-                                            font.family: Theme.font
-                                            font.pixelSize: 8.5 * root.s
-                                        }
-                                    }
-
-                                    Text {
-                                        anchors.right: parent.right
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: group.collapsed ? "▸" : "▾"
-                                        color: Theme.faint
-                                        font.pixelSize: 9 * root.s
-                                    }
+                                    HoverHandler { id: headHover }
 
                                     MouseArea {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: Notifs.toggleCollapsed(group.modelData.app)
+                                        onClicked: Notifs.toggleExpanded(group.modelData.app)
+                                    }
+
+                                    Rectangle {
+                                        id: headTile
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 6 * root.s
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 20 * root.s
+                                        height: 20 * root.s
+                                        radius: 6 * root.s
+                                        color: Theme.tileBg
+                                        border.width: 1
+                                        border.color: Theme.border
+
+                                        Image {
+                                            id: headImg
+                                            anchors.fill: parent
+                                            anchors.margins: group.modelData.newest.image ? 0 : 3 * root.s
+                                            source: Notifs.iconFor(group.modelData.newest)
+                                            sourceSize.width: 64
+                                            sourceSize.height: 64
+                                            fillMode: Image.PreserveAspectCrop
+                                            smooth: true
+                                            visible: source.toString().length > 0
+                                        }
+
+                                        Rectangle {
+                                            anchors.centerIn: parent
+                                            visible: !headImg.visible
+                                            width: 6 * root.s
+                                            height: 6 * root.s
+                                            radius: 2 * root.s
+                                            rotation: 45
+                                            color: Theme.verm
+                                        }
+                                    }
+
+                                    Text {
+                                        id: headName
+                                        anchors.left: headTile.right
+                                        anchors.leftMargin: 8 * root.s
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: Math.min(implicitWidth, 110 * root.s)
+                                        text: group.modelData.app
+                                        color: Theme.subtle
+                                        font.family: Theme.font
+                                        font.pixelSize: 9 * root.s
+                                        font.weight: Font.Bold
+                                        font.capitalization: Font.AllUppercase
+                                        font.letterSpacing: 1.2 * root.s
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Text {
+                                        id: headCount
+                                        anchors.left: headName.right
+                                        anchors.leftMargin: 5 * root.s
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "· " + group.modelData.count
+                                        color: Theme.faint
+                                        font.family: Theme.font
+                                        font.pixelSize: 9 * root.s
+                                    }
+
+                                    Text {
+                                        anchors.left: headCount.right
+                                        anchors.leftMargin: 8 * root.s
+                                        anchors.right: headX.left
+                                        anchors.rightMargin: 8 * root.s
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: group.modelData.preview.body.length > 0
+                                            ? group.modelData.preview.body
+                                            : group.modelData.preview.summary
+                                        color: Theme.dim
+                                        font.family: Theme.font
+                                        font.pixelSize: 10 * root.s
+                                        elide: Text.ElideRight
+                                        maximumLineCount: 1
+                                        textFormat: Text.PlainText
+                                    }
+
+                                    Text {
+                                        id: headChev
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 8 * root.s
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: group.expanded ? "▾" : "▸"
+                                        color: Theme.faint
+                                        font.pixelSize: 9 * root.s
+                                    }
+
+                                    Text {
+                                        id: headX
+                                        anchors.right: headChev.left
+                                        anchors.rightMargin: 7 * root.s
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        opacity: headHover.hovered ? 1 : 0
+                                        text: "✕"
+                                        color: headXArea.containsMouse ? Theme.cream : Theme.dim
+                                        font.pixelSize: 10 * root.s
+                                        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+
+                                        MouseArea {
+                                            id: headXArea
+                                            anchors.fill: parent
+                                            anchors.margins: -6 * root.s
+                                            enabled: headHover.hovered
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: Notifs.dismissApp(group.modelData.app)
+                                        }
                                     }
                                 }
 
                                 Column {
-                                    visible: !group.collapsed
+                                    visible: group.expanded
                                     width: parent.width
-                                    spacing: 6 * root.s
+                                    spacing: 2 * root.s
 
                                     Repeater {
-                                        model: group.modelData.items
+                                        model: group.expanded ? group.modelData.entries : []
 
-                                        Row {
-                                            id: notifRow
+                                        NotifRow {
                                             required property var modelData
-                                            readonly property bool live: modelData.live === true
-                                            readonly property var n: modelData.n
-                                            readonly property bool unseen: live && !Notifs.seenIds[modelData.n.id]
-                                            readonly property var acts: live
-                                                ? modelData.n.actions.filter(function(a) { return a.text.length > 0 })
-                                                : []
-                                            readonly property bool hovered: itemHover.hovered
-                                            width: parent ? parent.width : 0
-                                            spacing: 8 * root.s
-
-                                            HoverHandler { id: itemHover }
-
-                                            Rectangle {
-                                                width: 28 * root.s
-                                                height: 28 * root.s
-                                                radius: 8 * root.s
-                                                color: Theme.tileBg
-                                                border.width: 1
-                                                border.color: Theme.border
-
-                                                Image {
-                                                    id: tileImg
-                                                    anchors.fill: parent
-                                                    anchors.margins: notifRow.n.image ? 0 : 5 * root.s
-                                                    source: notifRow.n.image
-                                                        ? notifRow.n.image
-                                                        : (notifRow.n.appIcon
-                                                            ? Quickshell.iconPath(notifRow.n.appIcon, "")
-                                                            : "")
-                                                    sourceSize.width: 64
-                                                    sourceSize.height: 64
-                                                    fillMode: Image.PreserveAspectCrop
-                                                    smooth: true
-                                                    visible: source.toString().length > 0
-                                                }
-
-                                                Rectangle {
-                                                    anchors.centerIn: parent
-                                                    visible: !tileImg.visible
-                                                    width: 7 * root.s
-                                                    height: 7 * root.s
-                                                    radius: 2 * root.s
-                                                    rotation: 45
-                                                    color: notifRow.n.urgency === NotificationUrgency.Critical
-                                                        ? Theme.vermLit : Theme.verm
-                                                }
-                                            }
-
-                                            Column {
-                                                width: parent.width - 36 * root.s
-                                                spacing: 2 * root.s
-
-                                                Item {
-                                                    width: parent.width
-                                                    height: titleText.implicitHeight
-
-                                                    Ember {
-                                                        id: titleEmber
-                                                        visible: notifRow.unseen
-                                                        anchors.verticalCenter: parent.verticalCenter
-                                                        size: 4 * root.s
-                                                    }
-
-                                                    Text {
-                                                        id: titleText
-                                                        anchors.left: parent.left
-                                                        anchors.leftMargin: notifRow.unseen ? titleEmber.width + 4 * root.s : 0
-                                                        anchors.verticalCenter: parent.verticalCenter
-                                                        width: parent.width - anchors.leftMargin - 30 * root.s
-                                                        text: notifRow.n.summary
-                                                        color: notifRow.unseen ? Theme.cream : Theme.subtle
-                                                        font.family: Theme.font
-                                                        font.pixelSize: 11.5 * root.s
-                                                        font.weight: notifRow.unseen ? Font.DemiBold : Font.Medium
-                                                        elide: Text.ElideRight
-                                                    }
-
-                                                    Text {
-                                                        anchors.right: parent.right
-                                                        anchors.verticalCenter: parent.verticalCenter
-                                                        visible: !notifRow.hovered
-                                                        text: notifRow.live ? Notifs.ageLabel(notifRow.n) : ""
-                                                        color: Theme.faint
-                                                        font.family: Theme.font
-                                                        font.pixelSize: 9 * root.s
-                                                    }
-
-                                                    Text {
-                                                        anchors.right: parent.right
-                                                        anchors.verticalCenter: parent.verticalCenter
-                                                        visible: notifRow.hovered
-                                                        text: "✕"
-                                                        color: xArea.containsMouse ? Theme.cream : Theme.dim
-                                                        font.pixelSize: 10.5 * root.s
-
-                                                        MouseArea {
-                                                            id: xArea
-                                                            anchors.fill: parent
-                                                            anchors.margins: -6 * root.s
-                                                            hoverEnabled: true
-                                                            cursorShape: Qt.PointingHandCursor
-                                                            onClicked: notifRow.live
-                                                                ? Notifs.dismissNotif(notifRow.n)
-                                                                : Notifs.removeHistory(notifRow.n.id)
-                                                        }
-                                                    }
-                                                }
-
-                                                Text {
-                                                    width: parent.width
-                                                    visible: notifRow.n.body.length > 0
-                                                    text: notifRow.n.body
-                                                    color: Theme.dim
-                                                    font.family: Theme.font
-                                                    font.pixelSize: 10.5 * root.s
-                                                    wrapMode: Text.Wrap
-                                                    maximumLineCount: 2
-                                                    elide: Text.ElideRight
-                                                    textFormat: Text.PlainText
-                                                }
-
-                                                Rectangle {
-                                                    visible: notifRow.live && Notifs.progressOf(notifRow.n) >= 0
-                                                    width: parent.width
-                                                    height: 5 * root.s
-                                                    radius: 999
-                                                    color: Theme.threadBg
-
-                                                    Rectangle {
-                                                        width: parent.width * Math.max(0, Notifs.progressOf(notifRow.n)) / 100
-                                                        height: parent.height
-                                                        radius: 999
-                                                        gradient: Gradient {
-                                                            orientation: Gradient.Horizontal
-                                                            GradientStop { position: 0.0; color: Theme.verm }
-                                                            GradientStop { position: 1.0; color: Theme.vermLit }
-                                                        }
-                                                    }
-                                                }
-
-                                                Row {
-                                                    visible: notifRow.acts.length > 0
-                                                    spacing: 6 * root.s
-                                                    topPadding: 4 * root.s
-
-                                                    Repeater {
-                                                        model: notifRow.acts
-
-                                                        Rectangle {
-                                                            id: actPill
-                                                            required property var modelData
-                                                            required property int index
-                                                            radius: 999
-                                                            color: Theme.tileBg
-                                                            border.width: 1
-                                                            border.color: Theme.border
-                                                            height: 20 * root.s
-                                                            width: actText.implicitWidth + 18 * root.s
-
-                                                            Text {
-                                                                id: actText
-                                                                anchors.centerIn: parent
-                                                                text: actPill.modelData.text
-                                                                color: actPill.index === 0 ? Theme.vermLit : Theme.dim
-                                                                font.family: Theme.font
-                                                                font.pixelSize: 9.5 * root.s
-                                                                font.weight: Font.DemiBold
-                                                            }
-
-                                                            MouseArea {
-                                                                anchors.fill: parent
-                                                                cursorShape: Qt.PointingHandCursor
-                                                                onClicked: actPill.modelData.invoke()
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
+                                            entry: modelData
                                         }
                                     }
                                 }
@@ -788,7 +879,8 @@ Item {
                     text: "静"
                     color: Theme.ghost
                     opacity: 0.55
-                    font.family: Theme.font
+                    font.family: Theme.fontJp
+                    font.weight: Font.Medium
                     font.pixelSize: 32 * root.s
                 }
                 Text {

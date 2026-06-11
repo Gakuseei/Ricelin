@@ -128,7 +128,8 @@ Item {
             anchors.left: parent.left
             text: "探"
             color: Theme.dim
-            font.family: Theme.font
+            font.family: Theme.fontJp
+            font.weight: Font.Medium
             font.pixelSize: 16 * root.s
         }
 

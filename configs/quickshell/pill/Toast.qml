@@ -53,9 +53,7 @@ Item {
             id: toastImg
             anchors.fill: parent
             anchors.margins: root.notif.image ? 0 : 6 * root.s
-            source: root.notif.image
-                ? root.notif.image
-                : (root.notif.appIcon ? Quickshell.iconPath(root.notif.appIcon, "") : "")
+            source: Notifs.iconFor(root.notif)
             sourceSize.width: 64
             sourceSize.height: 64
             fillMode: Image.PreserveAspectCrop

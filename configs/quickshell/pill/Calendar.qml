@@ -94,7 +94,8 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "暦"
                 color: Theme.cream
-                font.family: Theme.font
+                font.family: Theme.fontJp
+                font.weight: Font.Medium
                 font.pixelSize: 16 * root.s
             }
             Text {

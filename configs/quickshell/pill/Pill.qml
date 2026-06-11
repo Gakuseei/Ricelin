@@ -246,7 +246,8 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "時"
                 color: Theme.dim
-                font.family: Theme.font
+                font.family: Theme.fontJp
+                font.weight: Font.Medium
                 font.pixelSize: 15 * pill.s
             }
             Text {
@@ -594,6 +595,7 @@ Item {
         enabled: pill.linkOpen
         opacity: pill.linkOpen ? 1 : 0
         visible: opacity > 0.01
+        onRequestClose: pill.requestClose()
         Behavior on opacity {
             NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
         }
