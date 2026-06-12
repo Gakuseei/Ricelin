@@ -74,11 +74,18 @@ Item {
             return;
         pairingAddress = d.address;
         failedAddress = "";
-        pairProc.command = ["bash", "-c",
-            "bluetoothctl pair " + d.address
-            + " && bluetoothctl trust " + d.address
-            + " && bluetoothctl connect " + d.address];
+        pairProc.command = ["sh", "-c",
+            'timeout 30 bluetoothctl pair "$1" && bluetoothctl trust "$1" && timeout 30 bluetoothctl connect "$1"',
+            "sh", d.address];
         pairProc.running = true;
+    }
+
+    onActiveChanged: {
+        if (!active) {
+            scanTimer.stop();
+            if (adapter && adapter.discovering)
+                adapter.discovering = false;
+        }
     }
 
     Timer {

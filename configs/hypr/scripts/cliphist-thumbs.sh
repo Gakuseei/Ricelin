@@ -1,4 +1,7 @@
 #!/bin/sh
+MAGICK_CONFIGURE_PATH="$(dirname "$0")/magick-policy"
+export MAGICK_CONFIGURE_PATH
+
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/cliphist-thumbs"
 mkdir -p "$cache"
 chmod 700 "$cache"
