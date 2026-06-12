@@ -8,3 +8,5 @@ hl.env("__GL_GSYNC_ALLOWED",        "0")
 hl.env("__GL_VRR_ALLOWED",          "0")
 
 hl.env("ELECTRON_OZONE_PLATFORM_HINT", "auto")
+
+hl.env("QT_QPA_PLATFORMTHEME", "kde")
