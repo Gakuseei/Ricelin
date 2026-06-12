@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Widgets
 import "Singletons"
 
 /**
@@ -148,18 +149,30 @@ Item {
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
                     }
 
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
+                    /**
+                     * The heat fill lives inside a ClippingRectangle that
+                     * carries the tile's corner radius: a plain Rectangle with
+                     * its own radius gets that radius clamped to height/2
+                     * while the fill is still flat, so its corners poked
+                     * outside the tile's rounded outline for the first beat
+                     * of every hold.
+                     */
+                    ClippingRectangle {
+                        anchors.fill: parent
                         anchors.margins: 1
                         radius: (Motion.rTile - 1) * root.s
-                        height: (tile.height - 2) * tile.hold
-                        visible: tile.holding
-                        clip: true
-                        gradient: Gradient {
-                            GradientStop { position: 0.0; color: Qt.alpha(Theme.verm, 0.7) }
-                            GradientStop { position: 1.0; color: Qt.alpha(Theme.vermLit, 0.15) }
+                        color: "transparent"
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            height: tile.height * tile.hold
+                            visible: tile.holding
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: Qt.alpha(Theme.verm, 0.7) }
+                                GradientStop { position: 1.0; color: Qt.alpha(Theme.vermLit, 0.15) }
+                            }
                         }
                     }
 
