@@ -344,6 +344,20 @@ Item {
         return ws.mapToItem(pill, ws.activeDotPoint.x, ws.activeDotPoint.y + drop);
     }
 
+    /**
+     * The open surface that owns Ame's anchor, in original priority order. Each
+     * surface exports its own `ameForm`/`amePoint`; the host only selects and
+     * maps. Null means no surface is open, so Ame falls back to the pill's own
+     * hover/wake anchor.
+     */
+    readonly property var ameSurface: mediaOpen ? media
+        : (launcherOpen ? launcher
+        : (clipboardOpen ? clip
+        : (calendarOpen ? calendar
+        : (mixerOpen ? mixer
+        : (powerOpen ? power
+        : (linkOpen ? link : null))))))
+
     Ame {
         id: ame
         anchors.fill: parent
@@ -351,33 +365,12 @@ Item {
         heat: pill.powerOpen ? power.holdProgress : 0
         wake: pill.wakePoint
         wickDir: pill.powerOpen ? 1 : -1
-        form: pill.mediaOpen ? "seam"
-            : (pill.launcherOpen || pill.clipboardOpen ? "caret"
-            : (pill.calendarOpen ? (calendar.todayVisible ? "ring" : "dock")
-            : (pill.mixerOpen ? "tick"
-            : (pill.powerOpen ? (power.holdingIndex >= 0 ? "dock" : (power.soulKey.length ? "soul" : "off"))
-            : (pill.linkOpen ? (link.rowFocused ? "rowseam" : "off")
-            : (pill.mode === "hover" && pill.hoverSoulGate ? "soul"
-            : "off"))))))
-        point: pill.mediaOpen
-            ? Qt.point(media.x + media.seamHeadX, media.y + media.seamHeadY)
-            : (pill.launcherOpen
-            ? Qt.point(launcher.x + launcher.caretX, launcher.y + launcher.caretY)
-            : (pill.clipboardOpen
-            ? Qt.point(clip.x + clip.caretX, clip.y + clip.caretY)
-            : (pill.calendarOpen
-            ? (calendar.todayVisible
-                ? Qt.point(calendar.x + calendar.todayX, calendar.y + calendar.todayY)
-                : Qt.point(pill.width / 2, pill.height / 2))
-            : (pill.mixerOpen
-            ? Qt.point(mixer.x + mixer.focusTickPoint.x, mixer.y + mixer.focusTickPoint.y)
-            : (pill.powerOpen
-            ? Qt.point(power.x + power.heatX, power.y + power.heatY)
-            : (pill.linkOpen
-            ? Qt.point(link.x + link.rowPoint.x, link.y + link.rowPoint.y)
-            : (pill.mode === "hover"
-            ? pill.soulPoint
-            : pill.wakePoint)))))))
+        form: pill.ameSurface ? pill.ameSurface.ameForm
+            : (pill.mode === "hover" && pill.hoverSoulGate ? "soul" : "off")
+        point: pill.ameSurface
+            ? Qt.point(pill.ameSurface.x + pill.ameSurface.amePoint.x,
+                       pill.ameSurface.y + pill.ameSurface.amePoint.y)
+            : (pill.mode === "hover" ? pill.soulPoint : pill.wakePoint)
     }
 
     /**

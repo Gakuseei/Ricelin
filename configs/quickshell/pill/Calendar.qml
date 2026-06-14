@@ -43,6 +43,9 @@ PillSurface {
     readonly property real todayX: grid.x + (todayIndex % 7 + 0.5) * cellW
     readonly property real todayY: grid.y + (Math.floor(todayIndex / 7) + 0.5) * (cellH + rowGap) - rowGap / 2
 
+    ameForm: todayVisible ? "ring" : "dock"
+    amePoint: todayVisible ? Qt.point(todayX, todayY) : Qt.point(width / 2, height / 2)
+
     SystemClock {
         id: sysClock
         precision: SystemClock.Minutes

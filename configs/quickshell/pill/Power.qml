@@ -36,6 +36,9 @@ PillSurface {
     readonly property real heatX: holdingIndex >= 0 ? tileHeatX : (soulKey.length ? hoverX : anchorX)
     readonly property real heatY: holdingIndex >= 0 ? tileHeatY : (soulKey.length ? hoverY : anchorY)
 
+    ameForm: holdingIndex >= 0 ? "dock" : (soulKey.length ? "soul" : "off")
+    amePoint: Qt.point(heatX, heatY)
+
     readonly property var actions: [
         { key: "lock",     glyph: "lock",     label: "Lock",     confirm: false, dispatch: "",             argv: ["sh", "-c", "$HOME/.config/hypr/scripts/lock.sh"] },
         { key: "logout",   glyph: "logout",   label: "Logout",   confirm: true,  dispatch: "hl.dsp.exit()", argv: [] },

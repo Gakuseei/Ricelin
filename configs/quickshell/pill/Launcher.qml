@@ -44,6 +44,9 @@ PillSurface {
     readonly property real caretX: caretPoint.x
     readonly property real caretY: caretPoint.y
 
+    ameForm: "caret"
+    amePoint: Qt.point(caretX, caretY)
+
     readonly property string usageFile: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/ricelin/launcher-usage.json"
 
     readonly property var allEntries: {

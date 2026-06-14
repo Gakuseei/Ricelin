@@ -68,6 +68,9 @@ PillSurface {
         return focusRowItem.mapToItem(root, 4 * s, focusRowItem.height / 2);
     }
 
+    ameForm: rowFocused ? "rowseam" : "off"
+    amePoint: rowPoint
+
     implicitHeight: subview === "wifi" ? wifiPage.implicitHeight
         : subview === "bt" ? btPage.implicitHeight
         : mainCol.implicitHeight

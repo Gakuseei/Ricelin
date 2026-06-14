@@ -87,6 +87,9 @@ PillSurface {
     readonly property real seamHeadX: seamHead.x
     readonly property real seamHeadY: seamHead.y
 
+    ameForm: "seam"
+    amePoint: Qt.point(seamHeadX, seamHeadY)
+
     function fmt(sec) {
         if (!(sec > 0))
             return "0:00";

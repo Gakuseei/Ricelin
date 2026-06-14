@@ -52,6 +52,9 @@ PillSurface {
         return f.mapToItem(root, f.tickCenter.x, f.tickCenter.y);
     }
 
+    ameForm: "tick"
+    amePoint: focusTickPoint
+
     /**
      * Pointer-driven fader targeting. MouseArea hover delivery is unreliable on
      * this layer-shell surface, so a non-blocking HoverHandler is the single
