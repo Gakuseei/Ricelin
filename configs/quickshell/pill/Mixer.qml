@@ -1,5 +1,4 @@
 import QtQuick
-import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Pipewire
 import "Singletons"
@@ -16,19 +15,8 @@ Item {
     property real s: 1
     property bool active: false
 
-    property int vibrance: 40
-
-    readonly property string stateFile: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/ricelin/nvibrant-value"
-
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property var source: Pipewire.defaultAudioSource
-
-    /**
-     * DDC-capable monitors from `ddcutil detect`, one brightness fader each:
-     * [{ bus, label }] with label taken from the DRM connector. Detected once
-     * at startup instead of hardcoding I2C bus numbers.
-     */
-    property var ddcMonitors: []
 
     property int focusIndex: -1
     readonly property int faderCount: faders.length
@@ -100,22 +88,7 @@ Item {
                                     : (focusIndex + dir + faders.length) % faders.length;
     }
 
-    function applyVibrance(pct) {
-        var raw = Math.round(Math.max(0, Math.min(100, pct)) * 1023 / 100);
-        Quickshell.execDetached(["nvibrant", String(raw), "0", String(raw)]);
-    }
-
-    function saveVibrance(pct) {
-        Quickshell.execDetached(["sh", "-c",
-            'mkdir -p "$(dirname "$1")" && printf "%s\n" "$2" > "$1"',
-            "_", root.stateFile, String(Math.round(pct))]);
-    }
-
-    Component.onCompleted: {
-        var v = parseInt((vibState.text() || "40").trim());
-        root.vibrance = isNaN(v) ? 40 : v;
-        ddcDetect.running = true;
-    }
+    Component.onCompleted: Devices.detect()
 
     property real pendingVibrance: -1
 
@@ -123,40 +96,13 @@ Item {
         id: vibDebounce
         interval: 160
         onTriggered: if (root.pendingVibrance >= 0) {
-            root.applyVibrance(root.pendingVibrance);
-            root.saveVibrance(root.pendingVibrance);
+            Devices.setVibrance(root.pendingVibrance);
             root.pendingVibrance = -1;
         }
     }
 
     PwObjectTracker {
         objects: [root.sink, root.source].filter(Boolean)
-    }
-
-    Process {
-        id: ddcDetect
-        command: ["ddcutil", "detect", "--brief"]
-        running: false
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var mons = [];
-                var blocks = this.text.split(/\bDisplay \d+/);
-                for (var i = 0; i < blocks.length; i++) {
-                    var bus = /I2C bus:\s+\/dev\/i2c-(\d+)/.exec(blocks[i]);
-                    var conn = /DRM connector:\s+card\d+-(\S+)/.exec(blocks[i]);
-                    if (bus)
-                        mons.push({ bus: bus[1], label: conn ? conn[1] : "BUS " + bus[1] });
-                }
-                root.ddcMonitors = mons;
-            }
-        }
-    }
-
-    FileView {
-        id: vibState
-        path: root.stateFile
-        blockLoading: true
-        printErrors: false
     }
 
     component IconChip: Rectangle {
@@ -258,7 +204,7 @@ Item {
 
         Repeater {
             id: brRep
-            model: root.ddcMonitors
+            model: Devices.ddcMonitors
 
             VFader {
                 id: brFader
@@ -286,8 +232,7 @@ Item {
                     id: brCommit
                     interval: 160
                     onTriggered: if (brFader.pendingPct >= 0) {
-                        Quickshell.execDetached(["timeout", "3", "ddcutil", "setvcp", "10",
-                            String(brFader.pendingPct), "--bus", brFader.modelData.bus, "--noverify"]);
+                        Devices.setBrightness(brFader.modelData.bus, brFader.pendingPct);
                         brFader.pendingPct = -1;
                     }
                 }
@@ -298,9 +243,9 @@ Item {
                     running: true
                     stdout: StdioCollector {
                         onStreamFinished: {
-                            var m = this.text.match(/C\s+(\d+)\s+/);
-                            if (m)
-                                brFader.pct = parseInt(m[1], 10);
+                            var v = Devices.parseBrightness(this.text);
+                            if (v >= 0)
+                                brFader.pct = v;
                         }
                     }
                 }
@@ -313,9 +258,9 @@ Item {
             s: root.s
             icon: "monitor"
             focused: root.focusIndex === root.faderCount - 3
-            value: root.vibrance / 100
-            valueLabel: root.vibrance + "%"
-            onMoved: (v) => root.vibrance = Math.round(v * 100)
+            value: Devices.vibrance / 100
+            valueLabel: Devices.vibrance + "%"
+            onMoved: (v) => Devices.vibrance = Math.round(v * 100)
             onCommitted: (v) => { root.pendingVibrance = v * 100; vibDebounce.restart(); }
         }
         VFader {

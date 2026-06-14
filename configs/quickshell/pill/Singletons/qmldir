@@ -4,3 +4,4 @@ singleton Flags Flags.qml
 singleton Notifs Notifs.qml
 singleton Cliphist Cliphist.qml
 singleton Walls Walls.qml
+singleton Devices Devices.qml

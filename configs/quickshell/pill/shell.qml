@@ -40,21 +40,7 @@ ShellRoot {
 
     Component.onCompleted: {
         refresh();
-        var raw = vibState.text();
-        if (raw && raw.trim().length) {
-            var pct = parseInt(raw.trim());
-            if (!isNaN(pct)) {
-                var v = Math.round(pct * 1023 / 100);
-                Quickshell.execDetached(["nvibrant", String(v), "0", String(v)]);
-            }
-        }
-    }
-
-    FileView {
-        id: vibState
-        path: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/ricelin/nvibrant-value"
-        blockLoading: true
-        printErrors: false
+        Devices.restore();
     }
 
     Binding {
