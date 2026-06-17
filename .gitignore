@@ -13,35 +13,35 @@ Thumbs.db
 # Per-machine
 .envrc
 
-# Personal notes / transcripts / planning — local only
+# Personal notes / transcripts / planning, local only
 memory/
 Claude.md
 
-# Machine-specific install/partition plan — local only
+# Machine-specific install/partition plan, local only
 configs/partition-day-sequence.md
 
-# Hyprland auto-generates this stub if no .conf found — never track
+# Hyprland auto-generates this stub if no .conf found, never track
 configs/hypr/hyprland.conf
 
-# GhostType app-managed hotkey snippets (machine-specific exec path) — never track
+# GhostType app-managed hotkey snippets (machine-specific exec path), never track
 configs/hypr/ghosttype.conf
 configs/hypr/ghosttype.lua
 
 # Local-only hypr binds (machine-specific scripts, not for public rice)
 configs/hypr/modules/private.lua
 
-# Brainstorm mockups — local only
+# Brainstorm mockups, local only
 .superpowers/
 
-# Wallpapers — local until final curated 2560x1440 set exists, then un-ignore + commit
+# Wallpapers: local until final curated 2560x1440 set exists, then un-ignore + commit
 wallpapers/
 
-# Specs / brainstorm docs — local only (user rule: never commit docs/)
+# Specs / brainstorm docs, local only (never commit docs/)
 docs/
 .playwright/
 .playwright-mcp/
 
-# internal / personal — never public
+# internal / personal, never public
 /CLAUDE.md
 /configs/decisions.md
 /configs/mount-disks.sh

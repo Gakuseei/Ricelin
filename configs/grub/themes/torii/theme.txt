@@ -1,5 +1,5 @@
-# Torii — Ricelin GRUB theme
-# Background: AI-generated night-shrine (2560x1440)
+# Torii: Ricelin GRUB theme
+# Background: night-shrine (2560x1440)
 
 desktop-image: "background.png"
 desktop-image-scale-method: "stretch"
