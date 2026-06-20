@@ -49,7 +49,6 @@ Singleton {
     readonly property string flameEmber: dyn ? Dyn.primaryContainer : "#7e2812"
     readonly property string flameBurn:  dyn ? Dyn.primaryContainer : "#8a2c14"
     readonly property string flameTip:   dyn ? Dyn.onPrimaryContainer : "#ffb38a"
-    readonly property string caretTip:   dyn ? Dyn.onPrimaryContainer : "#ffd9c2"
     readonly property color todayWarm: dyn ? Dyn.onPrimaryContainer : "#ffb38a"
     readonly property color ghost:     dyn ? Dyn.surfaceContainerHighest : "#594636"
     readonly property color frameBg:      Qt.alpha(cream, 0.055)

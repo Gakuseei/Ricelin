@@ -471,10 +471,7 @@ Item {
                 ctx.globalAlpha = blink;
                 ctx.beginPath();
                 ctx.roundedRect(bx - wdt / 2, by - hgt / 2, wdt, Math.max(2 * S, hgt), Math.min(wdt, hgt) / 2, Math.min(wdt, hgt) / 2);
-                const cg = ctx.createLinearGradient(0, by - 8 * S, 0, by + 8 * S);
-                cg.addColorStop(0, Theme.caretTip);
-                cg.addColorStop(1, Theme.vermLit);
-                ctx.fillStyle = cg;
+                ctx.fillStyle = Theme.flameInk;
                 ctx.fill();
                 ctx.globalAlpha = 1;
                 return;
