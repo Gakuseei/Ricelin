@@ -382,16 +382,43 @@ function editCmd(luaText, lineIndex, cmd) {
 }
 
 /**
+ * True when every bracket and quote in `s` is balanced, treating text inside a
+ * double-quoted string as opaque. Guards editAction against writing a dispatch
+ * that would unbalance the hl.bind call and break the whole lua config.
+ */
+function balanceOk(s) {
+    var depth = 0;
+    var inStr = false;
+    for (var i = 0; i < s.length; i++) {
+        var c = s[i];
+        if (inStr) {
+            if (c === '"') inStr = false;
+            continue;
+        }
+        if (c === '"') { inStr = true; continue; }
+        if (c === '(' || c === '{' || c === '[') depth++;
+        else if (c === ')' || c === '}' || c === ']') {
+            depth--;
+            if (depth < 0) return false;
+        }
+    }
+    return depth === 0 && !inStr;
+}
+
+/**
  * Replaces the dispatch (second top-level argument) of the bind on `lineIndex`
  * with `action` verbatim, leaving the combo (arg 0) and opts (arg 2) intact. Use
  * for non-exec or env-prefixed dispatches the simple command field cannot express
- * (window.*, focus, os.getenv path); the caller passes the full lua source.
- * Returns { text, ok, error }.
+ * (window.*, focus, os.getenv path); the caller passes the full lua source. The
+ * action is refused when its brackets or quotes are unbalanced so a stray edit
+ * cannot break the config. Returns { text, ok, error }.
  */
 function editAction(luaText, lineIndex, action) {
     var lines = luaText.split("\n");
     if (lineIndex < 0 || lineIndex >= lines.length)
         return { text: luaText, ok: false, error: "invalid lineIndex" };
+    if (!balanceOk(action))
+        return { text: luaText, ok: false, error: "unbalanced () or quote" };
 
     var raw = lines[lineIndex];
     var range = argRange(raw, 1);
