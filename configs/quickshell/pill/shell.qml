@@ -286,14 +286,14 @@ ShellRoot {
                     else if (pill.wallpaperOpen) { pill.wallpaperMove(-1); e.accepted = true; }
                     else if (pill.powerOpen) { pill.powerMove(-1); e.accepted = true; }
                     else if (pill.recorderOpen) { e.accepted = pill.recorderStep(-5); }
-                    else if (pill.settingsOpen) { pill.settingsAdjust(-1); e.accepted = true; }
+                    else if (pill.settingsLike) { pill.settingsAdjust(-1); e.accepted = true; }
                 }
                 Keys.onRightPressed: (e) => {
                     if (pill.mixerOpen) { pill.mixerFocusMove(1); e.accepted = true; }
                     else if (pill.wallpaperOpen) { pill.wallpaperMove(1); e.accepted = true; }
                     else if (pill.powerOpen) { pill.powerMove(1); e.accepted = true; }
                     else if (pill.recorderOpen) { e.accepted = pill.recorderStep(5); }
-                    else if (pill.settingsOpen) { pill.settingsAdjust(1); e.accepted = true; }
+                    else if (pill.settingsLike) { pill.settingsAdjust(1); e.accepted = true; }
                 }
 
                 /**
@@ -318,7 +318,7 @@ ShellRoot {
                     } else if (pill.powerOpen) {
                         if (!e.isAutoRepeat) pill.powerPress();
                         e.accepted = true;
-                    } else if (pill.settingsOpen) {
+                    } else if (pill.settingsLike) {
                         if (!e.isAutoRepeat) pill.settingsActivate();
                         e.accepted = true;
                     } else if (pill.keybindsOpen && !pill.keybindsListening) {

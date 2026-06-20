@@ -46,6 +46,7 @@ Item {
     readonly property bool sysmonOpen: surface === "sysmon"
     readonly property bool appearanceOpen: surface === "appearance"
     readonly property bool recordingOpen: surface === "recording"
+    readonly property bool settingsLike: settingsOpen || appearanceOpen || recordingOpen
     readonly property bool hasMedia: Mpris.players.values.length > 0
 
     /**
@@ -175,9 +176,9 @@ Item {
     }
 
     /**
-     * Move the open settings surface's keyboard row focus by `dir` (+1 down, -1
-     * up), carrying the soul seam. Returns true when settings is open and
-     * consumed the step.
+     * Resolve which settings-family surface owns keyboard row navigation right
+     * now: the category index or one of its morphing sub-surfaces. Returns null
+     * when none of them is open.
      */
     function rowNavSurface() {
         if (pill.settingsOpen)
@@ -189,6 +190,10 @@ Item {
         return null;
     }
 
+    /**
+     * Move the focused settings row by `dir` (+1 down, -1 up), carrying the soul
+     * seam. Returns true when a settings-family surface is open and consumed it.
+     */
     function settingsMove(dir) {
         var nav = pill.rowNavSurface();
         if (!nav)
@@ -210,8 +215,8 @@ Item {
     }
 
     /**
-     * Flip the focused settings row when it is a toggle. Returns true when
-     * settings is open.
+     * Activate the focused settings row: a toggle flips, a nav row opens its
+     * sub-surface. Returns true when a settings-family surface is open.
      */
     function settingsActivate() {
         var nav = pill.rowNavSurface();
