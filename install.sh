@@ -160,6 +160,36 @@ detect_pm() {
 	fi
 }
 
+# A fresh Arch or CachyOS often ships no AUR helper, but Ricelin needs the AUR
+# (hyprland-git, rishot-git, bibata-cursor-theme-bin). Build yay-bin from the AUR
+# once so the rest is one command. makepkg refuses to run as root, so this needs a
+# normal user; the sudo prompts come from pacman and makepkg themselves.
+bootstrap_aur_helper() {
+	have yay && return 0
+	have paru && return 0
+	step "No AUR helper found, bootstrapping yay-bin from the AUR"
+	if [ "$(id -u)" -eq 0 ]; then
+		warn "run the installer as a normal user (not root); makepkg cannot build as root"
+		return 1
+	fi
+	sudo pacman -S --needed --noconfirm git base-devel || {
+		warn "could not install git and base-devel"
+		return 1
+	}
+	tmp="$(mktemp -d)"
+	if git clone --depth 1 https://aur.archlinux.org/yay-bin.git "$tmp/yay-bin" &&
+		(cd "$tmp/yay-bin" && makepkg -si --noconfirm); then
+		rm -rf "$tmp"
+		have yay && {
+			say "  yay installed"
+			return 0
+		}
+	fi
+	rm -rf "$tmp"
+	warn "could not bootstrap an AUR helper; install yay or paru yourself, then re-run"
+	return 1
+}
+
 # Ricelin needs the AUR (hyprland-git, rishot-git, bibata-cursor-theme-bin), so a
 # bare pacman cannot pull everything. We say so plainly and install what we can.
 install_deps() {
@@ -438,6 +468,9 @@ main() {
 	interactive_select
 
 	if [ "$SKIP_DEPS" -eq 0 ]; then
+		if [ "$pm" = "pacman" ]; then
+			bootstrap_aur_helper && pm="$(detect_pm)"
+		fi
 		install_deps "$pm" || warn "dependency step incomplete, continuing with the config deploy"
 		install_rishot "$pm"
 	fi

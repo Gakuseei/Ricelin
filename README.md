@@ -39,7 +39,7 @@ wallust reads a palette from each wallpaper and recolors the terminal, window bo
 
 ## Install
 
-Arch or CachyOS with an AUR helper (yay or paru):
+Arch or CachyOS. If you have no AUR helper it builds yay for you:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Gakuseei/Ricelin/main/install.sh | sh
