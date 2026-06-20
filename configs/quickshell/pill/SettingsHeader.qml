@@ -4,7 +4,9 @@ import "Singletons"
 /**
  * Settings surface header: the surface kanji (gated by Flags.showGlyphs) and its
  * uppercase title on the left, with a cog at the index or a back chevron on a
- * sub-surface at the right. Clicking the chevron emits `back()`.
+ * sub-surface at the right. On a sub-surface the whole bar is the back target, so
+ * a click anywhere on the title strip emits `back()`; clicks elsewhere on the
+ * surface do nothing.
  */
 Item {
     id: head
@@ -17,6 +19,16 @@ Item {
 
     width: parent ? parent.width : 0
     height: 22 * head.s
+
+    MouseArea {
+        anchors.fill: parent
+        anchors.topMargin: -6 * head.s
+        anchors.leftMargin: -8 * head.s
+        anchors.rightMargin: -8 * head.s
+        enabled: head.showBack
+        cursorShape: Qt.PointingHandCursor
+        onClicked: head.back()
+    }
 
     Row {
         anchors.left: parent.left
@@ -52,13 +64,5 @@ Item {
         name: head.showBack ? "chevron-left" : "cog"
         color: Theme.iconDim
         stroke: head.showBack ? 2.2 : 1.7
-
-        MouseArea {
-            anchors.fill: parent
-            anchors.margins: -8 * head.s
-            enabled: head.showBack
-            cursorShape: Qt.PointingHandCursor
-            onClicked: head.back()
-        }
     }
 }

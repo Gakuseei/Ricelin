@@ -113,10 +113,4 @@ PillSurface {
 
     ameForm: rowFocused ? "rowseam" : "off"
     amePoint: rowPoint
-
-    MouseArea {
-        anchors.fill: parent
-        enabled: root.backSurface.length > 0
-        onClicked: root.requestSurface(root.backSurface)
-    }
 }

@@ -318,12 +318,6 @@ PillSurface {
         }
     }
 
-    MouseArea {
-        anchors.fill: parent
-        enabled: !root.listening && !root.formOpen
-        onClicked: root.requestSurface("settings")
-    }
-
     Column {
         id: content
         anchors.top: parent.top
@@ -334,6 +328,16 @@ PillSurface {
         Item {
             width: parent.width
             height: 22 * root.s
+
+            MouseArea {
+                anchors.fill: parent
+                anchors.topMargin: -6 * root.s
+                anchors.leftMargin: -8 * root.s
+                anchors.rightMargin: -8 * root.s
+                enabled: !root.listening
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.formOpen ? root.closeForm() : root.requestSurface("settings")
+            }
 
             Row {
                 anchors.left: parent.left
@@ -366,9 +370,9 @@ PillSurface {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 16 * root.s
                 height: 16 * root.s
-                name: "cog"
+                name: "chevron-left"
                 color: Theme.iconDim
-                stroke: 1.7
+                stroke: 2.2
             }
         }
 
