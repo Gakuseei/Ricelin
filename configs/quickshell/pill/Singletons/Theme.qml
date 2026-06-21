@@ -14,6 +14,16 @@ import Quickshell
 Singleton {
     readonly property bool dyn: Flags.dynamicPalette
 
+    /**
+     * Bright warm pop shared by the flame glow, charging glyphs, the recording
+     * countdown, the unread inbox dot, the calendar's today cell and the held
+     * power tile. The dynamic branch uses the wallpaper accent (Dyn.primary):
+     * matugen's on-primary-container does not populate here and collapses the
+     * token to black, while the accent always loads and contrasts the pill
+     * surface. Static mode keeps the fixed warm hex.
+     */
+    readonly property color onGlow: dyn ? Dyn.primary : "#ff9a64"
+
     readonly property color verm:     dyn ? Qt.darker(Dyn.primary, 1.18) : "#c0442b"
     readonly property color vermLit:  dyn ? Dyn.primary : "#e0563b"
     readonly property color vermDeep: dyn ? Dyn.primaryContainer : "#a3371f"
@@ -36,8 +46,8 @@ Singleton {
     readonly property color vermBurn:  dyn ? Qt.darker(Dyn.primaryContainer, 1.1) : "#8a2c14"
     readonly property color tickRest:  dyn ? Dyn.tickRest : "#cbb6a3"
     readonly property color threadBg:  Qt.alpha(cream, 0.13)
-    readonly property color flameCore: dyn ? Qt.lighter(Dyn.onPrimaryContainer, 1.03) : "#ffd9c2"
-    readonly property color flameGlow: dyn ? Dyn.onPrimaryContainer : "#ff9a64"
+    readonly property color flameCore: dyn ? Qt.lighter(onGlow, 1.03) : "#ffd9c2"
+    readonly property color flameGlow: dyn ? onGlow : "#ff9a64"
 
     /**
      * Flame canvas ramp: literal hex strings (color type won't work), fed
@@ -49,7 +59,7 @@ Singleton {
     readonly property string flameEmber: dyn ? Dyn.primaryContainer : "#7e2812"
     readonly property string flameBurn:  dyn ? Dyn.primaryContainer : "#8a2c14"
     readonly property string flameTip:   dyn ? Dyn.onPrimaryContainer : "#ffb38a"
-    readonly property color todayWarm: dyn ? Dyn.onPrimaryContainer : "#ffb38a"
+    readonly property color todayWarm: dyn ? onGlow : "#ffb38a"
     readonly property color ghost:     dyn ? Dyn.surfaceContainerHighest : "#594636"
     readonly property color frameBg:      Qt.alpha(cream, 0.055)
     readonly property color frameBorder:  Qt.alpha(cream, 0.10)
