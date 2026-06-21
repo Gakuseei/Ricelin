@@ -655,6 +655,19 @@ PillSurface {
                             onToggled: ScreenRec.captureCursor = !ScreenRec.captureCursor
                         }
                     }
+                    ORow {
+                        name: "Countdown"
+                        MiniSeg {
+                            options: [
+                                { label: "Off", value: 0 },
+                                { label: "3s", value: 3 },
+                                { label: "5s", value: 5 },
+                                { label: "10s", value: 10 }
+                            ]
+                            value: Flags.recordCountdown
+                            onPicked: (v) => Flags.recordCountdown = v
+                        }
+                    }
                 }
             }
         }

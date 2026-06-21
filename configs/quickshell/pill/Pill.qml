@@ -45,12 +45,11 @@ Item {
     readonly property bool recorderOpen: surface === "recorder"
     readonly property bool sysmonOpen: surface === "sysmon"
     readonly property bool appearanceOpen: surface === "appearance"
-    readonly property bool recordingOpen: surface === "recording"
     readonly property bool updatesOpen: surface === "updates"
     readonly property bool displayOpen: surface === "display"
     readonly property bool inputOpen: surface === "input"
     readonly property bool fontpickerOpen: surface === "fontpicker"
-    readonly property bool settingsLike: settingsOpen || appearanceOpen || recordingOpen || updatesOpen
+    readonly property bool settingsLike: settingsOpen || appearanceOpen || updatesOpen
     readonly property bool hasMedia: Mpris.players.values.length > 0
 
     /**
@@ -108,7 +107,6 @@ Item {
     readonly property real recorderW: 384 * s
     readonly property real sysmonW: 392 * s
     readonly property real appearanceW: 392 * s
-    readonly property real recordingW: 360 * s
     readonly property real updatesW: 360 * s
     readonly property real displayW: 392 * s
     readonly property real inputW: 392 * s
@@ -145,7 +143,6 @@ Item {
         recorder:  { size: () => Qt.size(recorderW, recorder.implicitHeight + 33 * s), ame: recorder },
         sysmon:    { size: () => Qt.size(sysmonW, sysmon.implicitHeight + 33 * s), ame: sysmon },
         appearance: { size: () => Qt.size(appearanceW, appearance.implicitHeight + 29 * s), ame: appearance },
-        recording:  { size: () => Qt.size(recordingW, recording.implicitHeight + 29 * s), ame: recording },
         updates:    { size: () => Qt.size(updatesW, updates.implicitHeight + 29 * s), ame: updates },
         display:    { size: () => Qt.size(displayW, display.implicitHeight + 29 * s), ame: display },
         input:      { size: () => Qt.size(inputW, input.implicitHeight + 29 * s), ame: input },
@@ -197,8 +194,6 @@ Item {
             return settings;
         if (pill.appearanceOpen)
             return appearance;
-        if (pill.recordingOpen)
-            return recording;
         return null;
     }
 
@@ -310,7 +305,7 @@ Item {
             pill.requestSurface("appearance");
             return;
         }
-        if (pill.appearanceOpen || pill.recordingOpen || pill.updatesOpen || pill.displayOpen || pill.inputOpen) {
+        if (pill.appearanceOpen || pill.updatesOpen || pill.displayOpen || pill.inputOpen) {
             pill.requestSurface("settings");
             return;
         }
@@ -1279,15 +1274,6 @@ Item {
         id: appearance
         s: pill.s
         open: pill.appearanceOpen
-        morphCloseness: pill.morphCloseness
-        onRequestClose: pill.requestClose()
-        onRequestSurface: (name) => pill.requestSurface(name)
-    }
-
-    Recording {
-        id: recording
-        s: pill.s
-        open: pill.recordingOpen
         morphCloseness: pill.morphCloseness
         onRequestClose: pill.requestClose()
         onRequestSurface: (name) => pill.requestSurface(name)

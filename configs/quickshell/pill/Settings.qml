@@ -8,7 +8,7 @@ import "Singletons"
  * Each row carries its kanji, name and caption, and morphs the pill into that
  * category's sub-surface. Arrow keys move the focused row with the glowing seam
  * and Return opens it. The Shell group holds Appearance and Display; the Control
- * group holds Keybinds, Recording and Updates.
+ * group holds Keybinds and Updates.
  */
 SettingsSurface {
     id: root
@@ -20,7 +20,6 @@ SettingsSurface {
         { item: displayRow, kind: "nav", surface: "display" },
         { item: inputRow, kind: "nav", surface: "input" },
         { item: keybindsRow, kind: "nav", surface: "keybinds" },
-        { item: recordingRow, kind: "nav", surface: "recording" },
         { item: updatesRow, kind: "nav", surface: "updates" }
     ]
 
@@ -123,22 +122,6 @@ SettingsSurface {
                 height: 16 * root.s
                 name: "chevron-right"
                 color: root.focusRowItem === keybindsRow ? Theme.cream : Theme.iconDim
-                stroke: 2.2
-            }
-        }
-
-        SettingsRow {
-            id: recordingRow
-            surface: root
-            glyph: "録"
-            name: "Recording"
-            sub: "Capture countdown"
-
-            GlyphIcon {
-                width: 16 * root.s
-                height: 16 * root.s
-                name: "chevron-right"
-                color: root.focusRowItem === recordingRow ? Theme.cream : Theme.iconDim
                 stroke: 2.2
             }
         }
