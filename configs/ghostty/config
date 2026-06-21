@@ -17,4 +17,4 @@ copy-on-select = clipboard
 keybind = ctrl+v=paste_from_clipboard
 confirm-close-surface = false
 
-config-file = /home/erik/.cache/ricelin/ghostty-colors
+config-file = ?/home/erik/.cache/ricelin/ghostty-colors
