@@ -111,7 +111,7 @@ SettingsSurface {
             id: timeRow
             surface: root
             name: "Time format"
-            sub: "24-hour stays the default"
+            icon: "clock"
 
             SettingsSeg {
                 s: root.s
@@ -125,7 +125,7 @@ SettingsSurface {
             id: secRow
             surface: root
             name: "Clock seconds"
-            sub: "Show :SS in the pill clock"
+            icon: "stopwatch"
 
             LinkToggle {
                 s: root.s
@@ -138,7 +138,7 @@ SettingsSurface {
             id: glyphRow
             surface: root
             name: "Japanese glyphs"
-            sub: "Kanji on surface headers (蓄 BATTERY…). Off swaps for plain labels."
+            icon: "language"
 
             LinkToggle {
                 s: root.s
@@ -151,7 +151,7 @@ SettingsSurface {
             id: paletteRow
             surface: root
             name: "Palette"
-            sub: "Static flame, dynamic from the wallpaper, or a hue you pick"
+            icon: "palette"
 
             SettingsSeg {
                 s: root.s
@@ -360,7 +360,7 @@ SettingsSurface {
             id: scaleRow
             surface: root
             name: "UI scale"
-            sub: "Density of the whole pill"
+            icon: "scaling"
 
             SettingsSeg {
                 s: root.s
@@ -374,7 +374,7 @@ SettingsSurface {
             id: motionRow
             surface: root
             name: "Reduce motion"
-            sub: "Snappier transitions, less float"
+            icon: "waves"
 
             LinkToggle {
                 s: root.s
@@ -387,6 +387,7 @@ SettingsSurface {
             id: fontRow
             surface: root
             name: "Font"
+            icon: "type"
             sub: Flags.uiFont.length > 0 ? Flags.uiFont : "Inter"
             last: true
 

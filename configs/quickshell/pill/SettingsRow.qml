@@ -15,9 +15,11 @@ Item {
 
     property var surface: null
     property string glyph: ""
+    property string icon: ""
     property string name: ""
     property string sub: ""
     property bool last: false
+    property bool captionOnFocus: false
     default property alias control: controlSlot.data
 
     readonly property real s: srow.surface ? srow.surface.s : 1
@@ -51,17 +53,30 @@ Item {
         anchors.left: parent.left
         anchors.leftMargin: 12 * srow.s
         anchors.verticalCenter: parent.verticalCenter
-        visible: srow.glyph.length > 0 && Flags.showGlyphs
+        visible: srow.glyph.length > 0 && srow.icon.length === 0 && Flags.showGlyphs
         text: srow.glyph
         color: Theme.iconDim
         font.family: Theme.fontJp
         font.pixelSize: 15 * srow.s
     }
 
+    GlyphIcon {
+        id: ri
+        anchors.left: parent.left
+        anchors.leftMargin: 14 * srow.s
+        anchors.verticalCenter: parent.verticalCenter
+        visible: srow.icon.length > 0
+        width: 17 * srow.s
+        height: 17 * srow.s
+        name: srow.icon
+        color: srow.focused ? Theme.cream : Theme.subtle
+        stroke: 1.8
+    }
+
     Column {
         id: textCol
-        anchors.left: rk.visible ? rk.right : parent.left
-        anchors.leftMargin: rk.visible ? 11 * srow.s : 12 * srow.s
+        anchors.left: ri.visible ? ri.right : (rk.visible ? rk.right : parent.left)
+        anchors.leftMargin: ri.visible ? 13 * srow.s : (rk.visible ? 11 * srow.s : 12 * srow.s)
         anchors.right: controlSlot.left
         anchors.rightMargin: 14 * srow.s
         anchors.verticalCenter: parent.verticalCenter
@@ -76,7 +91,7 @@ Item {
         }
         Text {
             width: parent.width
-            visible: srow.sub.length > 0
+            visible: srow.sub.length > 0 && (!srow.captionOnFocus || srow.focused || srowHover.hovered)
             text: srow.sub
             color: Theme.faint
             font.family: Theme.font

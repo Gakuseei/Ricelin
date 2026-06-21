@@ -54,6 +54,7 @@ SettingsSurface {
         SettingsRow {
             id: appearanceRow
             surface: root
+            captionOnFocus: true
             glyph: "相"
             name: "Appearance"
             sub: "Clock, glyphs, accent palette"
@@ -70,6 +71,7 @@ SettingsSurface {
         SettingsRow {
             id: lookRow
             surface: root
+            captionOnFocus: true
             glyph: "飾"
             name: "Look"
             sub: "Gaps, rounding, blur, opacity"
@@ -86,6 +88,7 @@ SettingsSurface {
         SettingsRow {
             id: displayRow
             surface: root
+            captionOnFocus: true
             glyph: "画"
             name: "Display"
             sub: "Resolution, refresh, scale"
@@ -102,6 +105,7 @@ SettingsSurface {
         SettingsRow {
             id: inputRow
             surface: root
+            captionOnFocus: true
             glyph: "操"
             name: "Input"
             sub: "Pointer, keyboard, cursor"
@@ -131,6 +135,7 @@ SettingsSurface {
         SettingsRow {
             id: keybindsRow
             surface: root
+            captionOnFocus: true
             glyph: "鍵"
             name: "Keybinds"
             sub: "Rebind, add, set commands"
@@ -147,6 +152,7 @@ SettingsSurface {
         SettingsRow {
             id: idleRow
             surface: root
+            captionOnFocus: true
             glyph: "錠"
             name: "Idle / Lock"
             sub: "Auto-lock, screen off, suspend"
@@ -163,6 +169,7 @@ SettingsSurface {
         SettingsRow {
             id: updatesRow
             surface: root
+            captionOnFocus: true
             glyph: "更"
             name: "Updates"
             sub: "Version and check for updates"
