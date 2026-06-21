@@ -31,6 +31,33 @@ SettingsSurface {
     property bool checking: false
     property bool behind: false
     property bool updating: false
+    property bool checked: false
+    property int behindCount: 0
+
+    readonly property string statusKind: updating ? "updating"
+        : checking ? "checking"
+        : behind ? "behind"
+        : status.indexOf("updated") === 0 ? "updated"
+        : status.indexOf("failed") >= 0 ? "fail"
+        : checked ? "ok"
+        : "idle"
+
+    readonly property string badgeIcon: statusKind === "behind" ? "arrow-up"
+        : (statusKind === "checking" || statusKind === "updating") ? "reboot"
+        : statusKind === "fail" ? "close"
+        : "check"
+
+    readonly property color badgeTint: statusKind === "fail" ? Theme.dim
+        : (statusKind === "checking" || statusKind === "updating" || statusKind === "idle") ? Theme.subtle
+        : Theme.vermLit
+
+    readonly property string headline: statusKind === "updating" ? "Updating…"
+        : statusKind === "checking" ? "Checking…"
+        : statusKind === "behind" ? (behindCount + " update" + (behindCount === 1 ? "" : "s") + " available")
+        : statusKind === "updated" ? "Updated"
+        : statusKind === "fail" ? "Check failed"
+        : statusKind === "ok" ? "Up to date"
+        : "Installed"
 
     onActiveChanged: {
         if (active) {
@@ -72,12 +99,15 @@ SettingsSurface {
             }
             if (line === "uptodate") {
                 root.behind = false;
-                root.status = "up to date";
+                root.checked = true;
+                root.status = "";
                 return;
             }
             var n = parseInt(line.split(" ")[1], 10);
+            root.behindCount = (isNaN(n) || n < 1) ? 1 : n;
             root.behind = true;
-            root.status = (n > 0 ? n + " update(s) available" : "an update is available");
+            root.checked = true;
+            root.status = "";
         }
     }
 
@@ -134,19 +164,73 @@ SettingsSurface {
             showBack: true
         }
 
-        Item { width: 1; height: 12 * root.s }
+        Item { width: 1; height: 14 * root.s }
 
-        Text {
-            leftPadding: 12 * root.s
-            visible: root.version.length > 0
-            text: "version " + root.version.replace(" ", " · ")
-            color: Theme.faint
-            font.family: Theme.font
-            font.pixelSize: 11 * root.s
-            font.weight: Font.Medium
+        Row {
+            anchors.left: parent.left
+            anchors.leftMargin: 14 * root.s
+            spacing: 12 * root.s
+
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 34 * root.s
+                height: 34 * root.s
+                radius: width / 2
+                color: Qt.alpha(root.badgeTint, 0.16)
+
+                GlyphIcon {
+                    anchors.centerIn: parent
+                    width: 18 * root.s
+                    height: 18 * root.s
+                    name: root.badgeIcon
+                    color: root.badgeTint
+                    stroke: 2
+
+                    RotationAnimation on rotation {
+                        running: root.checking || root.updating
+                        loops: Animation.Infinite
+                        from: 0
+                        to: 360
+                        duration: 900
+                    }
+                }
+            }
+
+            Column {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2 * root.s
+
+                Text {
+                    text: root.headline
+                    color: Theme.cream
+                    font.family: Theme.font
+                    font.pixelSize: 14.5 * root.s
+                    font.weight: Font.Bold
+                }
+                Text {
+                    visible: root.version.length > 0
+                    text: root.version.replace(" ", " · ")
+                    color: Theme.faint
+                    font.family: Theme.font
+                    font.pixelSize: 10.5 * root.s
+                    font.weight: Font.Medium
+                    font.features: { "tnum": 1 }
+                }
+            }
         }
 
-        Item { width: 1; height: 14 * root.s }
+        Item { width: 1; height: 15 * root.s }
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: 12 * root.s
+            anchors.rightMargin: 12 * root.s
+            height: 1
+            color: Theme.hair
+        }
+
+        Item { width: 1; height: 15 * root.s }
 
         Column {
             anchors.left: parent.left
@@ -156,44 +240,10 @@ SettingsSurface {
             spacing: 9 * root.s
 
             Rectangle {
-                id: checkBtn
-                width: parent.width
-                height: 38 * root.s
-                radius: 9 * root.s
-                color: checkHover.hovered ? Theme.frameBg : Theme.tileBg
-                border.width: 1
-                border.color: Theme.border
-                opacity: root.checking || root.updating ? 0.55 : 1
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
-                Behavior on opacity { NumberAnimation { duration: Motion.fast } }
-
-                HoverHandler {
-                    id: checkHover
-                    enabled: !root.checking && !root.updating
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    enabled: !root.checking && !root.updating
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.startCheck()
-                }
-
-                Text {
-                    anchors.centerIn: parent
-                    text: root.checking ? "Checking…" : "Check for updates"
-                    color: Theme.cream
-                    font.family: Theme.font
-                    font.pixelSize: 12 * root.s
-                    font.weight: Font.DemiBold
-                }
-            }
-
-            Rectangle {
                 id: updateBtn
                 width: parent.width
                 height: 38 * root.s
-                radius: 9 * root.s
+                radius: 10 * root.s
                 visible: root.behind
                 color: Qt.alpha(Theme.vermLit, updateHover.hovered ? 0.30 : 0.20)
                 border.width: 1
@@ -218,6 +268,40 @@ SettingsSurface {
                     anchors.centerIn: parent
                     text: root.updating ? "Updating…" : "Update now"
                     color: Theme.bright
+                    font.family: Theme.font
+                    font.pixelSize: 12 * root.s
+                    font.weight: Font.DemiBold
+                }
+            }
+
+            Rectangle {
+                id: checkBtn
+                width: parent.width
+                height: 38 * root.s
+                radius: 10 * root.s
+                color: checkHover.hovered ? Theme.frameBg : Theme.tileBg
+                border.width: 1
+                border.color: Theme.border
+                opacity: root.checking || root.updating ? 0.55 : 1
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+
+                HoverHandler {
+                    id: checkHover
+                    enabled: !root.checking && !root.updating
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: !root.checking && !root.updating
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.startCheck()
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: root.checking ? "Checking…" : "Check for updates"
+                    color: Theme.cream
                     font.family: Theme.font
                     font.pixelSize: 12 * root.s
                     font.weight: Font.DemiBold
