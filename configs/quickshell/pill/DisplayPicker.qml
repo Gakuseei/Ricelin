@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Effects
 import "Singletons"
 
 /**
@@ -110,9 +111,19 @@ Item {
         visible: pick.open
         clip: true
         radius: 9 * pick.s
-        color: Theme.ghost
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Theme.cardTop }
+            GradientStop { position: 1.0; color: Theme.cardBot }
+        }
         border.width: 1
-        border.color: Theme.hairSoft
+        border.color: Theme.frameBorder
+        layer.enabled: true
+        layer.effect: MultiEffect {
+            shadowEnabled: true
+            shadowColor: Theme.shadow
+            shadowBlur: 0.6
+            shadowVerticalOffset: 4 * pick.s
+        }
 
         ListView {
             anchors.fill: parent
@@ -130,7 +141,7 @@ Item {
                 height: 24 * pick.s
                 radius: 7 * pick.s
                 color: optHover.hovered ? Theme.frameBg
-                    : (optRow.current ? Qt.alpha(Theme.vermLit, 0.14) : "transparent")
+                    : (optRow.current ? Qt.alpha(Theme.onGlow, 0.16) : "transparent")
 
                 HoverHandler { id: optHover }
 
@@ -140,7 +151,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     s: pick.s
                     text: optRow.modelData.label
-                    color: optRow.current ? Theme.vermLit : Theme.subtle
+                    color: optRow.current ? Theme.cream : Theme.subtle
                     weight: optRow.current ? Font.Bold : Font.Medium
                 }
 
