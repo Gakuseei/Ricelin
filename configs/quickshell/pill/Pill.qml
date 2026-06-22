@@ -1382,6 +1382,7 @@ Item {
         anchors.rightMargin: 18 * pill.s
         anchors.bottomMargin: 12 * pill.s
         s: pill.s
+        screenName: pill.screenName
         suppressed: pill.surfaceOpen || pill.held
         enabled: pill.mode === "osd"
         opacity: pill.mode === "osd" ? 1 : 0

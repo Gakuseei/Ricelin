@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell.Widgets
+import Quickshell.Hyprland
 import Quickshell.Services.Pipewire
 import Quickshell.Services.Mpris
 import Quickshell.Io
@@ -9,6 +10,7 @@ Item {
     id: root
 
     property real s: 1
+    property string screenName: ""
     property bool suppressed: false
     property bool flashing: false
     property string kind: "volume"
@@ -48,8 +50,24 @@ Item {
         return a.length > 0 ? t + " — " + a : t;
     }
 
-    readonly property real desiredW: kind === "track" ? 332 * s : (kind === "record" ? 256 * s : 248 * s)
+    readonly property real desiredW: kind === "workspace" ? Math.max(120 * s, wsIndicator.implicitWidth + 40 * s)
+        : (kind === "track" ? 332 * s : (kind === "record" ? 256 * s : 248 * s))
     readonly property real desiredH: kind === "track" ? 56 * s : 44 * s
+
+    /**
+     * Active workspace name on this monitor. Any switch (Super+arrow,
+     * Super+wheel, clicking a dot) changes it, so flashing the workspace OSD
+     * here briefly morphs the pill open to show where you landed. The arm timer
+     * swallows the initial populate, so login doesn't flash.
+     */
+    readonly property string activeWsName: {
+        var mons = Hyprland.monitors.values;
+        for (var i = 0; i < mons.length; i++)
+            if (mons[i].name === screenName)
+                return mons[i].activeWorkspace ? mons[i].activeWorkspace.name : "";
+        return "";
+    }
+    onActiveWsNameChanged: if (activeWsName.length > 0) flash("workspace");
 
     function trackEvent() {
         var line = trackLine;
@@ -409,6 +427,23 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    Item {
+        id: workspaceRow
+        anchors.fill: parent
+        opacity: root.kind === "workspace" ? 1 : 0
+        visible: opacity > 0.01
+        Behavior on opacity { NumberAnimation { duration: 150 } }
+
+        Workspaces {
+            id: wsIndicator
+            anchors.centerIn: parent
+            screenName: root.screenName
+            s: root.s
+            gap: 8 * root.s
+            enabled: false
         }
     }
 
