@@ -20,6 +20,7 @@ SettingsSurface {
         { item: lookRow, kind: "nav", surface: "look" },
         { item: displayRow, kind: "nav", surface: "display" },
         { item: inputRow, kind: "nav", surface: "input" },
+        { item: animationRow, kind: "nav", surface: "animation" },
         { item: keybindsRow, kind: "nav", surface: "keybinds" },
         { item: idleRow, kind: "nav", surface: "idlelock" },
         { item: updatesRow, kind: "nav", surface: "updates" }
@@ -115,6 +116,23 @@ SettingsSurface {
                 height: 16 * root.s
                 name: "chevron-right"
                 color: root.focusRowItem === inputRow ? Theme.cream : Theme.iconDim
+                stroke: 2.2
+            }
+        }
+
+        SettingsRow {
+            id: animationRow
+            surface: root
+            captionOnFocus: true
+            icon: "waves"
+            name: "Animation"
+            sub: "Speed, motion curve, enable"
+
+            GlyphIcon {
+                width: 16 * root.s
+                height: 16 * root.s
+                name: "chevron-right"
+                color: root.focusRowItem === animationRow ? Theme.cream : Theme.iconDim
                 stroke: 2.2
             }
         }
