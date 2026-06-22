@@ -660,7 +660,7 @@ SettingsSurface {
                     s: root.s
                     value: Flags.pillOpacity
                     openValue: root.base.pillOpacity
-                    from: 0.5; to: 1.0; step: 0.05; decimals: 2
+                    from: 0.55; to: 1.0; step: 0.05; decimals: 2
                     onEdited: v => Flags.pillOpacity = v
                 }
             }
