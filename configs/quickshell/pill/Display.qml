@@ -357,9 +357,9 @@ SettingsSurface {
                                 width: applyLabel.implicitWidth + 28 * root.s
                                 height: 28 * root.s
                                 radius: 9 * root.s
-                                color: applyArea.containsMouse ? Theme.frameBg : Theme.tileBg
+                                color: applyArea.containsMouse ? Qt.alpha(Theme.onGlow, 0.34) : Qt.alpha(Theme.onGlow, 0.20)
                                 border.width: 1
-                                border.color: Qt.alpha(Theme.vermLit, applyArea.containsMouse ? 0.55 : 0.34)
+                                border.color: Qt.alpha(Theme.onGlow, applyArea.containsMouse ? 0.6 : 0.4)
                                 Behavior on color { ColorAnimation { duration: Motion.fast } }
                                 Behavior on border.color { ColorAnimation { duration: Motion.fast } }
 

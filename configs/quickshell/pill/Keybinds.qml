@@ -478,9 +478,9 @@ PillSurface {
                     width: comboText.implicitWidth + 16 * root.s
                     height: comboText.implicitHeight + 8 * root.s
                     radius: 7 * root.s
-                    color: brow.focused ? Qt.alpha(Theme.vermLit, 0.16) : Theme.tileBg
+                    color: brow.focused ? Qt.alpha(Theme.vermLit, 0.16) : Theme.frameBg
                     border.width: 1
-                    border.color: brow.focused ? Qt.alpha(Theme.vermLit, 0.45) : Theme.border
+                    border.color: brow.focused ? Qt.alpha(Theme.vermLit, 0.45) : Theme.hairSoft
                     Behavior on color { ColorAnimation { duration: Motion.fast } }
 
                     Text {
@@ -661,9 +661,9 @@ PillSurface {
                     anchors.bottom: parent.bottom
                     height: 26 * root.s
                     radius: 8 * root.s
-                    color: root.listening ? Qt.alpha(Theme.vermLit, 0.12) : Theme.tileBg
+                    color: root.listening ? Qt.alpha(Theme.vermLit, 0.12) : Theme.frameBg
                     border.width: 1
-                    border.color: root.listening ? Qt.alpha(Theme.vermLit, 0.55) : Theme.border
+                    border.color: root.listening ? Qt.alpha(Theme.vermLit, 0.55) : Theme.hairSoft
                     Behavior on color { ColorAnimation { duration: Motion.fast } }
 
                     Text {
@@ -713,9 +713,9 @@ PillSurface {
                     anchors.bottom: parent.bottom
                     height: 26 * root.s
                     radius: 8 * root.s
-                    color: Theme.tileBg
+                    color: Theme.frameBg
                     border.width: 1
-                    border.color: nameField.activeFocus ? Qt.alpha(Theme.vermLit, 0.45) : Theme.border
+                    border.color: nameField.activeFocus ? Qt.alpha(Theme.vermLit, 0.45) : Theme.hairSoft
 
                     TextField {
                         id: nameField
@@ -765,9 +765,9 @@ PillSurface {
                     anchors.bottom: parent.bottom
                     height: 26 * root.s
                     radius: 8 * root.s
-                    color: Theme.tileBg
+                    color: Theme.frameBg
                     border.width: 1
-                    border.color: (cmdField.activeFocus || actionField.activeFocus) ? Qt.alpha(Theme.vermLit, 0.45) : Theme.border
+                    border.color: (cmdField.activeFocus || actionField.activeFocus) ? Qt.alpha(Theme.vermLit, 0.45) : Theme.hairSoft
 
                     TextField {
                         id: cmdField

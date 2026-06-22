@@ -58,13 +58,15 @@ Item {
 
         Rectangle {
             id: field
+            property bool hovered: false
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width - 72 * pick.s
             height: 24 * pick.s
             radius: 9 * pick.s
-            color: Theme.tileBg
+            color: pick.open ? Qt.alpha(Theme.onGlow, 0.14) : (field.hovered ? Theme.frameBg : "transparent")
             border.width: 1
-            border.color: pick.open ? Qt.alpha(Theme.vermLit, 0.55) : Theme.border
+            border.color: pick.open ? Qt.alpha(Theme.onGlow, 0.5) : Theme.hairSoft
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
 
             DisplayLabel {
                 anchors.left: parent.left
@@ -89,7 +91,10 @@ Item {
 
             MouseArea {
                 anchors.fill: parent
+                hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                onEntered: field.hovered = true
+                onExited: field.hovered = false
                 onClicked: pick.requestToggle()
             }
         }
@@ -105,7 +110,7 @@ Item {
         visible: pick.open
         clip: true
         radius: 9 * pick.s
-        color: Theme.cardBot
+        color: Theme.ghost
         border.width: 1
         border.color: Theme.hairSoft
 

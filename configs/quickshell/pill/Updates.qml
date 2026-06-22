@@ -291,9 +291,9 @@ SettingsSurface {
                 width: parent.width
                 height: 38 * root.s
                 radius: 10 * root.s
-                color: checkHover.hovered ? Theme.frameBg : Theme.tileBg
+                color: checkHover.hovered ? Qt.alpha(Theme.onGlow, 0.34) : Qt.alpha(Theme.onGlow, 0.20)
                 border.width: 1
-                border.color: Theme.border
+                border.color: Qt.alpha(Theme.onGlow, checkHover.hovered ? 0.6 : 0.4)
                 opacity: root.checking || root.updating ? 0.55 : 1
                 Behavior on color { ColorAnimation { duration: Motion.fast } }
                 Behavior on opacity { NumberAnimation { duration: Motion.fast } }
