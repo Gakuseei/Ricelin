@@ -132,19 +132,43 @@ PillSurface {
         onFinished: coverPair.settle()
     }
 
-    component KanjiSkip: Text {
+    component KanjiSkip: Item {
         id: skip
 
         property bool can: false
+        property string kanjiText: ""
+        property string altText: ""
         signal activated()
 
         anchors.verticalCenter: parent.verticalCenter
-        font.family: Theme.fontJp
-        font.pixelSize: 13 * root.s
-        color: skipArea.containsMouse ? Theme.cream : Theme.dim
-        opacity: skip.can ? 1 : 0.4
-        Behavior on color { ColorAnimation { duration: Motion.fast } }
-        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+        width: Flags.showGlyphs ? label.implicitWidth : altLabel.implicitWidth
+        height: Flags.showGlyphs ? label.implicitHeight : altLabel.implicitHeight
+
+        Text {
+            id: label
+            visible: Flags.showGlyphs
+            anchors.centerIn: parent
+            text: skip.kanjiText
+            font.family: Theme.fontJp
+            font.pixelSize: 13 * root.s
+            color: skipArea.containsMouse ? Theme.cream : Theme.dim
+            opacity: skip.can ? 1 : 0.4
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+        }
+
+        Text {
+            id: altLabel
+            visible: !Flags.showGlyphs
+            anchors.centerIn: parent
+            text: skip.altText
+            font.family: Theme.font
+            font.pixelSize: 13 * root.s
+            color: skipArea.containsMouse ? Theme.cream : Theme.dim
+            opacity: skip.can ? 1 : 0.4
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+        }
 
         MouseArea {
             id: skipArea
@@ -342,7 +366,8 @@ PillSurface {
             spacing: 14 * root.s
 
             KanjiSkip {
-                text: "前"
+                kanjiText: "前"
+                altText: "⏮"
                 can: root.hasPlayer && root.player.canGoPrevious
                 onActivated: if (root.player) root.player.previous()
             }
@@ -372,10 +397,21 @@ PillSurface {
 
                 Text {
                     anchors.centerIn: parent
+                    visible: Flags.showGlyphs
                     text: root.playing ? "奏" : "休"
                     color: Theme.bright
                     font.family: Theme.fontJp
                     font.pixelSize: 16 * root.s
+                    font.weight: Font.DemiBold
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: !Flags.showGlyphs
+                    text: root.playing ? "▶" : "⏸"
+                    color: Theme.bright
+                    font.family: Theme.font
+                    font.pixelSize: 13 * root.s
                     font.weight: Font.DemiBold
                 }
 
@@ -391,7 +427,8 @@ PillSurface {
             }
 
             KanjiSkip {
-                text: "次"
+                kanjiText: "次"
+                altText: "⏭"
                 can: root.hasPlayer && root.player.canGoNext
                 onActivated: if (root.player) root.player.next()
             }
