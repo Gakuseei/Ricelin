@@ -132,19 +132,40 @@ PillSurface {
         onFinished: coverPair.settle()
     }
 
-    component KanjiSkip: Text {
+    component KanjiSkip: Item {
         id: skip
 
         property bool can: false
+        property string kanjiText: ""
+        property string icon: ""
         signal activated()
 
         anchors.verticalCenter: parent.verticalCenter
-        font.family: Theme.fontJp
-        font.pixelSize: 13 * root.s
-        color: skipArea.containsMouse ? Theme.cream : Theme.dim
+        implicitWidth: Flags.showGlyphs ? kanjiLabel.implicitWidth : 15 * root.s
+        implicitHeight: Flags.showGlyphs ? kanjiLabel.implicitHeight : 15 * root.s
         opacity: skip.can ? 1 : 0.4
-        Behavior on color { ColorAnimation { duration: Motion.fast } }
         Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+
+        Text {
+            id: kanjiLabel
+            visible: Flags.showGlyphs
+            anchors.centerIn: parent
+            text: skip.kanjiText
+            font.family: Theme.fontJp
+            font.pixelSize: 13 * root.s
+            color: skipArea.containsMouse ? Theme.cream : Theme.dim
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
+        }
+
+        GlyphIcon {
+            visible: !Flags.showGlyphs
+            anchors.centerIn: parent
+            width: 15 * root.s
+            height: 15 * root.s
+            name: skip.icon
+            color: skipArea.containsMouse ? Theme.cream : Theme.dim
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
+        }
 
         MouseArea {
             id: skipArea
@@ -342,7 +363,8 @@ PillSurface {
             spacing: 14 * root.s
 
             KanjiSkip {
-                text: "前"
+                kanjiText: "前"
+                icon: "prev"
                 can: root.hasPlayer && root.player.canGoPrevious
                 onActivated: if (root.player) root.player.previous()
             }
@@ -366,17 +388,27 @@ PillSurface {
                 border.width: 1
                 border.color: Qt.alpha(Theme.vermLit, 0.4 + 0.4 * root.sealPulse)
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: root.mix(Theme.verm, Theme.tileBg, 0.55 * (1 - seal.sat)) }
-                    GradientStop { position: 1.0; color: root.mix(Theme.vermDeep, Theme.tileBg, 0.55 * (1 - seal.sat)) }
+                    GradientStop { position: 0.0; color: root.mix(Theme.verm, Theme.tileBg, 0.55 - 0.27 * seal.sat) }
+                    GradientStop { position: 1.0; color: root.mix(Theme.vermDeep, Theme.tileBg, 0.55 - 0.27 * seal.sat) }
                 }
 
                 Text {
+                    visible: Flags.showGlyphs
                     anchors.centerIn: parent
                     text: root.playing ? "奏" : "休"
                     color: Theme.bright
                     font.family: Theme.fontJp
                     font.pixelSize: 16 * root.s
                     font.weight: Font.DemiBold
+                }
+
+                GlyphIcon {
+                    visible: !Flags.showGlyphs
+                    anchors.centerIn: parent
+                    width: 15 * root.s
+                    height: 15 * root.s
+                    name: root.playing ? "pause" : "play"
+                    color: Theme.bright
                 }
 
                 MouseArea {
@@ -391,7 +423,8 @@ PillSurface {
             }
 
             KanjiSkip {
-                text: "次"
+                kanjiText: "次"
+                icon: "next"
                 can: root.hasPlayer && root.player.canGoNext
                 onActivated: if (root.player) root.player.next()
             }
