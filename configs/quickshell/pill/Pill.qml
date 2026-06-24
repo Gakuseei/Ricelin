@@ -1,9 +1,12 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls as Controls
 import QtQuick.Effects
 import QtQuick.Shapes
 import Quickshell
+import Quickshell.Io
+import Quickshell.Widgets
 import Quickshell.Services.Mpris
 import Quickshell.Networking
 import "Singletons"
@@ -52,6 +55,7 @@ Item {
     readonly property bool idlelockOpen: surface === "idlelock"
     readonly property bool animationOpen: surface === "animation"
     readonly property bool fontpickerOpen: surface === "fontpicker"
+    readonly property bool sharingOpen: surface === "sharing"
     readonly property bool settingsLike: settingsOpen || appearanceOpen || updatesOpen
     readonly property bool hasMedia: Mpris.players.values.length > 0
 
@@ -117,6 +121,10 @@ Item {
     readonly property real idlelockW: 392 * s
     readonly property real animationW: 392 * s
     readonly property real fontpickerW: 360 * s
+    readonly property real sharingW: 360 * s
+    readonly property real sharingH: (sharingSurface ? sharingSurface.implicitHeight : 0) + 26 * s
+    readonly property real dragOverW: 240 * s
+    readonly property real dragOverH: 58 * s
     readonly property real toastW: 342 * s
     readonly property real quickChooseW: 344 * s
     readonly property real quickChooseH: 76 * s
@@ -155,15 +163,25 @@ Item {
         look:       { size: () => Qt.size(lookW, look.implicitHeight + 29 * s), ame: look },
         idlelock:   { size: () => Qt.size(idlelockW, idlelock.implicitHeight + 29 * s), ame: idlelock },
         animation:  { size: () => Qt.size(animationW, animation.implicitHeight + 29 * s), ame: animation },
-        fontpicker: { size: () => Qt.size(fontpickerW, fontpicker.implicitHeight + 29 * s), ame: fontpicker }
+        fontpicker: { size: () => Qt.size(fontpickerW, fontpicker.implicitHeight + 29 * s), ame: fontpicker },
+        sharing:    { size: () => Qt.size(sharingW, sharingH), ame: sharingSurface }
     })
 
+    property bool dragActive: false
+    property string dragName: ""
+    property string dragPath: ""
+    property bool dragIsDir: false
+    property bool dragIsImage: false
+    property bool dragIsVideo: false
+    property bool dragIsMusic: false
+
     readonly property string mode: surfaceOpen && surfaces[surface] !== undefined ? surface
+        : (dragActive ? "dragOver"
         : (quickChoosing ? "quickChoose"
         : (quickCounting ? "quickCount"
         : (osdActive && !held ? "osd"
         : (toastActive && !held ? "toast"
-        : (expanded ? "hover" : "rest")))))
+        : (expanded ? "hover" : "rest"))))))
 
     signal requestSurface(string name)
     signal requestClose()
@@ -428,7 +446,8 @@ Item {
         toast: () => Qt.size(toastW, toastLoader.item ? toastLoader.item.implicitHeight + 24 * s : restH),
         hover: () => Qt.size(hoverW, hoverH),
         quickChoose: () => Qt.size(quickChooseW, quickChooseH),
-        quickCount:  () => Qt.size(quickCountW, quickCountH)
+        quickCount:  () => Qt.size(quickCountW, quickCountH),
+        dragOver:    () => Qt.size(dragOverW, dragOverH)
     })
 
     readonly property size targetSize: {
@@ -549,7 +568,8 @@ Item {
         anchors.fill: parent
         radius: pill.morphRadius
         border.width: 1
-        border.color: Theme.border
+        border.color: pill.mode === "dragOver" ? Theme.vermLit : Theme.border
+        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
         gradient: Gradient {
             GradientStop { position: 0.0; color: Qt.alpha(Theme.cardTop, Flags.pillOpacity) }
             GradientStop { position: 1.0; color: Qt.alpha(Theme.cardBot, Flags.pillOpacity) }
@@ -685,7 +705,7 @@ Item {
     Item {
         id: rest
         anchors.fill: parent
-        opacity: (pill.expanded || pill.mode === "toast" || pill.mode === "osd" || pill.mode === "quickChoose" || pill.mode === "quickCount") ? 0 : Math.pow(pill.morphCloseness, 1.5)
+        opacity: (pill.expanded || pill.mode === "toast" || pill.mode === "osd" || pill.mode === "quickChoose" || pill.mode === "quickCount" || pill.mode === "dragOver") ? 0 : Math.pow(pill.morphCloseness, 1.5)
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: pill.mode === "rest" ? Motion.fast : 260 } }
 
@@ -797,6 +817,7 @@ Item {
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
+                        visible: !pill.dragActive
                         text: clock.date
                         color: Theme.dim
                         font.family: Theme.font
@@ -1386,6 +1407,19 @@ Item {
         onRequestSurface: (name) => pill.requestSurface(name)
     }
 
+    SharingStore {
+        id: imageStore
+    }
+
+    SharingSurface {
+        id: sharingSurface
+        s: pill.s
+        open: pill.sharingOpen
+        store: imageStore
+        morphCloseness: pill.morphCloseness
+        onRequestClose: pill.requestClose()
+    }
+
     Osd {
         id: osd
         anchors.fill: parent
@@ -1653,6 +1687,150 @@ Item {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
             onClicked: ScreenRec.cancel()
+        }
+    }
+
+    Process {
+        id: checkDirProc
+        property string checkPath: ""
+        command: ["test", "-d", checkPath]
+        onExited: (exitCode) => {
+            pill.dragIsDir = (exitCode === 0);
+            if (pill.dragIsDir) {
+                pill.dragIsImage = false;
+                pill.dragIsVideo = false;
+                pill.dragIsMusic = false;
+            }
+        }
+    }
+
+    DropArea {
+        id: dropArea
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+        enabled: !pill.surfaceOpen || pill.sharingOpen
+
+        onEntered: (drag) => {
+            drag.acceptProposedAction();
+            pill.dragActive = true;
+
+            if (drag.urls.length > 0) {
+                var urlStr = drag.urls[0].toString();
+                var path = decodeURIComponent(urlStr.indexOf("file://") === 0 ? urlStr.substring(7) : urlStr);
+                pill.dragPath = path;
+                pill.dragName = path.substring(path.lastIndexOf("/") + 1);
+                
+                var ext = path.split('.').pop().toLowerCase();
+                pill.dragIsImage = (ext === "png" || ext === "jpg" || ext === "jpeg" || ext === "webp" || ext === "gif" || ext === "svg");
+                pill.dragIsVideo = (ext === "mp4" || ext === "mkv" || ext === "webm" || ext === "avi" || ext === "mov" || ext === "flv" || ext === "wmv");
+                pill.dragIsMusic = (ext === "mp3" || ext === "wav" || ext === "ogg" || ext === "flac" || ext === "m4a" || ext === "aac" || ext === "opus" || ext === "wma");
+                pill.dragIsDir = false;
+                
+                checkDirProc.checkPath = path;
+                checkDirProc.running = true;
+            }
+        }
+        onPositionChanged: (drag) => {
+            drag.acceptProposedAction();
+        }
+        onExited: {
+            pill.dragActive = false;
+            pill.dragPath = "";
+            pill.dragName = "";
+            pill.dragIsImage = false;
+            pill.dragIsVideo = false;
+            pill.dragIsMusic = false;
+            pill.dragIsDir = false;
+            if (pill.sharingOpen) {
+                pill.requestClose();
+            }
+        }
+        onDropped: (drop) => {
+            drop.acceptProposedAction();
+            pill.dragActive = false;
+            pill.dragPath = "";
+            pill.dragName = "";
+            pill.dragIsImage = false;
+            pill.dragIsVideo = false;
+            pill.dragIsMusic = false;
+            pill.dragIsDir = false;
+            if (imageStore) {
+                imageStore.addFiles(drop.urls);
+            }
+            pill.requestSurface("sharing");
+        }
+    }
+
+    Item {
+        id: dragOverView
+        anchors.fill: parent
+        enabled: pill.mode === "dragOver"
+        opacity: pill.mode === "dragOver" ? Math.pow(pill.morphCloseness, 1.3) : 0
+        visible: opacity > 0.01
+        Behavior on opacity {
+            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+        }
+
+        Item {
+            id: leftContent
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: parent.height
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 8 * pill.s
+                width: Math.min(parent.width - 16 * pill.s, implicitWidth)
+
+                Item {
+                    id: previewContainer
+                    width: 32 * pill.s
+                    height: 32 * pill.s
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    ClippingRectangle {
+                        anchors.fill: parent
+                        radius: 4 * pill.s
+                        color: Theme.tileBg
+                        visible: pill.dragIsImage
+
+                        Image {
+                            anchors.fill: parent
+                            source: pill.dragIsImage ? "file://" + pill.dragPath : ""
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            smooth: true
+                        }
+                    }
+
+                    GlyphIcon {
+                        anchors.centerIn: parent
+                        width: 20 * pill.s
+                        height: 20 * pill.s
+                        name: {
+                            if (pill.dragIsDir) return "folder";
+                            if (pill.dragIsVideo) return "video";
+                            if (pill.dragIsMusic) return "music";
+                            return "file";
+                        }
+                        color: Theme.iconDim
+                        stroke: 1.6
+                        visible: !pill.dragIsImage
+                    }
+                }
+
+                Text {
+                    id: dragText
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(implicitWidth, leftContent.width - previewContainer.width - 24 * pill.s)
+                    text: pill.dragName
+                    color: Theme.cream
+                    font.family: Theme.font
+                    font.pixelSize: 11 * pill.s
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideMiddle
+                }
+            }
         }
     }
 

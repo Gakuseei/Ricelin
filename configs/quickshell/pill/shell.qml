@@ -146,6 +146,7 @@ ShellRoot {
         function system(mon: string): void { root.toggleSurface(mon, "sysmon"); }
         function clipboard(mon: string): void { root.toggleSurface(mon, "clipboard"); }
         function wallpaper(mon: string): void { root.toggleSurface(mon, "wallpaper"); }
+        function sharing(mon: string): void { root.toggleSurface(mon, "sharing"); }
         function media(mon: string): void {
             if (Mpris.players.values.length > 0)
                 root.toggleSurface(mon, "media");
@@ -219,7 +220,9 @@ ShellRoot {
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: (surfaceOpen || pill.quickChoosing) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand
+            WlrLayershell.keyboardFocus: (surfaceOpen || pill.quickChoosing)
+                ? (surface === "sharing" ? WlrKeyboardFocus.None : WlrKeyboardFocus.Exclusive)
+                : WlrKeyboardFocus.OnDemand
             WlrLayershell.namespace: "pill"
 
             anchors { top: true; left: true; right: true; bottom: true }

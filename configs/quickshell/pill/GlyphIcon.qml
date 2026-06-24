@@ -83,7 +83,12 @@ Item {
         "clock": { d: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z M12 7v5l3.5 2", fill: false },
         "cursor": { d: "M5 3l6 16 2-6 6-2L5 3z", fill: false },
         "video": { d: "M3 7.5a1.5 1.5 0 0 1 1.5-1.5h9A1.5 1.5 0 0 1 15 7.5v9A1.5 1.5 0 0 1 13.5 18h-9A1.5 1.5 0 0 1 3 16.5z M15 10l6-3v10l-6-3z", fill: false },
-        "record": { d: "M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16z", fill: true }
+        "record": { d: "M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16z", fill: true },
+        "phone": { d: "M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z M12 18h.01", fill: false },
+        "folder": { d: "M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z", fill: false },
+        "file": { d: "M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z M13 2v7h7", fill: false },
+        "trash": { d: "M3 6h18 M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M10 11v6 M14 11v6", fill: false },
+        "airdrop": { d: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M8 12a4 4 0 0 1 8 0 M5 12a7 7 0 0 1 14 0 M2 12a10 10 0 0 1 20 0", fill: false }
     })
 
     readonly property var g: glyphs[name] !== undefined ? glyphs[name] : ({ d: "", fill: false })
