@@ -12,6 +12,11 @@ import Quickshell.Io
  *
  * Silence arrives as an all-zero frame every tick, which `active` debounces into
  * a clean play/stop signal so the glyph morph does not flap between tracks.
+ *
+ * cava is an optional dependency: the in-app updater only merges config files and
+ * never installs packages, so a machine that pulled an update without cava on it
+ * must degrade cleanly. We probe for the binary once and only ever spawn it when
+ * it is actually present, which keeps the plain clock on those machines.
  */
 Singleton {
     id: root
@@ -19,6 +24,9 @@ Singleton {
     readonly property int bars: 5
     property var levels: []
     property bool active: false
+
+    property bool available: false
+    readonly property bool wanted: Flags.musicViz && available
 
     readonly property string config: "[general]\n"
         + "bars = " + bars + "\nframerate = 60\nautosens = 1\n"
@@ -28,14 +36,18 @@ Singleton {
         + "channels = mono\nmono_option = average\n"
         + "[smoothing]\nnoise_reduction = 0.77\n"
 
-    /**
-     * ponytail: cava runs whenever the feature is on. Gate running on a live
-     * pipewire playback stream if idle CPU ever shows up as a problem.
-     */
+    onWantedChanged: cavaProc.running = wanted
+    Component.onCompleted: cavaProc.running = wanted
+
     Process {
-        running: Flags.musicViz
+        running: true
+        command: ["sh", "-c", "command -v cava >/dev/null 2>&1"]
+        onExited: (code) => root.available = (code === 0)
+    }
+
+    Process {
+        id: cavaProc
         command: ["sh", "-c", "printf '%s' \"$1\" | cava -p /dev/stdin", "_", root.config]
-        onRunningChanged: if (!running && Flags.musicViz) running = true
         stdout: SplitParser {
             onRead: (line) => {
                 if (!line)
@@ -56,6 +68,14 @@ Singleton {
                 }
             }
         }
+        /** A crash while cava is still wanted earns one relaunch after a beat, never a tight respawn loop. */
+        onExited: if (root.wanted) relaunch.restart()
+    }
+
+    Timer {
+        id: relaunch
+        interval: 1500
+        onTriggered: if (root.wanted) cavaProc.running = true
     }
 
     /** Short debounce so inter-track gaps do not snap the morph back to the clock. */

@@ -23,7 +23,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 CORE_PKGS="hyprland-git quickshell ghostty fish \
 matugen awww cliphist wl-clipboard imagemagick jq \
 brightnessctl playerctl hyprpicker hyprpolkitagent hypridle dotool \
-networkmanager bluez bluez-utils pipewire wireplumber pamixer \
+networkmanager bluez bluez-utils pipewire wireplumber pamixer cava \
 kde-cli-tools kdialog fastfetch \
 ttf-jetbrains-mono-nerd inter-font noto-fonts noto-fonts-cjk noto-fonts-emoji \
 papirus-icon-theme bibata-cursor-theme-bin"
