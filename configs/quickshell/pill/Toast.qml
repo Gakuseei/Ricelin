@@ -212,7 +212,8 @@ Item {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             actPill.modelData.invoke();
-                            Notifs.raiseWindow(root.notif);
+                            if (actPill.modelData.identifier === "default")
+                                Notifs.raiseWindow(root.notif);
                             Notifs.removePopup(root.notif);
                         }
                     }
