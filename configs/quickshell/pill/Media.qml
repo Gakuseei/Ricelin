@@ -25,13 +25,26 @@ PillSurface {
     readonly property string title: hasPlayer && player.trackTitle ? player.trackTitle : "Nothing playing"
     readonly property string artist: hasPlayer
         ? Theme.joinArtists(player.trackArtists, player.trackArtist) : ""
+    readonly property string trackUrl: (hasPlayer && player.metadata) ? (player.metadata["xesam:url"] || "") : ""
+
+    /** The site a browser plays from, so the source reads "youtube" not "mozilla zen". */
     readonly property string playerService: {
         if (!hasPlayer)
             return "";
+        var site = siteName(trackUrl);
+        if (site.length > 0)
+            return site;
         var n = player.identity ? player.identity : (player.desktopEntry ? player.desktopEntry : "");
         return n.toLowerCase();
     }
-    readonly property string artUrl: hasPlayer && player.trackArtUrl ? player.trackArtUrl : ""
+    /** Many YouTube videos expose no MPRIS art, so fall back to the derived thumbnail. */
+    readonly property string artUrl: {
+        if (!hasPlayer)
+            return "";
+        if (player.trackArtUrl)
+            return player.trackArtUrl;
+        return ytThumb(trackUrl);
+    }
     readonly property bool hasArt: artUrl !== ""
         && (coverPair.front.status === Image.Ready || coverPair.back.status === Image.Ready)
     /**
@@ -71,6 +84,21 @@ PillSurface {
 
     ameForm: "seam"
     amePoint: Qt.point(seamHeadX, seamHeadY)
+
+    /** Registrable name from a page url: youtube.com and music.youtube.com both give "youtube". */
+    function siteName(url) {
+        var m = url.match(/^https?:\/\/(?:www\.)?([^\/]+)/);
+        if (!m)
+            return "";
+        var parts = m[1].toLowerCase().split(".");
+        return parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+    }
+
+    /** YouTube thumbnail from a watch or youtu.be url; mqdefault is clean 16:9 and always exists. */
+    function ytThumb(url) {
+        var m = url.match(/[?&]v=([\w-]{11})/) || url.match(/youtu\.be\/([\w-]{11})/);
+        return m ? "https://img.youtube.com/vi/" + m[1] + "/mqdefault.jpg" : "";
+    }
 
     function fmt(sec) {
         if (!(sec > 0))
