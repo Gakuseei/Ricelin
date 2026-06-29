@@ -28,8 +28,14 @@ Singleton {
     property bool available: false
     readonly property bool wanted: Flags.musicViz && available
 
+    /**
+     * autosens is off so a silent browser holding the sink stays at zero bars
+     * instead of autosens amplifying the noise floor up to full range and tripping
+     * the visualizer on dead silence. The trade is a fixed gain, tuned so real
+     * music fills the bars while silence stays under the activate threshold.
+     */
     readonly property string config: "[general]\n"
-        + "bars = " + bars + "\nframerate = 60\nautosens = 1\n"
+        + "bars = " + bars + "\nframerate = 60\nautosens = 0\nsensitivity = 5500\n"
         + "[input]\nmethod = pipewire\nsource = auto\n"
         + "[output]\nmethod = raw\nraw_target = /dev/stdout\ndata_format = ascii\n"
         + "ascii_max_range = 1000\nbar_delimiter = 59\nframe_delimiter = 10\n"
