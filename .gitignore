@@ -34,6 +34,16 @@ configs/hypr/ghosttype.lua
 # Local-only hypr binds (machine-specific scripts, not for public rice)
 configs/hypr/modules/private.lua
 
+# Personal Discord push-to-talk + virtual PipeWire nodes (machine hardware), local only
+configs/hypr/discord.lua
+configs/hypr/scripts/discord-mic.sh
+configs/hypr/scripts/discord-out.sh
+configs/hypr/scripts/discord-mute.sh
+configs/hypr/scripts/sounds/
+
+# Editor lua language-server config, local only
+configs/hypr/.luarc.json
+
 # Brainstorm mockups, local only
 .superpowers/
 
