@@ -362,4 +362,10 @@ PillSurface {
             }
         }
     }
+
+    WheelScroller {
+        anchors.fill: list
+        s: root.s
+        flick: list
+    }
 }

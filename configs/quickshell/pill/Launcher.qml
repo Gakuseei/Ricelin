@@ -398,6 +398,12 @@ PillSurface {
         }
     }
 
+    WheelScroller {
+        anchors.fill: list
+        s: root.s
+        flick: list
+    }
+
     /** Faint nudge so the drag-to-install gesture is discoverable at all. */
     Row {
         id: hint
