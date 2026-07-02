@@ -67,7 +67,14 @@ Singleton {
                     if (v > peak)
                         peak = v;
                 }
-                root.levels = out;
+                /**
+                 * Silence frames stop mattering once the morph has settled back
+                 * to the clock, so skip the 60Hz levels churn while both the
+                 * frame and the stored levels are already flat.
+                 */
+                const flat = peak <= 0.001 && !root.active;
+                if (!flat)
+                    root.levels = out;
                 if (peak > 0.02) {
                     root.active = true;
                     idle.restart();

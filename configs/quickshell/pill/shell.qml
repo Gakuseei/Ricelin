@@ -125,7 +125,14 @@ ShellRoot {
         }
     }
 
+    /**
+     * An empty monitor argument resolves to the focused monitor here, so the
+     * keybind scripts skip their hyprctl+jq round trip and a surface open costs
+     * one IPC call instead of three process spawns.
+     */
     function toggleSurface(mon, surface) {
+        if (!mon || mon.length === 0)
+            mon = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "";
         if (root.openMon === mon && root.openSurface === surface) {
             root.close();
             return;
@@ -188,6 +195,9 @@ ShellRoot {
         }
         function peek(mon: string): void { root.peek(mon); }
         function hide(): void { root.close(); }
+
+        /** Opens any surface by name, settings sub-pages included; dev and scripting door. */
+        function page(mon: string, name: string): void { root.toggleSurface(mon, name); }
 
         /**
          * The two halves of the SUPER+M minimize toggle, driven by the

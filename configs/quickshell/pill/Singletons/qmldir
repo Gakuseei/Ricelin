@@ -6,6 +6,7 @@ singleton Cliphist Cliphist.qml
 singleton Walls Walls.qml
 singleton Devices Devices.qml
 singleton Battery Battery.qml
+singleton Backlight Backlight.qml
 singleton ScreenRec ScreenRec.qml
 singleton Sysmon Sysmon.qml
 singleton Dyn Dyn.qml
