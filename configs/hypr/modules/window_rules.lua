@@ -56,6 +56,14 @@ hl.window_rule({
 })
 
 hl.window_rule({
+    name   = "float-vibelark",
+    match  = { class = "App", title = "VibeLark" },
+    float  = true,
+    size   = { 1480, 960 },
+    center = true,
+})
+
+hl.window_rule({
     name         = "idle-inhibit-fullscreen",
     match        = { class = ".*" },
     idle_inhibit = "fullscreen",
