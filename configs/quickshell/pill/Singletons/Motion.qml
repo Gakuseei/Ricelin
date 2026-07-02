@@ -4,7 +4,6 @@ import Quickshell
 
 Singleton {
     readonly property real mult: Flags.reduceMotion ? 0.4 : 1
-    readonly property bool reduce: Flags.reduceMotion
     readonly property int fast:     Math.round(140 * mult)
     readonly property int standard: Math.round(300 * mult)
     readonly property int morph:    Math.round(420 * mult)

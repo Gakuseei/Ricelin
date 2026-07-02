@@ -80,7 +80,7 @@ Row {
                 smooth: true
                 source: chip.iconSrc
                 opacity: area.containsMouse ? 1 : 0.78
-                Behavior on opacity { NumberAnimation { duration: 110 } }
+                Behavior on opacity { NumberAnimation { duration: Motion.fast } }
             }
 
             MouseArea {
