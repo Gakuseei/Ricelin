@@ -627,11 +627,19 @@ Item {
     Rectangle {
         id: body
         anchors.fill: parent
+
+        /**
+         * Corner flatness rides the morph curve so docking into the game bar
+         * squares the corners as one continuous shape change instead of a snap.
+         */
+        property real gameFlat: pill.mode === "game" ? 1 : 0
+        Behavior on gameFlat { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
+
         radius: pill.morphRadius
-        topLeftRadius: pill.mode === "game" ? 0 : pill.morphRadius
-        topRightRadius: pill.mode === "game" ? 0 : pill.morphRadius
-        bottomLeftRadius: pill.mode === "game" ? 0 : pill.morphRadius
-        bottomRightRadius: pill.mode === "game" ? 0 : pill.morphRadius
+        topLeftRadius: pill.morphRadius * (1 - gameFlat)
+        topRightRadius: pill.morphRadius * (1 - gameFlat)
+        bottomLeftRadius: pill.morphRadius * (1 - gameFlat)
+        bottomRightRadius: pill.morphRadius * (1 - gameFlat)
         border.width: 1
         border.color: Theme.border
         gradient: Gradient {
@@ -1058,6 +1066,58 @@ Item {
             font.pixelSize: 16 * pill.s
             font.weight: Font.DemiBold
             font.features: ({ "tnum": 1 })
+        }
+
+        /**
+         * Volume/brightness feedback stays visible while gaming as a compact
+         * chip on the bar's right, since the full OSD face is parked behind
+         * game mode in the mode ladder. Notifications stay suppressed.
+         */
+        Row {
+            anchors.right: parent.right
+            anchors.rightMargin: 18 * pill.s
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 9 * pill.s
+            opacity: osd.flashing && (osd.kind === "volume" || osd.kind === "brightness") ? 1 : 0
+            visible: opacity > 0.01
+            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+
+            GlyphIcon {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 14 * pill.s
+                height: 14 * pill.s
+                name: osd.kind === "brightness" ? "sun" : (osd.muted ? "speaker-off" : "speaker")
+                color: osd.kind === "volume" && osd.muted ? Theme.dim : Theme.iconDim
+                stroke: 1.7
+            }
+
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 64 * pill.s
+                height: 3 * pill.s
+                radius: 1.5 * pill.s
+                color: Theme.threadBg
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: parent.width * (osd.kind === "brightness" ? osd.brightness : osd.volume)
+                    radius: parent.radius
+                    color: osd.kind === "volume" && osd.muted ? Theme.vermDim : Theme.vermLit
+                    Behavior on width { NumberAnimation { duration: Motion.fast } }
+                }
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: Math.round((osd.kind === "brightness" ? osd.brightness : osd.volume) * 100) + "%"
+                color: osd.kind === "volume" && osd.muted ? Theme.dim : Theme.cream
+                font.family: Theme.font
+                font.pixelSize: 10.5 * pill.s
+                font.weight: Font.DemiBold
+                font.features: ({ "tnum": 1 })
+            }
         }
     }
 
