@@ -89,7 +89,7 @@ PillSurface {
         ? ("Ethernet"
             + (ethSpeedText.length ? " · " + ethSpeedText : "")
             + (ethIp.length ? " · " + ethIp : ""))
-        : (wifiActive ? (wifiActive.name || "") : (wifiOn ? "Nicht verbunden" : "Aus"))
+        : (wifiActive ? (wifiActive.name || "") : (wifiOn ? "Not connected" : "Off"))
 
     readonly property var btAdapter: (typeof Bluetooth !== "undefined" && Bluetooth) ? Bluetooth.defaultAdapter : null
     readonly property var btDevices: (typeof Bluetooth !== "undefined" && Bluetooth && Bluetooth.devices) ? Bluetooth.devices.values : []
@@ -98,7 +98,7 @@ PillSurface {
     readonly property var btPrimary: btConnected.length > 0 ? btConnected[0] : null
     readonly property int btBattery: batteryLevel(btPrimary)
 
-    readonly property string btSubText: !btOn ? "Aus"
+    readonly property string btSubText: !btOn ? "Off"
         : (btPrimary
             ? ((btPrimary.deviceName || btPrimary.name || "Unknown")
                 + (btConnected.length > 1 ? " +" + (btConnected.length - 1) : ""))
@@ -408,7 +408,7 @@ PillSurface {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Notifs.unread + " NEU"
+                        text: Notifs.unread + " NEW"
                         color: Theme.dim
                         font.family: Theme.font
                         font.pixelSize: 9.5 * root.s

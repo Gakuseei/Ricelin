@@ -44,6 +44,13 @@ Item {
     property string pairingAddress: ""
     property string failedAddress: ""
 
+    /**
+     * Address of the known device whose inline confirm row (disconnect or
+     * connect, plus forget) is open, mirroring the wifi drill-in's expanded
+     * SSID.
+     */
+    property string expandedAddress: ""
+
     implicitHeight: listFrame.y + listFrame.height
 
     function metaFor(d) {
@@ -67,23 +74,42 @@ Item {
     }
 
     /**
-     * Click dispatch for a device row: disconnect when connected, connect when
-     * paired, otherwise run the bluetoothctl pair-trust-connect flow.
+     * Click dispatch for a device row. A connected or paired device toggles
+     * the inline confirm row rather than acting at once; an unpaired device
+     * runs the bluetoothctl pair-trust-connect flow.
      */
     function activateDevice(d) {
         if (!d)
             return;
-        if (d.connected) {
-            if (typeof d.disconnect === "function")
-                d.disconnect();
-            return;
-        }
-        if (d.paired) {
-            if (typeof d.connect === "function")
-                d.connect();
+        if (d.connected || d.paired) {
+            var addr = d.address || "";
+            expandedAddress = (addr.length && expandedAddress === addr) ? "" : addr;
             return;
         }
         pairDevice(d);
+    }
+
+    function connectDevice(d) {
+        expandedAddress = "";
+        if (d && typeof d.connect === "function")
+            d.connect();
+    }
+
+    function disconnectDevice(d) {
+        expandedAddress = "";
+        if (d && typeof d.disconnect === "function")
+            d.disconnect();
+    }
+
+    /**
+     * Unpairs through the Quickshell device object, the same layer the
+     * connect and disconnect calls use; BlueZ drops the bond and the row
+     * falls back to its Pair chip.
+     */
+    function forgetDevice(d) {
+        expandedAddress = "";
+        if (d && typeof d.forget === "function")
+            d.forget();
     }
 
     function pairDevice(d) {
@@ -100,6 +126,7 @@ Item {
     onActiveChanged: {
         if (!active) {
             scanTimer.stop();
+            expandedAddress = "";
             if (adapter && adapter.discovering)
                 adapter.discovering = false;
         }
@@ -269,6 +296,11 @@ Item {
                         readonly property string addr: (modelData && modelData.address) ? modelData.address : ""
                         readonly property bool pairing: addr.length > 0 && root.pairingAddress === addr
                         readonly property bool failed: addr.length > 0 && root.failedAddress === addr
+                        readonly property bool busy: (modelData && typeof BluetoothDeviceState !== "undefined")
+                            ? (modelData.state === BluetoothDeviceState.Connecting
+                                || modelData.state === BluetoothDeviceState.Disconnecting)
+                            : false
+                        readonly property bool confirming: addr.length > 0 && root.expandedAddress === addr
                         readonly property int battery: root.batteryLevel(modelData)
                         width: devCol.width
                         spacing: 2 * root.s
@@ -348,14 +380,14 @@ Item {
 
                                 Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    visible: devItem.pairing
+                                    visible: devItem.pairing || devItem.busy
                                     width: 4 * root.s
                                     height: 4 * root.s
                                     radius: width / 2
                                     color: Theme.flameGlow
 
                                     SequentialAnimation on opacity {
-                                        running: devItem.pairing
+                                        running: devItem.pairing || devItem.busy
                                         loops: Animation.Infinite
                                         NumberAnimation { from: 0.35; to: 1; duration: Motion.pulse; easing.type: Easing.InOutSine }
                                         NumberAnimation { from: 1; to: 0.35; duration: Motion.pulse; easing.type: Easing.InOutSine }
@@ -398,6 +430,96 @@ Item {
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: root.activateDevice(devItem.modelData)
+                                    }
+                                }
+                            }
+                        }
+
+                        Item {
+                            visible: devItem.confirming
+                            width: parent.width
+                            height: 30 * root.s
+
+                            Text {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 10 * root.s
+                                anchors.right: confirmBtns.left
+                                anchors.rightMargin: 8 * root.s
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: devItem.isConnected ? "Connected" : "Paired"
+                                color: Theme.faint
+                                font.family: Theme.font
+                                font.pixelSize: 9.5 * root.s
+                                font.weight: Font.Medium
+                                elide: Text.ElideRight
+                            }
+
+                            Row {
+                                id: confirmBtns
+                                anchors.right: parent.right
+                                anchors.rightMargin: 10 * root.s
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 6 * root.s
+
+                                Rectangle {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: primaryLabel.implicitWidth + 20 * root.s
+                                    height: 22 * root.s
+                                    radius: 7 * root.s
+                                    color: primaryArea.containsMouse ? Theme.tileBg : "transparent"
+                                    border.width: 1
+                                    border.color: primaryArea.containsMouse ? Theme.vermDim : Theme.border
+
+                                    Text {
+                                        id: primaryLabel
+                                        anchors.centerIn: parent
+                                        text: devItem.isConnected ? "Disconnect" : "Connect"
+                                        color: Theme.cream
+                                        font.family: Theme.font
+                                        font.pixelSize: 10 * root.s
+                                        font.weight: Font.DemiBold
+                                        font.letterSpacing: 0.3 * root.s
+                                    }
+
+                                    MouseArea {
+                                        id: primaryArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: devItem.isConnected
+                                            ? root.disconnectDevice(devItem.modelData)
+                                            : root.connectDevice(devItem.modelData)
+                                    }
+                                }
+
+                                Rectangle {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: forgetLabel.implicitWidth + 20 * root.s
+                                    height: 22 * root.s
+                                    radius: 7 * root.s
+                                    color: forgetArea.containsMouse
+                                        ? Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.2)
+                                        : Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.12)
+                                    border.width: 1
+                                    border.color: Qt.rgba(Theme.vermLit.r, Theme.vermLit.g, Theme.vermLit.b, 0.45)
+
+                                    Text {
+                                        id: forgetLabel
+                                        anchors.centerIn: parent
+                                        text: "Forget"
+                                        color: Theme.vermLit
+                                        font.family: Theme.font
+                                        font.pixelSize: 10 * root.s
+                                        font.weight: Font.DemiBold
+                                        font.letterSpacing: 0.3 * root.s
+                                    }
+
+                                    MouseArea {
+                                        id: forgetArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.forgetDevice(devItem.modelData)
                                     }
                                 }
                             }
