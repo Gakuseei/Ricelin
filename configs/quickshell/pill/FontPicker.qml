@@ -21,6 +21,14 @@ SettingsSurface {
     rows: []
 
     property string query: ""
+    property int focusIndex: 0
+
+    /**
+     * Window position of the last hover event allowed to move the highlight.
+     * Rows sliding under a stationary cursor during keyboard scrolling repeat
+     * the same window point and must not steal the selection.
+     */
+    property point lastPointer: Qt.point(-1, -1)
 
     readonly property string resetLabel: "System default (Inter)"
 
@@ -67,9 +75,28 @@ SettingsSurface {
         Flags.uiFont = family;
     }
 
-    onActiveChanged: if (!active) {
-        query = "";
-        searchField.text = "";
+    /** Slide the keyboard highlight by dir (+1 down, -1 up), clamped and kept in view. */
+    function move(dir) {
+        if (root.families.length === 0)
+            return;
+        root.focusIndex = Math.max(0, Math.min(root.families.length - 1, root.focusIndex + dir));
+        list.positionViewAtIndex(root.focusIndex, ListView.Contain);
+    }
+
+    function activate() {
+        if (root.focusIndex < 0 || root.focusIndex >= root.families.length)
+            return;
+        root.pick(root.families[root.focusIndex].family);
+    }
+
+    onActiveChanged: {
+        if (active) {
+            focusIndex = 0;
+            Qt.callLater(searchField.forceActiveFocus);
+        } else {
+            query = "";
+            searchField.text = "";
+        }
     }
 
     Column {
@@ -122,7 +149,22 @@ SettingsSurface {
                 placeholderTextColor: Theme.faint
                 selectByMouse: true
                 selectionColor: Theme.verm
-                onTextChanged: root.query = text
+                onTextChanged: {
+                    root.query = text;
+                    root.focusIndex = 0;
+                }
+                Keys.onPressed: (e) => {
+                    if (e.key === Qt.Key_Down) {
+                        root.move(1);
+                        e.accepted = true;
+                    } else if (e.key === Qt.Key_Up) {
+                        root.move(-1);
+                        e.accepted = true;
+                    } else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
+                        root.activate();
+                        e.accepted = true;
+                    }
+                }
             }
 
             Rectangle {
@@ -153,21 +195,30 @@ SettingsSurface {
 
                 delegate: Item {
                     id: frow
+                    required property int index
                     required property var modelData
 
                     readonly property bool isReset: frow.modelData.reset === true
                     readonly property bool selected: frow.isReset
                         ? Flags.uiFont.length === 0
                         : Flags.uiFont === frow.modelData.family
+                    readonly property bool focused: root.focusIndex === frow.index
 
                     width: ListView.view.width
                     height: 36 * root.s
 
-                    HoverHandler { id: rowHover }
-
                     MouseArea {
+                        id: rowArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        onPositionChanged: (m) => {
+                            var g = rowArea.mapToItem(null, m.x, m.y);
+                            if (g.x !== root.lastPointer.x || g.y !== root.lastPointer.y) {
+                                root.lastPointer = Qt.point(g.x, g.y);
+                                root.focusIndex = frow.index;
+                            }
+                        }
                         onClicked: root.pick(frow.modelData.family)
                     }
 
@@ -178,7 +229,7 @@ SettingsSurface {
                         radius: 9 * root.s
                         color: frow.selected
                             ? Qt.alpha(Theme.vermLit, 0.14)
-                            : (rowHover.hovered ? Theme.frameBg : "transparent")
+                            : (frow.focused ? Theme.frameBg : "transparent")
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
                     }
 
