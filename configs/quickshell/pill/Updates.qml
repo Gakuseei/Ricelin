@@ -43,6 +43,23 @@ SettingsSurface {
     property bool applying: false
     property bool restartNeeded: false
 
+    /** Target short sha, split off the engine's "<sha> <date>" version string. */
+    readonly property string targetShort: version.split(" ")[0]
+
+    /**
+     * Short sha of the installed rice, read from the engine's manifest since the
+     * check result only names the target. Empty until a first apply recorded one.
+     */
+    property string installedShort: ""
+
+    function readManifest() {
+        try {
+            root.installedShort = (JSON.parse(manifestFile.text()).syncedSha || "").slice(0, 7);
+        } catch (e) {
+            root.installedShort = "";
+        }
+    }
+
     /** Conflicting rel-paths the user chose to overwrite with upstream on the next apply. */
     property var takePaths: ({})
 
@@ -226,6 +243,15 @@ SettingsSurface {
         applyProc.running = true;
     }
 
+    FileView {
+        id: manifestFile
+        path: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/ricelin/update.json"
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.readManifest()
+        onFileChanged: reload()
+    }
+
     Process {
         id: checkProc
         command: ["python3", root.engine, "check"]
@@ -401,7 +427,9 @@ SettingsSurface {
 
                 Text {
                     visible: root.version.length > 0
-                    text: root.version.replace(" ", " · ")
+                    text: root.behind && root.installedShort.length > 0 && root.installedShort !== root.targetShort
+                        ? root.installedShort + " → " + root.targetShort
+                        : root.version.replace(" ", " · ")
                     color: Theme.faint
                     font.family: Theme.font
                     font.pixelSize: 10.5 * root.s
