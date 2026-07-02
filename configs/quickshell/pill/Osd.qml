@@ -94,8 +94,20 @@ Item {
         }
     }
 
+    /**
+     * Every pill carries its own Osd but the volume/track/battery signals are
+     * global, so without this gate one keypress flashes every monitor at once.
+     * Workspace flashes skip it: those are already keyed to this screen's own
+     * active workspace.
+     */
+    readonly property bool onFocusedMonitor: !Hyprland.focusedMonitor || Hyprland.focusedMonitor.name === screenName
+
     function flash(which) {
         if (!armed || suppressed)
+            return false;
+        if (which !== "workspace" && !onFocusedMonitor)
+            return false;
+        if (which === "track" && flashing && (kind === "volume" || kind === "brightness"))
             return false;
         if (which === "track")
             holdExtends = 0;
@@ -114,6 +126,9 @@ Item {
             tryShow();
         }
     }
+
+    /** A track announce that lost to live hardware feedback replays once the bar clears. */
+    onFlashingChanged: if (!flashing && dirty) tryShow()
 
     Timer {
         interval: 1500
