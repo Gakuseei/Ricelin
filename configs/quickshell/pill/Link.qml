@@ -655,11 +655,21 @@ PillSurface {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
+                        visible: Flags.showGlyphs
                         text: "払"
                         color: clearArea.containsMouse ? Theme.vermLit : Theme.vermDim
                         font.family: Theme.fontJp
                         font.pixelSize: 9 * root.s
                         font.weight: Font.Bold
+                    }
+                    GlyphIcon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: !Flags.showGlyphs
+                        width: 11 * root.s
+                        height: 11 * root.s
+                        name: "trash"
+                        color: clearArea.containsMouse ? Theme.vermLit : Theme.vermDim
+                        stroke: 1.8
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
