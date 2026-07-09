@@ -125,6 +125,7 @@ Item {
     }
 
     Text {
+        id: clockText
         visible: content.isMain
         anchors.horizontalCenter: parent.horizontalCenter
         y: parent.height * 0.24
@@ -132,7 +133,7 @@ Item {
         font.family: "Zen Kaku Gothic New"
         font.weight: 500
         font.pixelSize: 130 * content.s
-        text: Qt.formatDateTime(sysClock.date, "HH:mm")
+        text: Qt.formatDateTime(sysClock.date, Flags.time12h ? "h:mm" : "HH:mm")
         layer.enabled: true
         layer.effect: MultiEffect {
             shadowEnabled: true
@@ -141,6 +142,19 @@ Item {
             shadowVerticalOffset: 2
             shadowHorizontalOffset: 0
         }
+    }
+
+    Text {
+        visible: content.isMain && Flags.time12h
+        anchors.left: clockText.right
+        anchors.leftMargin: 12 * content.s
+        anchors.baseline: clockText.baseline
+        color: Theme.bright
+        opacity: 0.55
+        font.family: "Zen Kaku Gothic New"
+        font.weight: 600
+        font.pixelSize: 34 * content.s
+        text: Qt.formatDateTime(sysClock.date, "AP")
     }
 
     Column {
