@@ -69,6 +69,14 @@ hl.window_rule({
     idle_inhibit = "fullscreen",
 })
 
+-- Keep the pill from fading when the session lock hides and restores its layer,
+-- so it never pops back in out of sync with the shot the lock morph collapses onto.
+hl.layer_rule({
+    name    = "pill-no-fade",
+    match   = { namespace = "pill" },
+    no_anim = true,
+})
+
 local ok, stashApps = pcall(require, "modules.stash-apps")
 if ok and type(stashApps) == "table" then
     for _, cls in ipairs(stashApps) do

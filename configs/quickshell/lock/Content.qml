@@ -133,7 +133,17 @@ Item {
         font.family: "Zen Kaku Gothic New"
         font.weight: 500
         font.pixelSize: 130 * content.s
-        text: Qt.formatDateTime(sysClock.date, Flags.time12h ? "h:mm" : "HH:mm")
+        /** Qt reads "h" as 24h unless the same format holds AP, and the AM/PM sits in its own label here, so the 12h hour is built by hand. */
+        text: {
+            var d = sysClock.date;
+            if (!Flags.time12h)
+                return Qt.formatDateTime(d, "HH:mm");
+            var h = d.getHours() % 12;
+            if (h === 0)
+                h = 12;
+            var m = d.getMinutes();
+            return h + ":" + (m < 10 ? "0" : "") + m;
+        }
         layer.enabled: true
         layer.effect: MultiEffect {
             shadowEnabled: true
