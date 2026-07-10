@@ -47,7 +47,7 @@ PillSurface {
     /** Row index currently in AppImage edit mode (rename plus armed delete), -1 when none. */
     property int editIndex: -1
 
-    readonly property string appimageScript: Quickshell.env("HOME") + "/.config/hypr/scripts/appimage-install.sh"
+    readonly property string appimageScript: Quickshell.env("HOME") + "/.config/hypr/scripts/app-install.sh"
 
     function appimageSlug(entry) {
         return entry && entry.id && entry.id.indexOf("ricelin-") === 0 ? entry.id.substring(8) : "";

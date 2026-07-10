@@ -822,21 +822,30 @@ Item {
         return decodeURIComponent(s);
     }
 
-    function appimagePaths(urls) {
+    readonly property var dropExt: /\.(appimage|deb|rpm|flatpakref|zip|tgz|txz|tbz2|ttf|otf|png|jpe?g|webp)$|\.(pkg\.)?tar\.(gz|xz|bz2|zst)$/i
+
+    function droppablePaths(urls) {
         var out = [];
         for (var i = 0; i < urls.length; i++)
-            if (/\.appimage$/i.test(String(urls[i])))
+            if (pill.dropExt.test(String(urls[i])))
                 out.push(pill.localPath(urls[i]));
         return out;
     }
 
     function dropLabel(urls) {
         var p = pill.localPath(urls.length ? urls[0] : "");
-        return p.substring(p.lastIndexOf("/") + 1).replace(/\.appimage$/i, "");
+        return p.substring(p.lastIndexOf("/") + 1).replace(pill.dropExt, "");
     }
 
     property bool installedAny: false
+    property bool installedApp: false
+    property bool installFailed: false
+    property string installKind: "app"
     property string installAction: "new"
+    property string installLine: ""
+    property string installProto: ""
+    property string installPct: ""
+    property int installSeconds: 0
 
     function runNextInstall() {
         if (pill.installQueue.length === 0) {
@@ -845,24 +854,69 @@ Item {
             return;
         }
         var next = pill.installQueue.shift();
-        pill.dragName = next.substring(next.lastIndexOf("/") + 1).replace(/\.appimage$/i, "");
-        installProc.command = ["bash", Quickshell.env("HOME") + "/.config/hypr/scripts/appimage-install.sh", "install", next];
+        pill.dragName = next.substring(next.lastIndexOf("/") + 1).replace(pill.dropExt, "");
+        pill.installLine = "";
+        pill.installProto = "";
+        pill.installPct = "";
+        installProc.command = ["bash", Quickshell.env("HOME") + "/.config/hypr/scripts/app-install.sh", "install", next];
         installProc.running = true;
     }
 
+    /**
+     * Streams installer stdout instead of collecting it: slow backends (flatpak
+     * runtime pulls, pacman) narrate their steps, and the drop face mirrors the
+     * newest line live. The machine-readable result is the one tab-separated
+     * kind-prefixed line, fished out of the stream as it passes.
+     */
     Process {
         id: installProc
-        stdout: StdioCollector { id: installOut }
+        stdout: SplitParser {
+            onRead: (data) => {
+                var seg = data.split("\r").pop().replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").trim();
+                if (seg.length === 0)
+                    return;
+                if (/^(app|native|font|wallpaper)\t/.test(seg)) {
+                    pill.installProto = seg;
+                } else {
+                    pill.installLine = seg;
+                    var pct = seg.match(/(\d{1,3})\s*%/);
+                    if (pct && Number(pct[1]) <= 100)
+                        pill.installPct = pct[1] + "%";
+                }
+            }
+        }
         onExited: (exitCode) => {
-            if (exitCode === 0) {
+            if (exitCode === 0 && pill.installProto.length > 0) {
                 pill.installedAny = true;
-                var line = installOut.text.trim().split("\n").pop();
-                var parts = line.split("\t");
-                if (parts.length >= 3)
-                    pill.installAction = parts[2];
+                var parts = pill.installProto.split("\t");
+                pill.installKind = parts[0];
+                pill.installAction = parts[2];
+                if (parts[0] === "app" || parts[0] === "native")
+                    pill.installedApp = true;
+                if (parts[0] === "font" && parts.length >= 4)
+                    droppedFont.source = "file://" + parts[3];
+            } else {
+                pill.installFailed = true;
             }
             pill.runNextInstall();
         }
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: pill.dragStage === "installing"
+        onTriggered: pill.installSeconds++
+    }
+
+    /**
+     * Registers a just-dropped font in this running process; the fontconfig
+     * cache alone only reaches apps started later. Ready -> the font picker's
+     * family list refreshes and the new face shows up without a restart.
+     */
+    FontLoader {
+        id: droppedFont
+        onStatusChanged: if (status === FontLoader.Ready) Theme.refreshFonts()
     }
 
     Timer {
@@ -871,7 +925,8 @@ Item {
         onTriggered: {
             pill.dragActive = false;
             pill.dragStage = "";
-            pill.requestSurface("launcher");
+            if (pill.installedApp)
+                pill.requestSurface("launcher");
         }
     }
 
@@ -886,8 +941,9 @@ Item {
 
     /**
      * File drops land only on the resting pill; an open surface turns the pill
-     * into a fullscreen modal that swallows the drag before it can start. An
-     * AppImage kicks off the install, anything else flashes a rejection.
+     * into a fullscreen modal that swallows the drag before it can start.
+     * app-install.sh routes each drop by type (apps install, fonts land in the
+     * font dir, images become the wallpaper), anything else flashes a rejection.
      */
     DropArea {
         anchors.fill: parent
@@ -896,7 +952,7 @@ Item {
         onEntered: (drag) => {
             drag.acceptProposedAction();
             pill.dragActive = true;
-            pill.dragStage = pill.appimagePaths(drag.urls).length > 0 ? "hover" : "bad";
+            pill.dragStage = pill.droppablePaths(drag.urls).length > 0 ? "hover" : "bad";
             pill.dragName = pill.dropLabel(drag.urls);
         }
         onExited: {
@@ -907,8 +963,8 @@ Item {
         }
         onDropped: (drop) => {
             drop.acceptProposedAction();
-            var appimages = pill.appimagePaths(drop.urls);
-            if (appimages.length === 0) {
+            var files = pill.droppablePaths(drop.urls);
+            if (files.length === 0) {
                 pill.dragActive = true;
                 pill.dragStage = "bad";
                 pill.dragName = pill.dropLabel(drop.urls);
@@ -918,8 +974,12 @@ Item {
             pill.dragActive = true;
             pill.dragStage = "installing";
             pill.installedAny = false;
+            pill.installedApp = false;
+            pill.installFailed = false;
+            pill.installKind = "app";
             pill.installAction = "new";
-            pill.installQueue = appimages;
+            pill.installSeconds = 0;
+            pill.installQueue = files;
             pill.runNextInstall();
         }
     }
@@ -1010,11 +1070,16 @@ Item {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: pill.dragStage === "bad" ? "Not an AppImage"
+                text: pill.dragStage === "bad" ? "Can't install this"
                     : (pill.dragStage === "fail" ? "Install failed"
-                    : (pill.dragStage === "installing" ? "Installing"
-                    : (pill.dragStage === "done" ? (pill.installAction === "updated" ? "Updated"
-                        : (pill.installAction === "reinstalled" ? "Reinstalled" : "Installed"))
+                    : (pill.dragStage === "installing" ? ("Installing"
+                        + (pill.installPct.length > 0 ? " " + pill.installPct : "")
+                        + (pill.installSeconds >= 3 ? "  " + Math.floor(pill.installSeconds / 60) + ":" + String(pill.installSeconds % 60).padStart(2, "0") : ""))
+                    : (pill.dragStage === "done" ? (pill.installFailed ? "Installed, some failed"
+                        : (!pill.installedApp && pill.installKind === "wallpaper" ? "Wallpaper set"
+                        : (!pill.installedApp && pill.installKind === "font" ? "Font installed"
+                        : (pill.installAction === "updated" ? "Updated"
+                        : (pill.installAction === "reinstalled" ? "Reinstalled" : "Installed")))))
                     : "Drop to install")))
                 color: Theme.cream
                 font.family: Theme.font
@@ -1026,7 +1091,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: pill.dragName
+                text: pill.dragStage === "installing" && pill.installLine.length > 0 ? pill.installLine : pill.dragName
                 color: Theme.subtle
                 font.family: Theme.font
                 font.pixelSize: 11 * pill.s

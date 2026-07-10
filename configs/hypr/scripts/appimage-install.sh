@@ -208,7 +208,17 @@ remove_appimage() {
 	appimg="$(jq -r --arg s "$slug" '.[$s].appimagePath // empty' "$registry")"
 	icon="$(jq -r --arg s "$slug" '.[$s].iconPath // empty' "$registry")"
 	desktop="$(jq -r --arg s "$slug" '.[$s].desktopPath // empty' "$registry")"
-	[ -n "$appimg" ] && rm -f "$appimg"
+	if [ -n "$appimg" ]; then
+		# extract installs record a directory tree under $apps_dir; wipe the whole
+		# tree for those, but never rm -rf a stray path outside it.
+		local real="" appsreal
+		[ -d "$appimg" ] && real="$(realpath "$appimg" 2>/dev/null || true)"
+		appsreal="$(realpath "$apps_dir" 2>/dev/null || echo "$apps_dir")"
+		case "$real" in
+			"$appsreal"/*) rm -rf "$appimg" ;;
+			*) rm -f "$appimg" ;;
+		esac
+	fi
 	[ -n "$icon" ] && rm -f "$icon"
 	[ -n "$desktop" ] && rm -f "$desktop"
 	local tmp
