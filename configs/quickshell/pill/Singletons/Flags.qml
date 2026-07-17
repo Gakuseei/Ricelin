@@ -20,6 +20,7 @@ Singleton {
     property alias showGlyphs: adapter.showGlyphs
     property alias paletteMode: adapter.paletteMode
     property alias wallpaperDir: adapter.wallpaperDir
+    property alias randomScope: adapter.randomScope
     property alias uiScale: adapter.uiScale
     property alias reduceMotion: adapter.reduceMotion
     property alias manualHue: adapter.manualHue
@@ -47,6 +48,7 @@ Singleton {
     property alias gamePrevDnd: adapter.gamePrevDnd
     property alias gamePrevViz: adapter.gamePrevViz
     property alias gamePrevAwake: adapter.gamePrevAwake
+    property alias gamePrevProfile: adapter.gamePrevProfile
     property alias nightLightMode: adapter.nightLightMode
     property alias nightLightTemp: adapter.nightLightTemp
     property alias nightLightOnMin: adapter.nightLightOnMin
@@ -76,6 +78,8 @@ Singleton {
             property string paletteMode: "static"
             /** Empty means fall back to ~/Ricelin/wallpapers. Lives in user state so an in-app update never clobbers a custom folder. */
             property string wallpaperDir: ""
+            /** Super+B random target: "all" repaints every monitor, "cursor" only the one under the pointer. */
+            property string randomScope: "all"
             property real uiScale: 1.0
             property bool reduceMotion: false
             property int manualHue: 30
@@ -105,6 +109,7 @@ Singleton {
             property bool gamePrevDnd: false
             property bool gamePrevViz: true
             property bool gamePrevAwake: false
+            property string gamePrevProfile: ""
             property string nightLightMode: "off"
             property int nightLightTemp: 4000
             property int nightLightOnMin: 1260

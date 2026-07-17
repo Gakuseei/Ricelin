@@ -48,13 +48,18 @@ Singleton {
      * running transition exits, so rapid iteration converges on the last pick.
      */
     property string queuedApply: ""
+    property string queuedOutput: ""
 
-    function apply(path) {
+    function apply(path, output) {
+        var out = output === undefined ? "" : output;
         if (applyProc.running) {
             queuedApply = path;
+            queuedOutput = out;
             return;
         }
-        applyProc.command = ["bash", root.setScript, "set", path];
+        applyProc.command = out.length > 0
+            ? ["bash", root.setScript, "set", path, out]
+            : ["bash", root.setScript, "set", path];
         applyProc.running = true;
     }
 
@@ -127,8 +132,12 @@ Singleton {
         onExited: {
             if (root.queuedApply.length) {
                 var next = root.queuedApply;
+                var nextOut = root.queuedOutput;
                 root.queuedApply = "";
-                applyProc.command = ["bash", root.setScript, "set", next];
+                root.queuedOutput = "";
+                applyProc.command = nextOut.length > 0
+                    ? ["bash", root.setScript, "set", next, nextOut]
+                    : ["bash", root.setScript, "set", next];
                 applyProc.running = true;
                 return;
             }

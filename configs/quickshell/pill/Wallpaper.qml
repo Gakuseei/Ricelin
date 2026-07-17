@@ -52,6 +52,36 @@ PillSurface {
         return /\.(gif|mp4|webm|mkv|mov)$/i.test(path);
     }
 
+    /**
+     * Miniature of the physical monitor arrangement, shown on the focused tile
+     * when more than one screen is connected. Logical rects are fitted into a
+     * small box, keeping their real positions; clicking one sends the pick to
+     * that output only, while a tap on the tile itself keeps meaning all.
+     */
+    readonly property var monMap: {
+        var scr = Quickshell.screens;
+        if (scr.length < 2)
+            return { w: 0, h: 0, tiles: [] };
+        var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (var i = 0; i < scr.length; i++) {
+            minX = Math.min(minX, scr[i].x);
+            minY = Math.min(minY, scr[i].y);
+            maxX = Math.max(maxX, scr[i].x + scr[i].width);
+            maxY = Math.max(maxY, scr[i].y + scr[i].height);
+        }
+        var k = Math.min(Math.min(26 * scr.length, 120) * s / (maxX - minX), (22 * s) / (maxY - minY));
+        var tiles = [];
+        for (i = 0; i < scr.length; i++)
+            tiles.push({
+                name: scr[i].name,
+                x: (scr[i].x - minX) * k,
+                y: (scr[i].y - minY) * k,
+                w: scr[i].width * k,
+                h: scr[i].height * k
+            });
+        return { w: (maxX - minX) * k, h: (maxY - minY) * k, tiles: tiles };
+    }
+
     readonly property var localItems: {
         if (kindFilter === "all")
             return Walls.entries;
@@ -91,6 +121,9 @@ PillSurface {
      * pick has been held still, so it reads as a quiet caption, not a nag.
      */
     property bool hintShown: false
+
+    /** Output name under the pointer in the focused tile's screen picker, "" when none. */
+    property string monHover: ""
 
     /**
      * Preview arming: playback and the dimension probe only start once the
@@ -417,56 +450,76 @@ PillSurface {
         }
     }
 
-    Row {
+    component FilterChip: Item {
+        id: fchip
+
+        property string kind: ""
+        property string label: ""
+
+        width: fchipText.implicitWidth + 17 * root.s
+        height: parent ? parent.height : 0
+
+        Text {
+            id: fchipText
+            anchors.centerIn: parent
+            text: fchip.label
+            color: root.kindFilter === fchip.kind ? Theme.cream : Theme.faint
+            font.family: Theme.font
+            font.pixelSize: 9.5 * root.s
+            font.weight: Font.DemiBold
+            font.letterSpacing: 0.4 * root.s
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.kindFilter = fchip.kind
+        }
+    }
+
+    /**
+     * Kind filter as one inset capsule with a sliding highlight, matching the
+     * pill's segmented controls instead of three loose outlined chips.
+     */
+    Rectangle {
         id: filterRow
         anchors.top: parent.top
-        anchors.topMargin: 10 * root.s
+        anchors.topMargin: 9 * root.s
         anchors.right: parent.right
         anchors.rightMargin: 14 * root.s
-        spacing: 5 * root.s
         z: 40
+        width: segRow.implicitWidth + 6 * root.s
+        height: 22 * root.s
+        radius: height / 2
+        color: Theme.frameBg
+        border.width: 1
+        border.color: Theme.hairSoft
 
-        Repeater {
-            model: [
-                { kind: "all", label: "all" },
-                { kind: "still", label: "still" },
-                { kind: "motion", label: "live" }
-            ]
+        readonly property Item currentChip: root.kindFilter === "all" ? chipAll : (root.kindFilter === "still" ? chipStill : chipLive)
 
-            delegate: Rectangle {
-                id: chip
+        Rectangle {
+            anchors.verticalCenter: parent.verticalCenter
+            height: parent.height - 4 * root.s
+            radius: height / 2
+            x: segRow.x + filterRow.currentChip.x + 2 * root.s
+            width: filterRow.currentChip.width - 4 * root.s
+            color: Qt.alpha(Theme.onGlow, 0.18)
+            border.width: 1
+            border.color: Qt.alpha(Theme.onGlow, 0.45)
+            Behavior on x { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+            Behavior on width { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+        }
 
-                required property var modelData
+        Row {
+            id: segRow
+            anchors.left: parent.left
+            anchors.leftMargin: 3 * root.s
+            height: parent.height
 
-                readonly property bool on: root.kindFilter === modelData.kind
-
-                width: chipText.implicitWidth + 14 * root.s
-                height: chipText.implicitHeight + 7 * root.s
-                radius: height / 2
-                color: on ? Qt.alpha(Theme.vermLit, 0.16) : "transparent"
-                border.width: 1
-                border.color: on ? Theme.vermLit : Theme.border
-
-                Behavior on border.color { ColorAnimation { duration: Motion.fast } }
-
-                Text {
-                    id: chipText
-                    anchors.centerIn: parent
-                    text: chip.modelData.label
-                    color: chip.on ? Theme.cream : Theme.faint
-                    font.family: Theme.font
-                    font.pixelSize: 9.5 * root.s
-                    font.weight: Font.Medium
-                    font.letterSpacing: 0.3 * root.s
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.kindFilter = chip.modelData.kind
-                }
-            }
+            FilterChip { id: chipAll; kind: "all"; label: "all" }
+            FilterChip { id: chipStill; kind: "still"; label: "still" }
+            FilterChip { id: chipLive; kind: "motion"; label: "live" }
         }
     }
 
@@ -733,6 +786,88 @@ PillSurface {
                 onExited: trashHeat.cancel()
                 onClicked: if (!tile.focused) root.focusIndex = tile.index
             }
+
+            /**
+             * Per-screen picker riding the focused tile's upper right corner.
+             * Hovering a screen rect names it in the backing pill and lights
+             * it, so the miniature reads as "send this pick to that monitor"
+             * without a legend. Sits above the tile's press area, so a click
+             * here never reaches the trash HeatHold underneath.
+             */
+            Rectangle {
+                id: monPick
+
+                property string hoverOut: ""
+
+                onHoverOutChanged: if (tile.focused) root.monHover = hoverOut
+
+                visible: tile.focused && !tile.remote && root.monMap.tiles.length > 0
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 5 * root.s
+                width: hoverLabel.width + screenRects.width + 12 * root.s
+                height: screenRects.height + 8 * root.s
+                radius: 6 * root.s
+                color: Qt.rgba(0, 0, 0, 0.62)
+
+                Behavior on width { NumberAnimation { duration: Motion.fast } }
+
+                Text {
+                    id: hoverLabel
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: screenRects.left
+                    anchors.rightMargin: monPick.hoverOut.length > 0 ? 6 * root.s : 0
+                    width: monPick.hoverOut.length > 0 ? implicitWidth : 0
+                    clip: true
+                    text: monPick.hoverOut
+                    color: Theme.cream
+                    font.family: Theme.font
+                    font.pixelSize: 9 * root.s
+                    font.weight: Font.DemiBold
+                    font.letterSpacing: 0.3 * root.s
+                }
+
+                Item {
+                    id: screenRects
+                    anchors.right: parent.right
+                    anchors.rightMargin: 5 * root.s
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: root.monMap.w
+                    height: root.monMap.h
+
+                    Repeater {
+                        model: root.monMap.tiles
+
+                        delegate: Rectangle {
+                            id: mrect
+                            required property var modelData
+
+                            x: mrect.modelData.x + 0.75 * root.s
+                            y: mrect.modelData.y + 0.75 * root.s
+                            width: Math.max(2, mrect.modelData.w - 1.5 * root.s)
+                            height: Math.max(2, mrect.modelData.h - 1.5 * root.s)
+                            radius: 3 * root.s
+                            color: monHover.hovered ? Qt.alpha(Theme.vermLit, 0.45) : Qt.rgba(1, 1, 1, 0.10)
+                            border.width: 1
+                            border.color: monHover.hovered ? Theme.vermLit : Qt.rgba(1, 1, 1, 0.35)
+
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
+                            Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+
+                            HoverHandler {
+                                id: monHover
+                                onHoveredChanged: monPick.hoverOut = hovered ? mrect.modelData.name : (monPick.hoverOut === mrect.modelData.name ? "" : monPick.hoverOut)
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Walls.apply(tile.modelData.path, mrect.modelData.name)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -762,19 +897,82 @@ PillSurface {
         font.pixelSize: 10.5 * root.s
     }
 
-    Text {
+    component HintKey: Row {
+        id: hk
+
+        property string key: ""
+        property string caption: ""
+
+        spacing: 5 * root.s
+
+        Rectangle {
+            anchors.verticalCenter: parent.verticalCenter
+            width: keyText.implicitWidth + 11 * root.s
+            height: keyText.implicitHeight + 6 * root.s
+            radius: 5 * root.s
+            color: Theme.frameBg
+            border.width: 1
+            border.color: Theme.hairSoft
+
+            Text {
+                id: keyText
+                anchors.centerIn: parent
+                text: hk.key
+                color: Theme.cream
+                font.family: Theme.font
+                font.pixelSize: 8.5 * root.s
+                font.weight: Font.DemiBold
+                font.letterSpacing: 0.5 * root.s
+            }
+        }
+
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: hk.caption
+            color: Theme.faint
+            font.family: Theme.font
+            font.pixelSize: 9.5 * root.s
+            font.weight: Font.Medium
+            font.letterSpacing: 0.3 * root.s
+        }
+    }
+
+    /**
+     * Gesture legend: keycap chips for tap / corner / hold instead of one grey
+     * text line. Hovering a screen rect swaps the whole legend for a single
+     * "set on <output> only" caption, so the corner action explains itself the
+     * moment it is about to happen.
+     */
+    Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 11 * root.s
+        anchors.bottomMargin: 9 * root.s
+        width: hintLegend.width
+        height: hintLegend.height
         visible: root.itemCount > 0 && !root.searching
-        opacity: root.hintShown ? 1 : 0
-        text: "tap to set · hold to delete"
-        color: Theme.subtle
-        font.family: Theme.font
-        font.pixelSize: 10 * root.s
-        font.weight: Font.Medium
-        font.letterSpacing: 0.4 * root.s
+        opacity: (root.hintShown || root.monHover.length > 0) ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: Motion.standard } }
+
+        Row {
+            id: hintLegend
+            spacing: 14 * root.s
+            visible: root.monHover.length === 0
+
+            HintKey { key: "tap"; caption: root.monMap.tiles.length > 0 ? "set all" : "set" }
+            HintKey { visible: root.monMap.tiles.length > 0; key: "corner"; caption: "one screen" }
+            HintKey { key: "hold"; caption: "delete" }
+        }
+
+        Text {
+            anchors.centerIn: parent
+            visible: root.monHover.length > 0
+            text: "set on " + root.monHover + " only"
+            color: Theme.cream
+            font.family: Theme.font
+            font.pixelSize: 10 * root.s
+            font.weight: Font.DemiBold
+            font.letterSpacing: 0.4 * root.s
+        }
     }
 
     MouseArea {
