@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Effects
+import QtMultimedia
 import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
@@ -62,14 +63,17 @@ PillSurface {
         return out;
     }
 
+    /**
+     * Re-centre after a filter switch. Deferred with callLater because this
+     * handler fires before dependent bindings refresh, so a direct call would
+     * still see the previous filter's list and park the strip on an index the
+     * new list does not have.
+     */
     onKindFilterChanged: {
-        if (searching && query.length > 0) {
+        if (searching && query.length > 0)
             debounce.restart();
-        } else {
-            focusIndex = 0;
-            pos = 0;
-            centerOnCurrent();
-        }
+        else
+            Qt.callLater(centerOnCurrent);
     }
 
     /**
@@ -88,9 +92,24 @@ PillSurface {
      */
     property bool hintShown: false
 
+    /**
+     * Preview arming: playback and the dimension probe only start once the
+     * focus has rested for a beat, so wheeling through the strip never churns
+     * decoders or process spawns per step.
+     */
+    property bool previewArmed: true
+
     onFocusIndexChanged: {
         hintShown = false;
         hintDwell.restart();
+        previewArmed = false;
+        previewArm.restart();
+    }
+
+    Timer {
+        id: previewArm
+        interval: 300
+        onTriggered: root.previewArmed = true
     }
 
     onItemsChanged: if (focusIndex >= itemCount) focusIndex = Math.max(0, itemCount - 1);
@@ -218,6 +237,102 @@ PillSurface {
     }
 
     readonly property string searchScript: Quickshell.env("HOME") + "/.config/hypr/scripts/wallpaper-search.sh"
+
+    /**
+     * Remote video previews. Qt's MediaPlayer chokes on streaming https, so
+     * the focused result's preview clip (small webm) is pulled into /tmp by
+     * curl and played from disk. The fetch is debounced behind the focus and
+     * keyed by url hash, so paging back to a seen result replays instantly and
+     * a stale download can never attach to the wrong tile.
+     */
+    property string previewFile: ""
+
+    readonly property string focusedPreviewUrl: {
+        if (focusIndex < 0 || focusIndex >= itemCount)
+            return "";
+        var e = items[focusIndex];
+        return (e && e.preview !== undefined) ? e.preview : "";
+    }
+
+    onFocusedPreviewUrlChanged: {
+        previewFile = "";
+        prevFetch.running = false;
+        prevDebounce.restart();
+    }
+
+    Timer {
+        id: prevDebounce
+        interval: 250
+        onTriggered: {
+            if (root.focusedPreviewUrl === "")
+                return;
+            prevFetch.url = root.focusedPreviewUrl;
+            prevFetch.command = ["bash", "-c",
+                "f=\"/tmp/ricelin-wp-preview-$(printf %s \"$1\" | md5sum | cut -d' ' -f1).webm\"; [ -s \"$f\" ] || curl -fsL --max-time 25 -A 'Mozilla/5.0' -o \"$f\" \"$1\" || { rm -f \"$f\"; exit 1; }; printf %s \"$f\"",
+                "_", root.focusedPreviewUrl];
+            prevFetch.running = true;
+        }
+    }
+
+    Process {
+        id: prevFetch
+        property string url: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (this.text.length && prevFetch.url === root.focusedPreviewUrl)
+                    root.previewFile = this.text;
+            }
+        }
+    }
+
+    /**
+     * Local resolution badge. Dimensions are probed lazily for the focused
+     * tile only (ffprobe reads images and videos alike) and cached per path,
+     * so browsing stays cheap and revisits are instant.
+     */
+    property var dimsCache: ({})
+
+    readonly property string focusedLocalPath: {
+        if (searching && query.length > 0)
+            return "";
+        if (focusIndex < 0 || focusIndex >= itemCount)
+            return "";
+        var e = items[focusIndex];
+        return (e && e.path !== undefined) ? e.path : "";
+    }
+
+    onFocusedLocalPathChanged: dimsDebounce.restart()
+
+    Timer {
+        id: dimsDebounce
+        interval: 320
+        onTriggered: {
+            var p = root.focusedLocalPath;
+            if (p === "" || root.dimsCache[p] !== undefined)
+                return;
+            dimsProc.running = false;
+            dimsProc.path = p;
+            dimsProc.command = ["sh", "-c",
+                "ffprobe -v quiet -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 \"$1\" | head -1",
+                "_", p];
+            dimsProc.running = true;
+        }
+    }
+
+    Process {
+        id: dimsProc
+        property string path: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var t = this.text.trim();
+                if (t.length && dimsProc.path.length) {
+                    var c = Object.assign({}, root.dimsCache);
+                    c[dimsProc.path] = t;
+                    root.dimsCache = c;
+                }
+            }
+        }
+    }
 
     Timer {
         id: debounce
@@ -382,6 +497,25 @@ PillSurface {
             readonly property bool remote: modelData.image !== undefined
             readonly property string thumbSource: remote ? thumb : ("file://" + thumb)
 
+            /**
+             * Live preview gating: only the focused tile plays, and only once
+             * the strip has settled on it, so paging never spins up decoders.
+             * Gifs play in place (remote ones stream the full file), videos
+             * loop muted through the ffmpeg backend; everything else keeps the
+             * static thumb, which also stays underneath as the loading frame.
+             */
+            readonly property bool isGif: /\.gif(\?|$)/i.test(remote ? (modelData.image || "") : modelData.path)
+            readonly property string videoSource: remote
+                ? (focused && root.previewFile !== "" ? "file://" + root.previewFile : "")
+                : (/\.(mp4|webm|mkv|mov)$/i.test(modelData.path) ? "file://" + modelData.path : "")
+            readonly property bool showPreview: focused && root.previewArmed && ao < 0.5
+            readonly property string resLabel: remote
+                ? (modelData.w > 0 ? modelData.w + "x" + modelData.h : "")
+                : (root.dimsCache[modelData.path] !== undefined ? root.dimsCache[modelData.path] : "")
+            readonly property bool motion: remote
+                ? (modelData.preview !== undefined || isGif)
+                : /\.(gif|mp4|webm|mkv|mov)$/i.test(modelData.path)
+
             readonly property real off: index - root.pos
             readonly property real ao: Math.abs(off)
             readonly property bool focused: index === root.focusIndex
@@ -446,6 +580,38 @@ PillSurface {
                     visible: thumbImage.status === Image.Error
                 }
 
+                AnimatedImage {
+                    anchors.fill: parent
+                    source: tile.showPreview && tile.isGif ? (tile.remote ? tile.modelData.image : "file://" + tile.modelData.path) : ""
+                    playing: source != ""
+                    visible: status === AnimatedImage.Ready
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    cache: false
+                }
+
+                Loader {
+                    anchors.fill: parent
+                    active: tile.showPreview && tile.videoSource !== ""
+
+                    sourceComponent: Item {
+                        VideoOutput {
+                            id: videoPreview
+                            anchors.fill: parent
+                            fillMode: VideoOutput.PreserveAspectCrop
+                            visible: vidPlayer.playbackState === MediaPlayer.PlayingState
+                        }
+
+                        MediaPlayer {
+                            id: vidPlayer
+                            videoOutput: videoPreview
+                            loops: MediaPlayer.Infinite
+                            source: tile.videoSource
+                            onMediaStatusChanged: if (mediaStatus === MediaPlayer.LoadedMedia) play()
+                        }
+                    }
+                }
+
                 Rectangle {
                     anchors.fill: parent
                     color: Qt.rgba(0, 0, 0, 1)
@@ -480,6 +646,26 @@ PillSurface {
                     }
                 }
 
+                Rectangle {
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.margins: 5 * root.s
+                    visible: tile.motion
+                    width: motionText.implicitWidth + 9 * root.s
+                    height: motionText.implicitHeight + 4 * root.s
+                    radius: height / 2
+                    color: Qt.rgba(0, 0, 0, 0.55)
+
+                    Text {
+                        id: motionText
+                        anchors.centerIn: parent
+                        text: "▶"
+                        color: Theme.cream
+                        font.family: Theme.font
+                        font.pixelSize: 7.5 * root.s
+                    }
+                }
+
                 Text {
                     anchors.centerIn: parent
                     visible: tile.focused && tile.remote && dlProc.running && dlProc.target === tile.modelData.image
@@ -493,7 +679,7 @@ PillSurface {
                     anchors.bottom: parent.bottom
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottomMargin: 6 * root.s
-                    visible: tile.focused && tile.remote && tile.modelData.w > 0 && !(dlProc.running && dlProc.target === tile.modelData.image)
+                    visible: tile.focused && tile.resLabel.length > 0 && !(tile.remote && dlProc.running && dlProc.target === tile.modelData.image)
                     width: resText.implicitWidth + 12 * root.s
                     height: resText.implicitHeight + 5 * root.s
                     radius: height / 2
@@ -501,7 +687,7 @@ PillSurface {
                     Text {
                         id: resText
                         anchors.centerIn: parent
-                        text: tile.modelData.w + "×" + tile.modelData.h
+                        text: tile.resLabel.replace("x", "×")
                         color: Theme.bright
                         font.family: Theme.font
                         font.pixelSize: 9.5 * root.s

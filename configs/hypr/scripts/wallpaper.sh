@@ -15,6 +15,14 @@ is_video() {
     esac
 }
 
+is_anim() {
+    is_video "$1" && return 0
+    case "${1##*.}" in
+        [Gg][Ii][Ff]) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 ensure_daemon() {
     awww query >/dev/null 2>&1 && return 0
     local attempt i
@@ -106,15 +114,23 @@ if is_video "$pic"; then
     show="$STILL"
 fi
 
-awww img "$show" \
-    --transition-type wave \
-    --transition-angle 30 \
-    --transition-wave "60,30" \
-    --transition-fps 60 \
-    --transition-step 90
+if is_anim "$pic"; then
+    awww img "$show" \
+        --transition-type fade \
+        --transition-fps 60 \
+        --transition-step 12
+else
+    awww img "$show" \
+        --transition-type wave \
+        --transition-angle 30 \
+        --transition-wave "60,30" \
+        --transition-fps 60 \
+        --transition-step 90
+fi
 
 if is_video "$pic"; then
-    setsid -f mpvpaper -p -o "no-audio loop-file=inf hwdec=auto" '*' "$pic" >/dev/null 2>&1
+    sleep 0.8
+    setsid -f mpvpaper -p -o "no-audio loop-file=inf hwdec=auto panscan=1.0" '*' "$pic" >/dev/null 2>&1
 fi
 
 mkdir -p "$(dirname "$STATE")"
