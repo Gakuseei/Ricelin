@@ -6,19 +6,19 @@ import Quickshell.Bluetooth
 import "Singletons"
 
 /**
- * Bluetooth drill-in for the link surface: back chevron, scan with 25s
- * auto-stop, adapter toggle, live device list. Known devices use the
- * Quickshell connect/disconnect calls; unpaired devices run a bluetoothctl
- * pair-trust-connect flow with an inline ember while running and a transient
- * failure line.
+ * 歯 BLUETOOTH surface: kanji header, scan with 25s auto-stop, adapter toggle,
+ * live device list. Known devices use the Quickshell connect/disconnect calls;
+ * unpaired devices run a bluetoothctl pair-trust-connect flow with an inline
+ * ember while running and a transient failure line. Standalone root surface, so
+ * Escape and the backdrop dismiss it like every other surface.
  */
-Item {
+PillSurface {
     id: root
 
-    property real s: 1
-    property bool active: false
-
-    signal back()
+    mTop: 13
+    mLeft: 16
+    mRight: 16
+    mBottom: 13
 
     readonly property var adapter: (typeof Bluetooth !== "undefined" && Bluetooth) ? Bluetooth.defaultAdapter : null
     readonly property var devices: (typeof Bluetooth !== "undefined" && Bluetooth && Bluetooth.devices) ? Bluetooth.devices.values : []
@@ -46,12 +46,28 @@ Item {
 
     /**
      * Address of the known device whose inline confirm row (disconnect or
-     * connect, plus forget) is open, mirroring the wifi drill-in's expanded
+     * connect, plus forget) is open, mirroring the wifi surface's expanded
      * SSID.
      */
     property string expandedAddress: ""
 
     implicitHeight: listFrame.y + listFrame.height
+
+    /**
+     * Maps the BlueZ device-class icon name onto a baked glyph: audio gear reads
+     * as a speaker, input devices as their shape, displays and computers as a
+     * monitor, players as a note; anything unknown falls back to bluetooth.
+     */
+    function iconFor(d) {
+        var ic = (d && d.icon) ? String(d.icon) : "";
+        if (ic.indexOf("audio-") === 0 || ic === "audio-card") return "speaker";
+        if (ic === "input-mouse") return "mouse";
+        if (ic === "input-keyboard") return "keyboard";
+        if (ic === "input-gaming") return "gamepad";
+        if (ic === "video-display" || ic === "computer") return "monitor";
+        if (ic === "multimedia-player") return "music";
+        return "bluetooth";
+    }
 
     function metaFor(d) {
         if (!d) return "";
@@ -62,6 +78,7 @@ Item {
             var st = BluetoothDeviceState.toString(d.state);
             if (st && st.length > 0 && parts.indexOf(st.toLowerCase()) === -1) parts.push(st.toLowerCase());
         }
+        if (d.address && d.address.length) parts.push(d.address);
         return parts.join(" · ");
     }
 
@@ -124,7 +141,12 @@ Item {
     }
 
     onActiveChanged: {
-        if (!active) {
+        if (active) {
+            if (adapter && adapter.enabled) {
+                adapter.discovering = true;
+                scanTimer.restart();
+            }
+        } else {
             scanTimer.stop();
             expandedAddress = "";
             if (adapter && adapter.discovering)
@@ -172,28 +194,15 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 8 * root.s
 
-            Item {
+            Text {
                 anchors.verticalCenter: parent.verticalCenter
-                width: 17 * root.s
-                height: 17 * root.s
-
-                GlyphIcon {
-                    anchors.fill: parent
-                    name: "chevron-left"
-                    color: backArea.containsMouse ? Theme.cream : Theme.iconDim
-                    stroke: 1.8
-                }
-
-                MouseArea {
-                    id: backArea
-                    anchors.fill: parent
-                    anchors.margins: -6 * root.s
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.back()
-                }
+                visible: Flags.showGlyphs
+                text: "歯"
+                color: Theme.cream
+                font.family: Theme.fontJp
+                font.weight: Font.Medium
+                font.pixelSize: 16 * root.s
             }
-
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "BLUETOOTH"
@@ -335,7 +344,7 @@ Item {
                                     anchors.centerIn: parent
                                     width: 15 * root.s
                                     height: 15 * root.s
-                                    name: "bluetooth"
+                                    name: root.iconFor(devItem.modelData)
                                     color: devItem.isConnected ? Theme.vermLit : Theme.iconDim
                                     stroke: 1.7
                                 }
@@ -400,6 +409,17 @@ Item {
                                     s: root.s
                                     kind: "battery"
                                     level: Math.max(0, devItem.battery) / 100
+                                }
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: devItem.isConnected && devItem.battery >= 0
+                                    text: devItem.battery + "%"
+                                    color: Theme.faint
+                                    font.family: Theme.font
+                                    font.pixelSize: 9.5 * root.s
+                                    font.weight: Font.Medium
+                                    font.features: { "tnum": 1 }
                                 }
 
                                 Rectangle {

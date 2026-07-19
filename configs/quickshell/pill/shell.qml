@@ -343,7 +343,7 @@ ShellRoot {
                     if (pill.quickChoosing) {
                         ScreenRec.quickChoosing = false;
                         ScreenRec.quickScreenChoosing = false;
-                    } else if (!pill.linkBack() && !pill.keybindsBack()) {
+                    } else if (!pill.keybindsBack()) {
                         root.close();
                     }
                 }

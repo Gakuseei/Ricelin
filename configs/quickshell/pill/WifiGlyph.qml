@@ -19,11 +19,19 @@ Item {
     property real level: 0
     property bool on: true
 
+    /**
+     * Stroke weight in 24-space units, 0 keeps the legacy screen-constant
+     * weight (2*s px). Pass 1.7 where the glyph sits next to GlyphIcon family
+     * members (their stroke is 1.7 in 24-space), like the hover-pill glance.
+     */
+    property real stroke: 0
+
     implicitWidth: 17 * s
     implicitHeight: 17 * s
 
     readonly property int litCount: !on ? 0 : (level > 0.66 ? 3 : (level > 0.33 ? 2 : (level > 0 ? 1 : 0)))
     readonly property color offColor: on ? Qt.alpha(Theme.iconDim, 0.4) : Qt.alpha(Theme.iconDim, 0.18)
+    readonly property real arcStroke: root.stroke > 0 ? root.stroke : (2 / root.u) * root.s
 
     readonly property real u: Math.min(width, height) / 24
 
@@ -49,21 +57,21 @@ Item {
         ShapePath {
             strokeColor: root.litCount >= 1 ? Theme.iconDim : root.offColor
             fillColor: "transparent"
-            strokeWidth: (2 / root.u) * root.s
+            strokeWidth: root.arcStroke
             capStyle: ShapePath.RoundCap
             PathSvg { path: "M9.17 13.17 A4 4 0 0 1 14.83 13.17" }
         }
         ShapePath {
             strokeColor: root.litCount >= 2 ? Theme.iconDim : root.offColor
             fillColor: "transparent"
-            strokeWidth: (2 / root.u) * root.s
+            strokeWidth: root.arcStroke
             capStyle: ShapePath.RoundCap
             PathSvg { path: "M6.34 10.34 A8 8 0 0 1 17.66 10.34" }
         }
         ShapePath {
             strokeColor: root.litCount >= 3 ? Theme.iconDim : root.offColor
             fillColor: "transparent"
-            strokeWidth: (2 / root.u) * root.s
+            strokeWidth: root.arcStroke
             capStyle: ShapePath.RoundCap
             PathSvg { path: "M3.5 7.5 A12 12 0 0 1 20.5 7.5" }
         }
@@ -90,7 +98,7 @@ Item {
         ShapePath {
             strokeColor: Theme.faint
             fillColor: "transparent"
-            strokeWidth: (1.7 / root.u) * root.s
+            strokeWidth: root.stroke > 0 ? root.stroke : (1.7 / root.u) * root.s
             capStyle: ShapePath.RoundCap
             PathSvg { path: "M4 3 L20 19" }
         }
