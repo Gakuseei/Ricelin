@@ -45,6 +45,10 @@ configs/hypr/scripts/discord-out.sh
 configs/hypr/scripts/discord-mute.sh
 configs/hypr/scripts/sounds/
 
+# Personal machine-only module (loaded via pcall from hyprland.lua) + its pieces
+configs/hypr/local.lua
+configs/hypr/crosshair.lua
+
 # Editor lua language-server config, local only
 configs/hypr/.luarc.json
 
