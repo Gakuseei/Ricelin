@@ -26,7 +26,7 @@ Item {
     readonly property bool focused: srow.surface ? srow.surface.focusRowItem === srow : false
 
     width: parent ? parent.width : 0
-    height: Math.max(textCol.implicitHeight, controlSlot.childrenRect.height) + 26 * srow.s
+    height: Math.max(textCol.implicitHeight, controlSlot.childrenRect.height) + 12 * srow.s
 
     HoverHandler {
         id: srowHover
