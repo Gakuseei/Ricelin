@@ -583,8 +583,8 @@ def _selftest():
         check(env_txt == ENV_BASE + (ENV_NVIDIA if nvidia else ""),
               f"env.lua matches base{' + nvidia' if nvidia else ' (nvidia dropped)'}")
         gh = (root / "ghostty" / "config").read_text()
-        check(str(Path.home()) + "/.cache/ricelin/ghostty-colors" in gh,
-              "ghostty config-file points at the real home")
+        check("?~/.cache/ricelin/ghostty-colors" in gh,
+              "ghostty config-file uses the home-relative colors include")
         idletxt = (root / "hypr" / "hypridle.conf").read_text()
         check(str(Path.home()) + "/.config/hypr/scripts/lock.sh" in idletxt,
               "hypridle lock_cmd points at the real home")
