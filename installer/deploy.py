@@ -62,6 +62,7 @@ PRESERVED = [
     "hypr/modules/stash-apps.lua",
     "hypr/modules/spaces.lua",
     "hypr/hypridle.conf",
+    "fish/config.fish",
 ]
 
 # The single auto monitor that replaces a user's hand-tuned layout. Their real
@@ -450,8 +451,11 @@ def neutralize(config_root=CONFIG_ROOT, apply=False, src=CONFIGS):
         if apply and count:
             idle.write_text(text.replace("/home/erik", home))
 
+    # Strip the portability blockers only from a pristine shipped fish. A user's
+    # own config.fish (carried across a re-deploy via PRESERVED, or three-way
+    # merged by the updater) is never rewritten by this step.
     fish = config_root / "fish" / "config.fish"
-    if fish.is_file():
+    if fish.is_file() and _pristine("fish/config.fish", config_root, src):
         cleaned, removed = _strip_fish(fish.read_text())
         actions.append({"step": "fish", "path": str(fish), "stripped": removed})
         if apply and removed:
@@ -672,6 +676,15 @@ def _selftest():
               "second neutralize left the user hypridle.conf alone")
         check((root / "hypr" / "modules" / "monitors.lua").read_text() == mon_user,
               "user monitors.lua survived re-deploy + neutralize")
+        fish_user = "source /usr/share/cachyos-fish-config\nalias ll 'ls -la'\n"
+        (root / "fish" / "config.fish").write_text(fish_user)
+        plan3 = deploy(config_root=root, apply=True)
+        fish_act = next(a for a in plan3 if a["item"] == "fish")
+        check("fish/config.fish" in fish_act["preserved"],
+              "re-deploy plans to carry the user fish across the replace")
+        neutralize(config_root=root, apply=True)
+        check((root / "fish" / "config.fish").read_text() == fish_user,
+              "user config.fish survived re-deploy + neutralize, cachyos line kept")
         check((root / "hypr" / "scripts" / "lock.sh").exists(),
               "non-protected code files still refreshed on re-deploy")
 
