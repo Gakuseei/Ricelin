@@ -260,11 +260,9 @@ ShellRoot {
             readonly property bool modal: pill.authPending ? false : (surfaceOpen || pill.held || pill.quickChoosing)
 
             /**
-             * True while this monitor's active workspace holds a real
-             * fullscreen window. The pill then retracts off the top edge and
-             * the whole layer becomes click-through so fullscreen content owns
-             * the screen. Maximize is suppressed globally, so only true
-             * fullscreen ever flips this.
+             * True while this monitor's active workspace reports a fullscreen
+             * client. Whether the pill reacts by docking as a bar or retracting
+             * off the top edge is decided by `monBar`/`monRetract` below.
              */
             readonly property bool monFullscreen: {
                 var mons = Hyprland.monitors.values;
@@ -277,6 +275,40 @@ ShellRoot {
                 }
                 return false;
             }
+
+            /**
+             * True while a client on this monitor's active workspace is in real
+             * fullscreen (fullscreenClient >= 2; 1 is only maximize). The
+             * workspace flag above cannot tell the two apart, so the toplevel
+             * IPC objects are scanned for the per-window state.
+             */
+            readonly property bool monTrueFs: {
+                var mons = Hyprland.monitors.values;
+                for (var i = 0; i < mons.length; i++) {
+                    if (mons[i].name !== modelData.name)
+                        continue;
+                    var ws = mons[i].activeWorkspace;
+                    if (!ws)
+                        return false;
+                    var tls = Hyprland.toplevels.values;
+                    for (var j = 0; j < tls.length; j++) {
+                        var o = tls[j] ? tls[j].lastIpcObject : null;
+                        if (o && o.workspace && o.workspace.id === ws.id
+                                && ((o.fullscreenClient || 0) >= 2 || (o.fullscreen || 0) >= 2))
+                            return true;
+                    }
+                    return false;
+                }
+                return false;
+            }
+
+            /**
+             * Docked fullscreen bar replaces the retract only for real fullscreen
+             * with the setting on. Game mode keeps its own docked bar and the old
+             * retract, and a mere maximize always retracts as before.
+             */
+            readonly property bool monBar: Flags.fullscreenBar && monTrueFs && !Flags.gameMode
+            readonly property bool monRetract: monFullscreen && !monBar
 
             onMonFullscreenChanged: if (monFullscreen) {
                 if (root.openMon === modelData.name) root.close();
@@ -293,7 +325,7 @@ ShellRoot {
 
             anchors { top: true; left: true; right: true; bottom: true }
 
-            mask: monFullscreen ? hiddenRegion : (modal ? fullRegion : pillRegion)
+            mask: monRetract ? hiddenRegion : (modal ? fullRegion : pillRegion)
             Region { id: hiddenRegion }
             Region {
                 id: pillRegion
@@ -413,7 +445,7 @@ ShellRoot {
                 Pill {
                     id: pill
                     anchors.top: parent.top
-                    anchors.topMargin: pill.mode === "game" ? 0 : overlay.topGap
+                    anchors.topMargin: (pill.mode === "game" || pill.mode === "bar") ? 0 : overlay.topGap
                     anchors.horizontalCenter: parent.horizontalCenter
 
                     Behavior on anchors.topMargin {
@@ -428,8 +460,9 @@ ShellRoot {
                     barWindow: overlay
                     surface: overlay.surface
                     forcePinned: root.peekMon === overlay.modelData.name
+                    fsBar: overlay.monBar
 
-                    opacity: overlay.monFullscreen ? 0 : 1
+                    opacity: overlay.monRetract ? 0 : 1
                     Behavior on opacity {
                         NumberAnimation {
                             duration: Motion.morph
@@ -438,7 +471,7 @@ ShellRoot {
                         }
                     }
                     transform: Translate {
-                        y: overlay.monFullscreen ? -(pill.height + overlay.topGap) : 0
+                        y: overlay.monRetract ? -(pill.height + overlay.topGap) : 0
                         Behavior on y {
                             NumberAnimation {
                                 duration: Motion.morph

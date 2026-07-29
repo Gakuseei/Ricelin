@@ -31,6 +31,8 @@ Item {
     property bool hovered: false
     property bool pinned: false
     property bool forcePinned: false
+    /** Docked as the slim fullscreen bar on this monitor (shell decides per monitor). */
+    property bool fsBar: false
 
     readonly property bool held: pinned || forcePinned
     readonly property bool mixerOpen: surface === "mixer"
@@ -246,7 +248,8 @@ Item {
         : (quickCounting ? "quickCount"
         : (osdActive && !held ? "osd"
         : (toastActive && !held ? "toast"
-        : (expanded ? "hover" : "rest")))))))
+        : (expanded ? "hover"
+        : (fsBar ? "bar" : "rest"))))))))
 
     /**
      * AppImage drag-install state, live only while a file hovers the resting pill.
@@ -527,7 +530,7 @@ Item {
         precision: Flags.clockSeconds ? SystemClock.Seconds : SystemClock.Minutes
     }
 
-    property real morphRadius: (mode === "rest" || mode === "hover" || mode === "game") ? restCorner : openCorner
+    property real morphRadius: (mode === "rest" || mode === "hover" || mode === "game" || mode === "bar") ? restCorner : openCorner
 
     /**
      * Target geometry for the non-surface morph modes. Surface sizes come from
@@ -542,7 +545,8 @@ Item {
         quickChoose: () => Qt.size(quickChooseW, quickChooseH),
         quickCount:  () => Qt.size(quickCountW, quickCountH),
         dragOver:    () => Qt.size(dragOverW, dragOverH),
-        game:        () => Qt.size(gameW, gameH)
+        game:        () => Qt.size(gameW, gameH),
+        bar:         () => Qt.size(gameW, gameH)
     })
 
     readonly property size targetSize: {
@@ -685,10 +689,11 @@ Item {
         anchors.fill: parent
 
         /**
-         * Corner flatness rides the morph curve so docking into the game bar
-         * squares the corners as one continuous shape change instead of a snap.
+         * Corner flatness rides the morph curve so docking into a flush top
+         * bar (game mode or fullscreen) squares the corners as one continuous
+         * shape change instead of a snap.
          */
-        property real gameFlat: pill.mode === "game" ? 1 : 0
+        property real gameFlat: (pill.mode === "game" || pill.mode === "bar") ? 1 : 0
         Behavior on gameFlat { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
 
         radius: pill.morphRadius
@@ -1245,10 +1250,48 @@ Item {
         }
     }
 
+    /**
+     * Fullscreen-bar face: the pill docks into the same flush top bar as game
+     * mode while a real fullscreen window owns this monitor, carrying the clock
+     * and this monitor's workspace dots. Hovering or tapping it grows the normal
+     * hover pill out of the bar above the fullscreen content.
+     */
+    Item {
+        id: fsBar
+        anchors.fill: parent
+        enabled: pill.mode === "bar"
+        opacity: pill.mode === "bar" ? Math.pow(pill.morphCloseness, 1.2) : 0
+        visible: opacity > 0.01
+
+        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+
+        Text {
+            anchors.centerIn: parent
+            text: clock.hhmm
+            color: Theme.cream
+            font.family: Theme.font
+            font.pixelSize: 16 * pill.s
+            font.weight: Font.DemiBold
+            font.features: ({ "tnum": 1 })
+        }
+
+        Workspaces {
+            anchors.right: parent.right
+            anchors.rightMargin: 18 * pill.s
+            anchors.verticalCenter: parent.verticalCenter
+            width: implicitWidth
+            height: implicitHeight
+            screenName: pill.screenName
+            s: pill.s
+            gap: 8 * pill.s
+            enabled: pill.mode === "bar"
+        }
+    }
+
     Item {
         id: rest
         anchors.fill: parent
-        opacity: (pill.expanded || pill.dragActive || pill.mode === "game" || pill.mode === "toast" || pill.mode === "osd" || pill.mode === "quickChoose" || pill.mode === "quickCount") ? 0 : Math.pow(pill.morphCloseness, 1.5)
+        opacity: (pill.expanded || pill.dragActive || pill.mode === "game" || pill.mode === "bar" || pill.mode === "toast" || pill.mode === "osd" || pill.mode === "quickChoose" || pill.mode === "quickCount") ? 0 : Math.pow(pill.morphCloseness, 1.5)
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: pill.mode === "rest" ? Motion.fast : Math.round(260 * Motion.mult) } }
 
