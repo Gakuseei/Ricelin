@@ -69,6 +69,36 @@ def _pm_install(family, pkg):
     return ["sudo", pm or "pkg", "install", pkg]
 
 
+def _pm_install_many(family, pkgs):
+    """One native install step for several packages on this family."""
+    pm = PM.get(family, "")
+    if pm == "pacman":
+        return ["sudo", "pacman", "-S", "--needed", "--noconfirm"] + pkgs
+    if pm == "apt-get":
+        return ["sudo", "apt-get", "install", "-y"] + pkgs
+    if pm == "dnf":
+        return ["sudo", "dnf", "install", "-y"] + pkgs
+    if pm == "zypper":
+        return ["sudo", "zypper", "--non-interactive", "install"] + pkgs
+    return ["sudo", pm or "pkg", "install"] + pkgs
+
+
+def _swww_build_deps(family):
+    """
+    The native build deps the swww source build links against: a C toolchain,
+    pkg-config and the liblz4 headers its common crate probes via pkg-config.
+    Without them the cargo build panics on a bare box before compiling anything.
+    """
+    deps = {
+        "arch": ["base-devel", "pkgconf", "lz4"],
+        "debian": ["build-essential", "pkg-config", "liblz4-dev"],
+        "fedora": ["gcc", "pkgconf-pkg-config", "lz4-devel"],
+        "suse": ["gcc", "pkg-config", "liblz4-devel"],
+    }
+    return {"desc": "install the C toolchain, pkg-config and the liblz4 headers swww links against",
+            "run": _pm_install_many(family, deps.get(family, deps["debian"]))}
+
+
 def _cargo(pkg, family):
     """
     Install a Rust tool, bootstrapping rustup first when cargo is missing. The
@@ -86,6 +116,7 @@ def _cargo(pkg, family):
     if crate == "swww":
         release = os.path.join(BUILD_DIR, "swww", "target", "release")
         return [
+            _swww_build_deps(family),
             _clone_step("no swww crate on crates.io, clone the source from github",
                         "https://github.com/LGFae/swww", "swww"),
             {"desc": "make sure cargo is here, then build swww and swww-daemon (release)",
@@ -302,6 +333,10 @@ def _selftest():
     swww = steps_for("cargo", {"id": "swww"}, "debian")
     assert any("https://github.com/LGFae/swww" in s.get("shell", "") for s in swww)
     assert any("cargo build --release" in s.get("shell", "") for s in swww)
+    deps = next(s for s in swww if "liblz4" in s.get("desc", ""))
+    assert deps["run"][:3] == ["sudo", "apt-get", "install"] and "liblz4-dev" in deps["run"]
+    fed_deps = next(s for s in steps_for("cargo", {"id": "swww"}, "fedora") if "liblz4" in s.get("desc", ""))
+    assert "lz4-devel" in fed_deps["run"]
     install_sh = next(s["shell"] for s in swww if "install -m755" in s.get("shell", ""))
     assert "swww/target/release/swww" in install_sh and "swww-daemon" in install_sh
     assert not any(s.get("run", [None])[0] == "cargo" for s in swww)
