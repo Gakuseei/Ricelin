@@ -18,10 +18,15 @@ import "Singletons"
  * spec, evals the new one through `hl.monitor` and arms a detached 12s watchdog
  * that reverts if the change is not confirmed — so a mode that blanks the
  * screen heals itself even if the pill dies. A confirmed Keep clears the
- * watchdog and persists by rewriting only that output's block in monitors.lua.
- * A main swap needs no revert: on Apply it exchanges the two workspace_rule
- * loops' monitors in monitors.lua (ground truth for who is main: the loop that
- * carries workspace 1) and marks the output primary for XWayland via xrandr.
+ * watchdog and persists by rewriting that output's block in monitors.lua, or
+ * appending one when the file does not know the output yet (port swaps rename
+ * outputs, so a stale file must never swallow a save). Leaving the surface
+ * with a change still pending reverts it right away instead of letting the
+ * watchdog fire later with no countdown visible. A main swap needs no revert:
+ * on Apply it points the two workspace_rule loops at the two real outputs
+ * (ground truth for who is main: the loop that carries workspace 1), drags
+ * the live workspaces to their new monitors and marks the output primary for
+ * XWayland via xrandr.
  *
  * monitors.lua is held as in-memory text after the first read and every rewrite
  * goes through it, so a main swap and a later Keep in the same session never
@@ -67,6 +72,10 @@ SettingsSurface {
             cancelCountdown();
             readProc.running = true;
         } else {
+            if (root.pendingOut.length > 0) {
+                revertProc.out = root.pendingOut;
+                revertProc.running = true;
+            }
             cancelCountdown();
             openPicker = "";
             focusRowItem = null;
@@ -248,24 +257,30 @@ SettingsSurface {
         return "";
     }
 
-    /**
-     * Swaps the monitor names between the two workspace_rule loops, leaving
-     * every other byte of the file untouched (loop style, ranges, whitespace).
-     * The later name is replaced first so the earlier offset stays valid.
-     */
-    function swapWorkspaceLoops(text) {
-        var re = /(for\s+i\s*=\s*\d+\s*,\s*\d+\s+do\s*\n\s*hl\.workspace_rule\(\{[^}]*monitor\s*=\s*")([^"]+)"/g;
-        var hits = [];
-        var m;
-        while ((m = re.exec(text)) !== null)
-            hits.push({ start: m.index + m[1].length, name: m[2] });
-        if (hits.length !== 2)
-            return { ok: false, text: text };
-        var a = hits[0];
-        var b = hits[1];
-        return { ok: true, text: text.slice(0, a.start) + b.name
-            + text.slice(a.start + a.name.length, b.start) + a.name
-            + text.slice(b.start + b.name.length) };
+    function applyMainSwap(name) {
+        var other = otherMonitor(name);
+        if (!other) {
+            note = "Set as main needs two connected monitors.";
+            return;
+        }
+        var res = Mon.setWorkspaceLoops(luaNow(), name, other.name);
+        card.pendingMain = false;
+        if (!res.ok) {
+            note = "Could not rewrite the workspace rules in monitors.lua.";
+            return;
+        }
+        luaText = res.text;
+        writer.setText(res.text);
+        mainName = mainFromLua(res.text);
+        xrandrProc.out = name;
+        xrandrProc.running = true;
+        wsMoveProc.mainOut = name;
+        wsMoveProc.otherOut = other.name;
+        wsMoveProc.mainRange = res.mainRange;
+        wsMoveProc.otherRange = res.otherRange;
+        wsMoveProc.running = true;
+        if (!card.dirty)
+            note = "Saved. " + name + " is the main monitor now.";
     }
 
     Process {
@@ -295,13 +310,40 @@ SettingsSurface {
         command: ["sh", "-c",
             "sh \"$1\" apply \"$2\" \"$3\" \"$4\" \"$5\"",
             "sh", root.helper, out, mode, position, String(scale)]
-        onExited: root.startCountdown()
+        onExited: (exitCode) => {
+            if (exitCode === 0) {
+                root.startCountdown();
+            } else {
+                root.pendingOut = "";
+                root.note = "Apply failed — the helper could not snapshot the current mode.";
+            }
+        }
     }
 
     Process {
         id: keepProc
         property string out: ""
         command: ["sh", "-c", "sh \"$1\" keep \"$2\"", "sh", root.helper, out]
+    }
+
+    Process {
+        id: revertProc
+        property string out: ""
+        command: ["sh", "-c", "sh \"$1\" revert \"$2\"", "sh", root.helper, out]
+    }
+
+    /** Drags each live workspace onto its new monitor after a main swap. */
+    Process {
+        id: wsMoveProc
+        property string mainOut: ""
+        property string otherOut: ""
+        property var mainRange: [1, 5]
+        property var otherRange: [6, 10]
+        command: ["sh", "-c",
+            "for i in $(seq \"$1\" \"$2\"); do hyprctl dispatch moveworkspacetomonitor \"$i\" \"$3\" >/dev/null 2>&1; done; " +
+            "for i in $(seq \"$4\" \"$5\"); do hyprctl dispatch moveworkspacetomonitor \"$i\" \"$6\" >/dev/null 2>&1; done",
+            "sh", String(mainRange[0]), String(mainRange[1]), mainOut,
+            String(otherRange[0]), String(otherRange[1]), otherOut]
     }
 
     /** XWayland primary flag; runs only when a main swap is applied. */
@@ -337,22 +379,6 @@ SettingsSurface {
         applyProc.running = true;
     }
 
-    function applyMainSwap(name) {
-        var res = swapWorkspaceLoops(luaNow());
-        card.pendingMain = false;
-        if (!res.ok) {
-            note = "Could not rewrite the workspace rules in monitors.lua.";
-            return;
-        }
-        luaText = res.text;
-        writer.setText(res.text);
-        mainName = mainFromLua(res.text);
-        xrandrProc.out = name;
-        xrandrProc.running = true;
-        if (!card.dirty)
-            note = "Saved. " + name + " is the main monitor now.";
-    }
-
     function startCountdown() {
         root.countdown = 12;
         countTimer.start();
@@ -369,11 +395,13 @@ SettingsSurface {
         keepProc.out = root.pendingOut;
         keepProc.running = true;
         var res = Mon.setMonitor(luaNow(), applyProc.out, applyProc.mode, applyProc.position, applyProc.scale);
-        if (res.ok) {
-            luaText = res.text;
-            writer.setText(res.text);
-        }
         cancelCountdown();
+        if (!res.ok) {
+            root.note = "Live for now, but monitors.lua was not written: " + res.error;
+            return;
+        }
+        luaText = res.text;
+        writer.setText(res.text);
         root.quietRead = true;
         readProc.running = true;
         root.note = "Saved. " + applyProc.out + " set to " + applyProc.mode + " · scale " + applyProc.scale;
