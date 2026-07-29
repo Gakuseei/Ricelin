@@ -333,8 +333,10 @@ PillSurface {
 
     /**
      * Commits an inline name or password edit, ignoring a password shorter than
-     * the 8-character WPA2 minimum. A live hotspot is re-applied so the change
-     * takes effect at once.
+     * the 8-character WPA2 minimum. The connection profile is written either
+     * way, so an edit made while the hotspot is down survives a pill restart;
+     * a live hotspot is additionally re-applied so the change takes effect at
+     * once. The NM profile stays the single source of truth for both fields.
      */
     function commitHotspotEdit() {
         if (hsEdit === "name") {
@@ -347,6 +349,28 @@ PillSurface {
         hsEdit = "";
         if (hsActive)
             applyHotspot();
+        else
+            saveHotspot();
+    }
+
+    /**
+     * Persists name and password into the RicelinHotspot profile without
+     * bringing it up, creating the profile on first edit. A missing or short
+     * password is generated here, since a WPA profile with an empty psk would
+     * be broken; the field shows the generated value right away.
+     */
+    function saveHotspot() {
+        if (hsPw.length < 8)
+            hsPw = generatePw();
+        hsSaveProc.command = ["sh", "-c",
+            'c="' + hsCon + '"; '
+            + 'if nmcli -t connection show "$c" >/dev/null 2>&1; then '
+            +   'nmcli connection modify "$c" 802-11-wireless.ssid "$1" 802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.psk "$2"; '
+            + 'else '
+            +   'nmcli connection add type wifi ifname "$3" con-name "$c" autoconnect no 802-11-wireless.ssid "$1" 802-11-wireless.mode ap 802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.psk "$2" ipv4.method shared; '
+            + 'fi',
+            "sh", hsName, hsPw, hsIface];
+        hsSaveProc.running = true;
     }
 
     /**
@@ -367,6 +391,11 @@ PillSurface {
             root.hsBusy = false;
             root.refreshHotspot();
         }
+    }
+
+    Process {
+        id: hsSaveProc
+        onExited: root.refreshHotspot()
     }
 
     Process {
