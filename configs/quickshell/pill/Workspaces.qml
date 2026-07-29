@@ -12,12 +12,11 @@ import "Singletons"
  * marker tracks the monitor's live active workspace name from the Hyprland
  * model.
  *
- * The dot range comes from this monitor's workspace rules ([[Workspacerules]]),
- * so a rule-driven setup (e.g. monitors.lua splitting 1-5 / 6-10 across two
- * screens) always shows every assigned dot. A setup with no rules (the usual
- * single-monitor case) falls back to the workspaces Hyprland currently has on
- * this monitor plus the active one, so dots still appear and grow as new
- * workspaces are visited.
+ * The dot range unions this monitor's workspace rules ([[Workspacerules]]) with
+ * the workspaces Hyprland currently has on it, so a rule-driven setup (e.g.
+ * monitors.lua splitting 1-5 / 6-10 across two screens) always shows every
+ * assigned dot while a workspace outside the rules (r+1 past the last ruled
+ * one) still appears instead of vanishing from the strip.
  */
 Item {
     id: workspaces
@@ -29,12 +28,18 @@ Item {
     property real gap: 4 * s
 
     readonly property var range: {
-        var ruled = Workspacerules.byMonitor[screenName];
-        if (ruled && ruled.length)
-            return ruled;
-
         var out = [];
         var seen = ({});
+        var ruled = Workspacerules.byMonitor[screenName];
+        if (ruled && ruled.length) {
+            for (var r = 0; r < ruled.length; r++) {
+                if (!seen[ruled[r]]) {
+                    seen[ruled[r]] = true;
+                    out.push(ruled[r]);
+                }
+            }
+        }
+
         var wss = Hyprland.workspaces.values;
         for (var i = 0; i < wss.length; i++) {
             var w = wss[i];
