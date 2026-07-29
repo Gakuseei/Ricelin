@@ -99,6 +99,45 @@ def _swww_build_deps(family):
             "run": _pm_install_many(family, deps.get(family, deps["debian"]))}
 
 
+def _dotool_build_deps(family):
+    """The native build deps dotool's build.sh wants: go, scdoc and libxkbcommon."""
+    deps = {
+        "arch": ["go", "scdoc", "libxkbcommon"],
+        "debian": ["golang", "scdoc", "libxkbcommon-dev"],
+        "fedora": ["golang", "scdoc", "libxkbcommon-devel"],
+        "suse": ["go", "scdoc", "libxkbcommon-devel"],
+    }
+    return {"desc": "install go, scdoc and the libxkbcommon headers dotool builds against",
+            "run": _pm_install_many(family, deps.get(family, deps["debian"]))}
+
+
+# The Zig the ghostty tip pins. Bumping this means checking the version ghostty's
+# build.zig.zon asks for; the ensure step below rejects any other zig on PATH.
+ZIG_VERSION = "0.15.2"
+
+
+def _zig_ensure_step():
+    """
+    One shell step that guarantees the pinned Zig: a `zig` on PATH with exactly
+    ZIG_VERSION is used as-is, anything else pulls the official tarball into
+    ~/.local/share and links the binary into ~/.local/bin. No root, works on
+    every family, and never trusts a distro package's version lottery.
+    """
+    name = "zig-$(uname -m)-linux-" + ZIG_VERSION
+    url = "https://ziglang.org/download/" + ZIG_VERSION + "/" + name + ".tar.xz"
+    return {"desc": "make sure the Zig %s ghostty pins is here (PATH zig wins, else official tarball)" % ZIG_VERSION,
+            "shell":
+            'v=$(zig version 2>/dev/null || true); '
+            'if [ "$v" != "%s" ]; then '
+            'a="$(mktemp --suffix=.tar.xz)" && '
+            'curl -fsSL -o "$a" %s && '
+            'mkdir -p "$HOME/.local/share" "$HOME/.local/bin" && '
+            'rm -rf "$HOME/.local/share/%s" && '
+            'tar -xf "$a" -C "$HOME/.local/share" && rm -f "$a" && '
+            'ln -sf "$HOME/.local/share/%s/zig" "$HOME/.local/bin/zig"; '
+            'fi' % (ZIG_VERSION, shlex.quote(url), name, name)}
+
+
 def _cargo(pkg, family):
     """
     Install a Rust tool, bootstrapping rustup first when cargo is missing. The
@@ -150,12 +189,13 @@ def _ghostty(pkg, family):
              "run": ["sudo", "dnf", "install", "-y", "ghostty"]},
         ]
     return [
+        _zig_ensure_step(),
         _clone_step("no ghostty package here, clone the source (the build needs the exact Zig it pins)",
                     "https://github.com/ghostty-org/ghostty", "ghostty", extra_args="--depth 1 "),
         {"desc": "compile a release build with Zig",
-         "shell": _in_build("ghostty", "zig build -Doptimize=ReleaseFast")},
+         "shell": 'export PATH="$HOME/.local/bin:$PATH"; ' + _in_build("ghostty", "zig build -Doptimize=ReleaseFast")},
         {"desc": "install ghostty into /usr",
-         "shell": _in_build("ghostty", "sudo zig build -p /usr -Doptimize=ReleaseFast")},
+         "shell": _in_build("ghostty", 'sudo env "PATH=$HOME/.local/bin:$PATH" zig build -p /usr -Doptimize=ReleaseFast')},
     ]
 
 
@@ -169,6 +209,7 @@ def _dotool(pkg, family):
     rule = ('KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", '
             'MODE="0660", OPTIONS+="static_node=uinput"')
     return [
+        _dotool_build_deps(family),
         _clone_step("no dotool package off arch, clone it from sourcehut",
                     "https://git.sr.ht/~geb/dotool", "dotool"),
         {"desc": "build the binaries (needs go, libxkbcommon-dev and scdoc)",
@@ -320,6 +361,17 @@ def _selftest():
     deb = steps_for("ghostty", {"id": "ghostty"}, "debian")
     assert any("terra" in s.get("shell", "").lower() for s in fed)
     assert any("zig build" in s.get("shell", "") for s in deb)
+    zig = next(s for s in deb if "ziglang.org" in s.get("shell", ""))
+    assert ZIG_VERSION in zig["shell"] and "zig version" in zig["shell"]
+    inst = next(s for s in deb if "-p /usr" in s.get("shell", ""))
+    assert "sudo env" in inst["shell"], "sudo step must carry PATH past sudo"
+
+    # dotool pulls its build deps natively before build.sh runs
+    dot = steps_for("dotool", {"id": "dotool"}, "debian")
+    ddeps = next(s for s in dot if "scdoc" in s.get("desc", ""))
+    assert "libxkbcommon-dev" in ddeps["run"] and "golang" in ddeps["run"]
+    fdot = next(s for s in steps_for("dotool", {"id": "dotool"}, "fedora") if "scdoc" in s.get("desc", ""))
+    assert "libxkbcommon-devel" in fdot["run"]
 
     # cargo bootstraps rustup and sources ~/.cargo/env in the same shell as the
     # build, so a plain crate is one step that ends in `cargo install <crate>`.

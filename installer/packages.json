@@ -46,7 +46,7 @@
       "names": { "arch": "hypridle", "debian": "hypridle", "fedora": "hypridle", "suse": "hypridle" },
       "repo": { "fedora": "copr:solopasha/hyprland" }, "fallback": null },
 
-    { "id": "hyprsunset", "group": "core", "required": true, "desc": "Warms the screen for the night-light filter", "aur": false,
+    { "id": "hyprsunset", "group": "core", "required": false, "desc": "Warms the screen for the night-light filter", "aur": false,
       "names": { "arch": "hyprsunset", "debian": "hyprsunset", "fedora": "hyprsunset", "suse": "hyprsunset" },
       "repo": { "fedora": "copr:solopasha/hyprland" }, "fallback": null },
 

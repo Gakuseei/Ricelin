@@ -220,6 +220,7 @@ def _build_plan(manifest, info, choices):
         rows = [r for r in rows if r["group"] == "core" or r["id"] in optional]
 
     repos, native, aur, fb, skipped = [], [], [], [], []
+    optional_native = set()
     for r in rows:
         if r["action"] == "skip":
             continue
@@ -235,7 +236,10 @@ def _build_plan(manifest, info, choices):
         if r["repo"] and r["repo"] not in repos:
             repos.append(r["repo"])
         (aur if r["aur"] else native).append(r["target"])
-    return {"repos": repos, "native": native, "aur": aur, "fallbacks": fb, "skipped": skipped}
+        if not r["aur"] and not r["required"]:
+            optional_native.add(r["target"])
+    return {"repos": repos, "native": native, "aur": aur, "fallbacks": fb,
+            "skipped": skipped, "optional_native": optional_native}
 
 
 def _aur_install_argv(names, family, aur_choice):
@@ -650,6 +654,9 @@ def run(args):
                     for name in plan["native"]:
                         argv = pkg.privileged(pkg.install_argv([name], family), family)
                         ok, detail = _run(argv, dry, env=pkg.INSTALL_ENV)
+                        if not ok and name in plan["optional_native"]:
+                            notes.append(f"Optional package {name} did not install, skipped.")
+                            continue
                         record(ok, detail, f"Install {name}",
                                "Install this one package by hand, then re-run.")
 
@@ -668,22 +675,26 @@ def run(args):
                         record(ok, detail, f"Install AUR {name}",
                                "Build this AUR package by hand, then re-run.")
 
-            # f. the fallbacks, each handler's steps in order.
+            # f. the fallbacks, each handler's steps in order. A failed step ends
+            #    that fallback: later steps build on it, and one attention entry
+            #    per package beats a doubled failure label.
             for fid, handler, pkgdict in plan["fallbacks"]:
                 for step in fallbacks.steps_for(handler, pkgdict, family):
                     if "run" in step:
                         ok, detail = _run(step["run"], dry)
                     else:
                         ok, detail = _shell(step["shell"], dry)
-                    record(ok, detail, f"Fallback {fid} ({handler})",
-                           "Follow the project's own install steps for this one.")
+                    if not ok:
+                        record(ok, detail, f"Fallback {fid} ({handler})",
+                               "Follow the project's own install steps for this one.")
+                        break
 
             # g. wire up uinput on every family, the dotool handler's last steps.
             #    Skipped only when the dotool fallback already ran them (off Arch),
             #    so uinput ends up set up everywhere with no double work.
             dotool_fb = any(handler == "dotool" for _, handler, _ in plan["fallbacks"])
             if not dotool_fb:
-                for step in fallbacks.steps_for("dotool", {"id": "dotool"}, family)[3:]:
+                for step in fallbacks.steps_for("dotool", {"id": "dotool"}, family)[4:]:
                     if "run" in step:
                         ok, detail = _run(step["run"], dry)
                     else:
@@ -704,10 +715,14 @@ def run(args):
                 ok, detail = _run(
                     ["sudo", "systemctl", "enable", "--now", "bluetooth.service"], dry)
                 record(ok, detail, "Enable bluetooth", "Enable bluetooth.service yourself.")
-                ok, detail = _run(
-                    ["systemctl", "--user", "enable", "--now", "hyprsunset.service"], dry)
-                record(ok, detail, "Enable night light",
-                       "Run: systemctl --user enable --now hyprsunset.service")
+                if shutil.which("hyprsunset"):
+                    ok, detail = _run(
+                        ["systemctl", "--user", "enable", "--now", "hyprsunset.service"], dry)
+                    record(ok, detail, "Enable night light",
+                           "Run: systemctl --user enable --now hyprsunset.service")
+                else:
+                    notes.append("hyprsunset is not installed, night light left off. "
+                                 "Install it and run: systemctl --user enable --now hyprsunset.service")
             else:
                 notes.extend(_service_note(info["init"]))
 
