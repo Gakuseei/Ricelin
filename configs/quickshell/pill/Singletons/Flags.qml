@@ -44,7 +44,6 @@ Singleton {
     property alias idleSuspendMin: adapter.idleSuspendMin
     property alias weatherCity: adapter.weatherCity
     property alias musicViz: adapter.musicViz
-    property alias fullscreenBar: adapter.fullscreenBar
     property alias gameMode: adapter.gameMode
     property alias gamePrevDnd: adapter.gamePrevDnd
     property alias gamePrevViz: adapter.gamePrevViz
@@ -106,8 +105,6 @@ Singleton {
             property int idleSuspendMin: 0
             property string weatherCity: ""
             property bool musicViz: true
-            /** True fullscreen docks the pill as a slim top bar instead of retracting it off the screen edge. */
-            property bool fullscreenBar: true
             property bool gameMode: false
             property bool gamePrevDnd: false
             property bool gamePrevViz: true

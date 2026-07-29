@@ -72,7 +72,6 @@ SettingsSurface {
             r.push({ item: appGapRow, kind: "scrub", bump: function (d) { appGapScrub.bump(d); } });
             r.push({ item: pillOpRow, kind: "scrub", bump: function (d) { pillOpScrub.bump(d); } });
             r.push({ item: pillBlurRow, kind: "toggle", get: function () { return Flags.pillBlur; }, set: function (v) { Flags.pillBlur = v; root.applyPillBlur(v); } });
-            r.push({ item: pillFsBarRow, kind: "toggle", get: function () { return Flags.fullscreenBar; }, set: function (v) { Flags.fullscreenBar = v; } });
         }
         return r;
     }
@@ -908,17 +907,6 @@ SettingsSurface {
                         Flags.pillBlur = !Flags.pillBlur;
                         root.applyPillBlur(Flags.pillBlur);
                     }
-                }
-            }
-
-            FieldRow {
-                id: pillFsBarRow
-                label: "Fullscreen bar"
-                caption: "Fullscreen docks pill as slim top bar. Off retracts it."
-                LinkToggle {
-                    s: root.s
-                    on: Flags.fullscreenBar
-                    onToggled: Flags.fullscreenBar = !Flags.fullscreenBar
                 }
             }
 
