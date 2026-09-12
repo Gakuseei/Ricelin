@@ -126,7 +126,10 @@ def enable_repo_argv(repo, family):
     dnf plugin that ships the copr subcommand (absent on a minimal Fedora) then
     enables the repo; obs adds the repo then refreshes to import its signing key;
     ppa applies only on an Ubuntu-like box and returns [] on plain Debian, where
-    the package must come from the distro's own archive instead.
+    the package must come from the distro's own archive instead; overlay pulls
+    eselect-repository, enables the overlay unless portage already knows it
+    (eselect exits 1 on a repeat enable, which would read as a failed step on
+    every re-run), then syncs just that one overlay.
 
     The copr subcommand lives in a different package across the dnf split:
     dnf-plugins-core on dnf4 (Fedora <=40) and dnf5-plugins on dnf5 (Fedora 41+).
@@ -160,7 +163,8 @@ def enable_repo_argv(repo, family):
         name = repo[len("overlay:"):]
         return [
             ["emerge", "--noreplace", "app-eselect/eselect-repository"],
-            ["eselect", "repository", "enable", name],
+            ["sh", "-c", f"portageq get_repo_path / {name} >/dev/null 2>&1 || "
+                         f"eselect repository enable {name}"],
             ["emerge", "--sync", name],
         ]
     if repo.startswith("obs:") and family == "suse":
@@ -363,8 +367,10 @@ def _selftest():
     checks += 5
 
     assert install_argv(["gui-wm/hyprland"], "gentoo") == ["emerge", "--noreplace", "gui-wm/hyprland"]
-    assert enable_repo_argv("overlay:guru", "gentoo")[1:] == [
-        ["eselect", "repository", "enable", "guru"], ["emerge", "--sync", "guru"]]
+    guru = enable_repo_argv("overlay:guru", "gentoo")
+    assert guru[1] == ["sh", "-c", "portageq get_repo_path / guru >/dev/null 2>&1 || "
+                                   "eselect repository enable guru"]
+    assert guru[2] == ["emerge", "--sync", "guru"]
     kw, use = portage_lines({"gui-wm/hyprland": "overlay:hyproverlay",
                              "gui-apps/quickshell": "overlay:guru", "app-shells/fish": None,
                              "app-shells/zoxide": None, "media-sound/cava": None})
