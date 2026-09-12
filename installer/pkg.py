@@ -216,6 +216,7 @@ GENTOO_DEPS = {
     "gui-wm/hyprland": {"use": ["gui-wm/hyprland LUA_SINGLE_TARGET: lua5-4"]},
     "gui-apps/hypridle": {"keywords": ["dev-cpp/sdbus-c++"]},
     "gui-apps/quickshell": {"use": ["gui-apps/quickshell -crash-handler"]},
+    "dev-qt/qtmultimedia": {"use": ["dev-qt/qtmultimedia qml ffmpeg"]},
     "media-sound/cava": {"use": ["media-sound/cava pipewire"]},
     "x11-terms/ghostty": {"use": ["x11-terms/ghostty wayland"]},
     "app-admin/keepassxc": {"use": ["sys-libs/zlib minizip"]},

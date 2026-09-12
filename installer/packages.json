@@ -21,6 +21,11 @@
       "note": "not in the official Fedora repos (only the errornointernet COPR) and on debian only in testing/sid; Ubuntu-likes get the avengemedia PPA, plain Debian stays on the archive name",
       "repo": { "gentoo": "overlay:guru", "fedora": "copr:errornointernet/quickshell", "debian": "ppa:avengemedia/danklinux", "suse": "obs:home:AvengeMedia:danklinux" }, "fallback": null },
 
+    { "id": "qt6-multimedia", "group": "core", "required": true, "desc": "Qt Multimedia QML module the pill's video wallpaper imports", "aur": false,
+      "names": { "arch": "qt6-multimedia-ffmpeg", "debian": "qml6-module-qtmultimedia", "fedora": "qt6-qtmultimedia", "suse": "qt6-multimedia-imports", "gentoo": "dev-qt/qtmultimedia" },
+      "note": "quickshell itself does not depend on it, so a fresh box without it fails to load shell.qml (Wallpaper.qml imports QtMultimedia). The arch name is the ffmpeg backend, which pulls qt6-multimedia and settles the provider prompt",
+      "fallback": null },
+
     { "id": "matugen", "group": "core", "required": true, "desc": "Builds the color palette from your wallpaper", "aur": false,
       "names": { "arch": "matugen", "debian": null, "fedora": "matugen", "suse": null, "gentoo": "x11-misc/matugen" },
       "repo": { "gentoo": "overlay:guru", "fedora": "copr:heus-sueh/packages" }, "fallback": "cargo" },
