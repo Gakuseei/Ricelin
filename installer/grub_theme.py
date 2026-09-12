@@ -22,6 +22,8 @@ import os
 import shlex
 import subprocess
 
+import distro
+
 THEME = "torii"
 GRUB_ROOT = "/boot/grub"
 THEME_DEST = f"{GRUB_ROOT}/themes/{THEME}"
@@ -37,7 +39,7 @@ def _plan(source):
 
     copy = (
         f"Copy the torii GRUB theme to {THEME_DEST}",
-        ["sudo", "sh", "-c",
+        [distro.ROOT, "sh", "-c",
          f"mkdir -p {shlex.quote(GRUB_ROOT)}/themes "
          f"&& cp -rT {shlex.quote(theme_src)} {shlex.quote(THEME_DEST)}"],
     )
@@ -46,7 +48,7 @@ def _plan(source):
     # backup), then replace an existing GRUB_THEME line or append a new one.
     set_theme = (
         f"Back up {GRUB_DEFAULT} and set GRUB_THEME",
-        ["sudo", "sh", "-c",
+        [distro.ROOT, "sh", "-c",
          f'cp -n {shlex.quote(GRUB_DEFAULT)} {shlex.quote(GRUB_BACKUP)} 2>/dev/null || true; '
          f'if grep -q "^GRUB_THEME=" {shlex.quote(GRUB_DEFAULT)} 2>/dev/null; then '
          f'sed -i \'s|^GRUB_THEME=.*|GRUB_THEME="{THEME_TXT}"|\' {shlex.quote(GRUB_DEFAULT)}; '
@@ -55,7 +57,7 @@ def _plan(source):
 
     regen = (
         f"Regenerate {GRUB_CFG}",
-        ["sudo", "grub-mkconfig", "-o", GRUB_CFG],
+        [distro.ROOT, "grub-mkconfig", "-o", GRUB_CFG],
     )
 
     return [copy, set_theme, regen]

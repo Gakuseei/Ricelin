@@ -20,6 +20,7 @@ ARCH_IDS="arch cachyos endeavouros manjaro garuda artix arcolinux archcraft rebo
 DEBIAN_IDS="debian ubuntu linuxmint pop elementary zorin raspbian"
 FEDORA_IDS="fedora nobara rhel centos rocky almalinux"
 SUSE_IDS="suse opensuse sles sled tumbleweed leap"
+GENTOO_IDS="gentoo funtoo calculate pentoo redcore"
 
 say()  { printf '%s\n' "$*"; }
 step() { printf '\n:: %s\n' "$*"; }
@@ -33,7 +34,7 @@ in_list() {
 	return 1
 }
 
-# Map os-release ID/ID_LIKE onto arch/debian/fedora/suse, ID first then ID_LIKE,
+# Map os-release ID/ID_LIKE onto arch/debian/fedora/suse/gentoo, ID first then ID_LIKE,
 # first matching token wins. Same order as distro.family_from_os_release. Runs in
 # a subshell (command substitution) so sourcing os-release stays contained.
 detect_family() {
@@ -45,20 +46,25 @@ detect_family() {
 		in_list "$tok" "$DEBIAN_IDS" && { echo debian; return 0; }
 		in_list "$tok" "$FEDORA_IDS" && { echo fedora; return 0; }
 		in_list "$tok" "$SUSE_IDS" && { echo suse; return 0; }
+		in_list "$tok" "$GENTOO_IDS" && { echo gentoo; return 0; }
 	done
 	echo unknown
 }
 
-# Run a command as root. sudo reads its password straight from the controlling
-# terminal, so this still works when the script itself is piped in from curl.
+# Run a command as root. sudo (or doas, common on Gentoo) reads its password
+# straight from the controlling terminal, so this still works when the script
+# itself is piped in from curl.
 run_root() {
 	if [ "$(id -u)" -eq 0 ]; then
 		"$@"
-	elif have sudo; then
-		if [ -e /dev/tty ]; then sudo "$@" </dev/tty; else sudo "$@"; fi
-	else
-		die "need root to install packages; run as root or install sudo first"
+		return
 	fi
+	for su in sudo doas; do
+		have "$su" || continue
+		if [ -e /dev/tty ]; then "$su" "$@" </dev/tty; else "$su" "$@"; fi
+		return
+	done
+	die "need root to install packages; run as root or install sudo or doas first"
 }
 
 # git + python3 are all the Python installer needs to take over. Install them
@@ -74,7 +80,8 @@ ensure_deps() {
 	debian) run_root apt-get update || true; run_root apt-get install -y git python3 ;;
 	fedora) run_root dnf makecache || true; run_root dnf install -y git python3 ;;
 	suse) run_root zypper --non-interactive refresh || true; run_root zypper --non-interactive install git python3 ;;
-	*) die "no supported package manager (arch/debian/fedora/suse); install git and python3 yourself, then re-run" ;;
+	gentoo) run_root emerge --noreplace dev-vcs/git ;;
+	*) die "no supported package manager (arch/debian/fedora/suse/gentoo); install git and python3 yourself, then re-run" ;;
 	esac
 	if ! have git || ! have python3; then
 		die "git and python3 are still missing after the install step"
@@ -119,7 +126,7 @@ main() {
 
 	fam="$(detect_family)"
 	if [ "$fam" = unknown ]; then
-		say "Note: this distro is not a supported family (arch/debian/fedora/suse)."
+		say "Note: this distro is not a supported family (arch/debian/fedora/suse/gentoo)."
 		say "No packages will be installed; configs deploy at your own risk."
 	fi
 

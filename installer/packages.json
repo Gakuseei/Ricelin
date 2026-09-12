@@ -1,6 +1,6 @@
 {
-  "_comment": "Single source of truth for every package the Ricelin rice needs. Read by the installer and by the in-app updater. names[family] is the native package name on that distro family, or null when there is no native package and a fallback handler has to get it. aur=true means the Arch name lives in the AUR and needs a helper. repo carries an extra repo to enable first (copr: on Fedora, obs: on openSUSE). A package with a null name and a null fallback is provided by another package on that family and is simply skipped there.",
-  "families": ["arch", "debian", "fedora", "suse"],
+  "_comment": "Single source of truth for every package the Ricelin rice needs. Read by the installer and by the in-app updater. names[family] is the native package name on that distro family, or null when there is no native package and a fallback handler has to get it. aur=true means the Arch name lives in the AUR and needs a helper. repo carries an extra repo to enable first (copr: on Fedora, obs: on openSUSE, overlay: on Gentoo, where the name is a portage atom). A package with a null name and a null fallback is provided by another package on that family and is simply skipped there.",
+  "families": ["arch", "debian", "fedora", "suse", "gentoo"],
   "fallbacks": {
     "cargo": "cargo install, or a prebuilt release binary",
     "ghostty": "Zig source build or a third-party repo",
@@ -12,166 +12,166 @@
   },
   "packages": [
     { "id": "hyprland", "group": "core", "required": true, "desc": "The Wayland compositor the whole rice runs on", "aur": false,
-      "names": { "arch": "hyprland", "debian": "hyprland", "fedora": "hyprland", "suse": "hyprland" },
+      "names": { "arch": "hyprland", "debian": "hyprland", "fedora": "hyprland", "suse": "hyprland", "gentoo": "gui-wm/hyprland" },
       "note": "repo hyprland 0.55+ ships the native lua config the rice uses (require/hyprland.lua), so the stable binary is enough and no AUR build is needed",
-      "repo": { "fedora": "copr:solopasha/hyprland" }, "fallback": null },
+      "repo": { "gentoo": "overlay:hyproverlay", "fedora": "copr:solopasha/hyprland" }, "fallback": null },
 
     { "id": "quickshell", "group": "core", "required": true, "desc": "The QtQuick shell that draws the pill", "aur": false,
-      "names": { "arch": "quickshell", "debian": "quickshell", "fedora": "quickshell", "suse": "quickshell" },
+      "names": { "arch": "quickshell", "debian": "quickshell", "fedora": "quickshell", "suse": "quickshell", "gentoo": "gui-apps/quickshell" },
       "note": "not in the official Fedora repos (only the errornointernet COPR) and on debian only in testing/sid; Ubuntu-likes get the avengemedia PPA, plain Debian stays on the archive name",
-      "repo": { "fedora": "copr:errornointernet/quickshell", "debian": "ppa:avengemedia/danklinux", "suse": "obs:home:AvengeMedia:danklinux" }, "fallback": null },
+      "repo": { "gentoo": "overlay:guru", "fedora": "copr:errornointernet/quickshell", "debian": "ppa:avengemedia/danklinux", "suse": "obs:home:AvengeMedia:danklinux" }, "fallback": null },
 
     { "id": "matugen", "group": "core", "required": true, "desc": "Builds the color palette from your wallpaper", "aur": false,
-      "names": { "arch": "matugen", "debian": null, "fedora": "matugen", "suse": null },
-      "repo": { "fedora": "copr:heus-sueh/packages" }, "fallback": "cargo" },
+      "names": { "arch": "matugen", "debian": null, "fedora": "matugen", "suse": null, "gentoo": "x11-misc/matugen" },
+      "repo": { "gentoo": "overlay:guru", "fedora": "copr:heus-sueh/packages" }, "fallback": "cargo" },
 
     { "id": "swww", "group": "core", "required": true, "desc": "The wallpaper daemon", "aur": false,
-      "names": { "arch": "swww", "debian": null, "fedora": "swww", "suse": "swww" },
+      "names": { "arch": "swww", "debian": null, "fedora": "swww", "suse": "swww", "gentoo": "gui-apps/awww" },
       "note": "one arch name covers the whole family: on CachyOS pacman -S swww resolves to awww, which declares Provides: swww and Replaces: swww, while vanilla Arch installs native swww. The rice scripts call the awww binary, so a runtime symlink bridges awww->swww (or the reverse) after install; there is no swww crate on crates.io, so the cargo fallback builds from the LGFae/swww source",
-      "repo": { "fedora": "copr:agonie/swww" }, "fallback": "cargo" },
+      "repo": { "gentoo": "overlay:guru", "fedora": "copr:agonie/swww" }, "fallback": "cargo" },
 
     { "id": "mpvpaper", "group": "core", "required": false, "desc": "Plays video files as animated wallpapers", "aur": true,
-      "names": { "arch": "mpvpaper", "debian": null, "fedora": "mpvpaper", "suse": "mpvpaper" },
-      "fallback": "github" },
+      "names": { "arch": "mpvpaper", "debian": null, "fedora": "mpvpaper", "suse": "mpvpaper", "gentoo": "gui-apps/mpvpaper" },
+      "repo": { "gentoo": "overlay:guru" }, "fallback": "github" },
 
     { "id": "hyprpicker", "group": "core", "required": true, "desc": "Picks a color from anywhere on screen", "aur": false,
-      "names": { "arch": "hyprpicker", "debian": "hyprpicker", "fedora": "hyprpicker", "suse": "hyprpicker" },
-      "repo": { "fedora": "copr:solopasha/hyprland" }, "fallback": null },
+      "names": { "arch": "hyprpicker", "debian": "hyprpicker", "fedora": "hyprpicker", "suse": "hyprpicker", "gentoo": "gui-apps/hyprpicker" },
+      "repo": { "gentoo": "overlay:hyproverlay", "fedora": "copr:solopasha/hyprland" }, "fallback": null },
 
     { "id": "hyprpolkitagent", "group": "core", "required": true, "desc": "Pops the password prompt when something needs root", "aur": false,
-      "names": { "arch": "hyprpolkitagent", "debian": "hyprpolkitagent", "fedora": "hyprpolkitagent", "suse": "hyprpolkitagent" },
-      "repo": { "fedora": "copr:solopasha/hyprland" }, "fallback": null },
+      "names": { "arch": "hyprpolkitagent", "debian": "hyprpolkitagent", "fedora": "hyprpolkitagent", "suse": "hyprpolkitagent", "gentoo": "sys-auth/hyprpolkitagent" },
+      "repo": { "gentoo": "overlay:hyproverlay", "fedora": "copr:solopasha/hyprland" }, "fallback": null },
 
     { "id": "hypridle", "group": "core", "required": true, "desc": "Dims the screen and locks on idle", "aur": false,
-      "names": { "arch": "hypridle", "debian": "hypridle", "fedora": "hypridle", "suse": "hypridle" },
-      "repo": { "fedora": "copr:solopasha/hyprland" }, "fallback": null },
+      "names": { "arch": "hypridle", "debian": "hypridle", "fedora": "hypridle", "suse": "hypridle", "gentoo": "gui-apps/hypridle" },
+      "repo": { "gentoo": "overlay:hyproverlay", "fedora": "copr:solopasha/hyprland" }, "fallback": null },
 
     { "id": "hyprsunset", "group": "core", "required": false, "desc": "Warms the screen for the night-light filter", "aur": false,
-      "names": { "arch": "hyprsunset", "debian": "hyprsunset", "fedora": "hyprsunset", "suse": "hyprsunset" },
-      "repo": { "fedora": "copr:solopasha/hyprland" }, "fallback": null },
+      "names": { "arch": "hyprsunset", "debian": "hyprsunset", "fedora": "hyprsunset", "suse": "hyprsunset", "gentoo": "gui-apps/hyprsunset" },
+      "repo": { "gentoo": "overlay:hyproverlay", "fedora": "copr:solopasha/hyprland" }, "fallback": null },
 
     { "id": "dotool", "group": "core", "required": true, "desc": "Types and moves the pointer for the rice automations", "aur": true,
-      "names": { "arch": "dotool", "debian": null, "fedora": null, "suse": null },
-      "fallback": "dotool" },
+      "names": { "arch": "dotool", "debian": null, "fedora": null, "suse": null, "gentoo": "x11-misc/dotool" },
+      "repo": { "gentoo": "overlay:guru" }, "fallback": "dotool" },
 
     { "id": "cava", "group": "core", "required": true, "desc": "Audio spectrum for the pill music visualizer", "aur": false,
-      "names": { "arch": "cava", "debian": "cava", "fedora": "cava", "suse": "cava" }, "fallback": null },
+      "names": { "arch": "cava", "debian": "cava", "fedora": "cava", "suse": "cava", "gentoo": "media-sound/cava" }, "fallback": null },
 
     { "id": "ghostty", "group": "core", "required": true, "desc": "The terminal", "aur": false,
-      "names": { "arch": "ghostty", "debian": null, "fedora": null, "suse": "ghostty" },
+      "names": { "arch": "ghostty", "debian": null, "fedora": null, "suse": "ghostty", "gentoo": "x11-terms/ghostty" },
       "fallback": "ghostty" },
 
     { "id": "fish", "group": "core", "required": true, "desc": "The shell", "aur": false,
-      "names": { "arch": "fish", "debian": "fish", "fedora": "fish", "suse": "fish" }, "fallback": null },
+      "names": { "arch": "fish", "debian": "fish", "fedora": "fish", "suse": "fish", "gentoo": "app-shells/fish" }, "fallback": null },
 
     { "id": "zoxide", "group": "core", "required": true, "desc": "Directory jumper the fish config initialises on startup", "aur": false,
-      "names": { "arch": "zoxide", "debian": "zoxide", "fedora": "zoxide", "suse": "zoxide" }, "fallback": null },
+      "names": { "arch": "zoxide", "debian": "zoxide", "fedora": "zoxide", "suse": "zoxide", "gentoo": "app-shells/zoxide" }, "fallback": null },
 
     { "id": "cliphist", "group": "core", "required": true, "desc": "Clipboard history behind the pill surface", "aur": false,
-      "names": { "arch": "cliphist", "debian": "cliphist", "fedora": "cliphist", "suse": "cliphist" }, "fallback": null },
+      "names": { "arch": "cliphist", "debian": "cliphist", "fedora": "cliphist", "suse": "cliphist", "gentoo": "app-misc/cliphist" }, "repo": { "gentoo": "overlay:guru" }, "fallback": null },
 
     { "id": "wl-clipboard", "group": "core", "required": true, "desc": "Wayland clipboard plumbing", "aur": false,
-      "names": { "arch": "wl-clipboard", "debian": "wl-clipboard", "fedora": "wl-clipboard", "suse": "wl-clipboard" }, "fallback": null },
+      "names": { "arch": "wl-clipboard", "debian": "wl-clipboard", "fedora": "wl-clipboard", "suse": "wl-clipboard", "gentoo": "gui-apps/wl-clipboard" }, "fallback": null },
 
     { "id": "imagemagick", "group": "core", "required": true, "desc": "Image conversion the wallpaper and palette steps lean on", "aur": false,
-      "names": { "arch": "imagemagick", "debian": "imagemagick", "fedora": "ImageMagick", "suse": "ImageMagick" }, "fallback": null },
+      "names": { "arch": "imagemagick", "debian": "imagemagick", "fedora": "ImageMagick", "suse": "ImageMagick", "gentoo": "media-gfx/imagemagick" }, "fallback": null },
 
     { "id": "jq", "group": "core", "required": true, "desc": "JSON parsing in the helper scripts", "aur": false,
-      "names": { "arch": "jq", "debian": "jq", "fedora": "jq", "suse": "jq" }, "fallback": null },
+      "names": { "arch": "jq", "debian": "jq", "fedora": "jq", "suse": "jq", "gentoo": "app-misc/jq" }, "fallback": null },
 
     { "id": "desktop-file-utils", "group": "core", "required": true, "desc": "Registers dropped AppImages in the launcher", "aur": false,
-      "names": { "arch": "desktop-file-utils", "debian": "desktop-file-utils", "fedora": "desktop-file-utils", "suse": "desktop-file-utils" }, "fallback": null },
+      "names": { "arch": "desktop-file-utils", "debian": "desktop-file-utils", "fedora": "desktop-file-utils", "suse": "desktop-file-utils", "gentoo": "dev-util/desktop-file-utils" }, "fallback": null },
 
     { "id": "brightnessctl", "group": "core", "required": true, "desc": "Backlight control", "aur": false,
-      "names": { "arch": "brightnessctl", "debian": "brightnessctl", "fedora": "brightnessctl", "suse": "brightnessctl" }, "fallback": null },
+      "names": { "arch": "brightnessctl", "debian": "brightnessctl", "fedora": "brightnessctl", "suse": "brightnessctl", "gentoo": "app-misc/brightnessctl" }, "repo": { "gentoo": "overlay:guru" }, "fallback": null },
 
     { "id": "playerctl", "group": "core", "required": true, "desc": "Media key and now-playing control", "aur": false,
-      "names": { "arch": "playerctl", "debian": "playerctl", "fedora": "playerctl", "suse": "playerctl" }, "fallback": null },
+      "names": { "arch": "playerctl", "debian": "playerctl", "fedora": "playerctl", "suse": "playerctl", "gentoo": "media-sound/playerctl" }, "fallback": null },
 
     { "id": "networkmanager", "group": "core", "required": true, "desc": "Network management behind the pill", "aur": false,
-      "names": { "arch": "networkmanager", "debian": "network-manager", "fedora": "NetworkManager", "suse": "NetworkManager" }, "fallback": null },
+      "names": { "arch": "networkmanager", "debian": "network-manager", "fedora": "NetworkManager", "suse": "NetworkManager", "gentoo": "net-misc/networkmanager" }, "fallback": null },
 
     { "id": "bluez", "group": "core", "required": true, "desc": "Bluetooth stack", "aur": false,
-      "names": { "arch": "bluez", "debian": "bluez", "fedora": "bluez", "suse": "bluez" }, "fallback": null },
+      "names": { "arch": "bluez", "debian": "bluez", "fedora": "bluez", "suse": "bluez", "gentoo": "net-wireless/bluez" }, "fallback": null },
 
     { "id": "bluez-utils", "group": "core", "required": true, "desc": "Bluetooth CLI tools (bundled into bluez off Arch)", "aur": false,
-      "names": { "arch": "bluez-utils", "debian": null, "fedora": null, "suse": null }, "fallback": null },
+      "names": { "arch": "bluez-utils", "debian": null, "fedora": null, "suse": null, "gentoo": null }, "fallback": null },
 
     { "id": "pipewire", "group": "core", "required": true, "desc": "Audio server", "aur": false,
-      "names": { "arch": "pipewire", "debian": "pipewire", "fedora": "pipewire", "suse": "pipewire" }, "fallback": null },
+      "names": { "arch": "pipewire", "debian": "pipewire", "fedora": "pipewire", "suse": "pipewire", "gentoo": "media-video/pipewire" }, "fallback": null },
 
     { "id": "wireplumber", "group": "core", "required": true, "desc": "The PipeWire session manager", "aur": false,
-      "names": { "arch": "wireplumber", "debian": "wireplumber", "fedora": "wireplumber", "suse": "wireplumber" }, "fallback": null },
+      "names": { "arch": "wireplumber", "debian": "wireplumber", "fedora": "wireplumber", "suse": "wireplumber", "gentoo": "media-video/wireplumber" }, "fallback": null },
 
     { "id": "pamixer", "group": "core", "required": true, "desc": "Volume control the mixer drives", "aur": false,
-      "names": { "arch": "pamixer", "debian": "pamixer", "fedora": "pamixer", "suse": "pamixer" }, "fallback": null },
+      "names": { "arch": "pamixer", "debian": "pamixer", "fedora": "pamixer", "suse": "pamixer", "gentoo": "media-sound/pamixer" }, "repo": { "gentoo": "overlay:guru" }, "fallback": null },
 
     { "id": "kde-cli-tools", "group": "core", "required": true, "desc": "Provides kioclient and kreadconfig the scripts call", "aur": false,
-      "names": { "arch": "kde-cli-tools", "debian": "kde-cli-tools", "fedora": "kde-cli-tools", "suse": "kde-cli-tools6" }, "fallback": null },
+      "names": { "arch": "kde-cli-tools", "debian": "kde-cli-tools", "fedora": "kde-cli-tools", "suse": "kde-cli-tools6", "gentoo": "kde-plasma/kde-cli-tools" }, "fallback": null },
 
     { "id": "kdialog", "group": "core", "required": true, "desc": "Native file dialogs", "aur": false,
-      "names": { "arch": "kdialog", "debian": "kdialog", "fedora": "kdialog", "suse": "kdialog" }, "fallback": null },
+      "names": { "arch": "kdialog", "debian": "kdialog", "fedora": "kdialog", "suse": "kdialog", "gentoo": "kde-apps/kdialog" }, "fallback": null },
 
     { "id": "fastfetch", "group": "core", "required": true, "desc": "The system info splash on a fresh shell", "aur": false,
-      "names": { "arch": "fastfetch", "debian": "fastfetch", "fedora": "fastfetch", "suse": "fastfetch" }, "fallback": null },
+      "names": { "arch": "fastfetch", "debian": "fastfetch", "fedora": "fastfetch", "suse": "fastfetch", "gentoo": "app-misc/fastfetch" }, "fallback": null },
 
     { "id": "ttf-jetbrains-mono-nerd", "group": "core", "required": true, "desc": "The patched font whose glyphs the pill icons need", "aur": false,
-      "names": { "arch": "ttf-jetbrains-mono-nerd", "debian": null, "fedora": null, "suse": null }, "fallback": "nerdfont" },
+      "names": { "arch": "ttf-jetbrains-mono-nerd", "debian": null, "fedora": null, "suse": null, "gentoo": null }, "fallback": "nerdfont" },
 
     { "id": "inter-font", "group": "core", "required": true, "desc": "The UI typeface", "aur": false,
-      "names": { "arch": "inter-font", "debian": "fonts-inter", "fedora": "rsms-inter-fonts", "suse": "inter-fonts" }, "fallback": null },
+      "names": { "arch": "inter-font", "debian": "fonts-inter", "fedora": "rsms-inter-fonts", "suse": "inter-fonts", "gentoo": "media-fonts/inter" }, "repo": { "gentoo": "overlay:guru" }, "fallback": null },
 
     { "id": "noto-fonts", "group": "core", "required": true, "desc": "Base text fonts", "aur": false,
-      "names": { "arch": "noto-fonts", "debian": "fonts-noto", "fedora": "google-noto-sans-fonts", "suse": "google-noto-sans-fonts" }, "fallback": null },
+      "names": { "arch": "noto-fonts", "debian": "fonts-noto", "fedora": "google-noto-sans-fonts", "suse": "google-noto-sans-fonts", "gentoo": "media-fonts/noto" }, "fallback": null },
 
     { "id": "noto-fonts-cjk", "group": "core", "required": true, "desc": "CJK glyphs for the kanji surfaces", "aur": false,
-      "names": { "arch": "noto-fonts-cjk", "debian": "fonts-noto-cjk", "fedora": "google-noto-sans-cjk-fonts", "suse": "google-noto-sans-cjk-fonts" }, "fallback": null },
+      "names": { "arch": "noto-fonts-cjk", "debian": "fonts-noto-cjk", "fedora": "google-noto-sans-cjk-fonts", "suse": "google-noto-sans-cjk-fonts", "gentoo": "media-fonts/noto-cjk" }, "fallback": null },
 
     { "id": "noto-fonts-emoji", "group": "core", "required": true, "desc": "Color emoji", "aur": false,
-      "names": { "arch": "noto-fonts-emoji", "debian": "fonts-noto-color-emoji", "fedora": "google-noto-color-emoji-fonts", "suse": "google-noto-coloremoji-fonts" }, "fallback": null },
+      "names": { "arch": "noto-fonts-emoji", "debian": "fonts-noto-color-emoji", "fedora": "google-noto-color-emoji-fonts", "suse": "google-noto-coloremoji-fonts", "gentoo": "media-fonts/noto-emoji" }, "fallback": null },
 
     { "id": "papirus-icon-theme", "group": "core", "required": true, "desc": "Icon theme", "aur": false,
-      "names": { "arch": "papirus-icon-theme", "debian": "papirus-icon-theme", "fedora": "papirus-icon-theme", "suse": "papirus-icon-theme" }, "fallback": null },
+      "names": { "arch": "papirus-icon-theme", "debian": "papirus-icon-theme", "fedora": "papirus-icon-theme", "suse": "papirus-icon-theme", "gentoo": "x11-themes/papirus-icon-theme" }, "fallback": null },
 
     { "id": "bibata-cursor-theme", "group": "core", "required": true, "desc": "The cursor theme", "aur": true,
-      "names": { "arch": "bibata-cursor-theme-bin", "debian": null, "fedora": null, "suse": null },
+      "names": { "arch": "bibata-cursor-theme-bin", "debian": null, "fedora": null, "suse": null, "gentoo": null },
       "note": "debian has no reliable bibata package, so debian is left null and routes through the github fallback (the Bibata release tarball) like fedora and suse",
       "fallback": "github" },
 
     { "id": "rishot", "group": "core", "required": true, "desc": "Screenshot and annotate, bound to the Print key", "aur": false,
-      "names": { "arch": null, "debian": null, "fedora": null, "suse": null }, "fallback": "curl" },
+      "names": { "arch": null, "debian": null, "fedora": null, "suse": null, "gentoo": null }, "fallback": "curl" },
 
     { "id": "grim", "group": "core", "required": true, "desc": "Screenshot tool for the lock background", "aur": false,
-      "names": { "arch": "grim", "debian": "grim", "fedora": "grim", "suse": "grim" }, "fallback": null },
+      "names": { "arch": "grim", "debian": "grim", "fedora": "grim", "suse": "grim", "gentoo": "gui-apps/grim" }, "fallback": null },
 
     { "id": "slurp", "group": "core", "required": true, "desc": "Region selector for screen recording", "aur": false,
-      "names": { "arch": "slurp", "debian": "slurp", "fedora": "slurp", "suse": "slurp" }, "fallback": null },
+      "names": { "arch": "slurp", "debian": "slurp", "fedora": "slurp", "suse": "slurp", "gentoo": "gui-apps/slurp" }, "fallback": null },
 
     { "id": "gpu-screen-recorder", "group": "core", "required": true, "desc": "Screen recorder backend for the recorder surface", "aur": true,
-      "names": { "arch": "gpu-screen-recorder", "debian": null, "fedora": null, "suse": null },
+      "names": { "arch": "gpu-screen-recorder", "debian": null, "fedora": null, "suse": null, "gentoo": "media-video/gpu-screen-recorder" },
       "note": "off Arch there is no native package; the Flathub build com.dec05eba.gpu_screen_recorder is the fallback",
-      "fallback": "flatpak", "flatpak_id": "com.dec05eba.gpu_screen_recorder" },
+      "repo": { "gentoo": "overlay:guru" }, "fallback": "flatpak", "flatpak_id": "com.dec05eba.gpu_screen_recorder" },
 
     { "id": "dolphin", "group": "full", "required": false, "desc": "KDE file manager", "aur": false,
-      "names": { "arch": "dolphin", "debian": "dolphin", "fedora": "dolphin", "suse": "dolphin" }, "fallback": null },
+      "names": { "arch": "dolphin", "debian": "dolphin", "fedora": "dolphin", "suse": "dolphin", "gentoo": "kde-apps/dolphin" }, "fallback": null },
 
     { "id": "keepassxc", "group": "full", "required": false, "desc": "Password manager", "aur": false,
-      "names": { "arch": "keepassxc", "debian": "keepassxc", "fedora": "keepassxc", "suse": "keepassxc" }, "fallback": null },
+      "names": { "arch": "keepassxc", "debian": "keepassxc", "fedora": "keepassxc", "suse": "keepassxc", "gentoo": "app-admin/keepassxc" }, "fallback": null },
 
     { "id": "zathura", "group": "full", "required": false, "desc": "Keyboard-driven document viewer", "aur": false,
-      "names": { "arch": "zathura", "debian": "zathura", "fedora": "zathura", "suse": "zathura" }, "fallback": null },
+      "names": { "arch": "zathura", "debian": "zathura", "fedora": "zathura", "suse": "zathura", "gentoo": "app-text/zathura" }, "fallback": null },
 
     { "id": "zathura-pdf-mupdf", "group": "full", "required": false, "desc": "PDF backend for zathura", "aur": false,
-      "names": { "arch": "zathura-pdf-mupdf", "debian": "zathura-pdf-poppler", "fedora": "zathura-pdf-mupdf", "suse": "zathura-plugin-pdf-mupdf" }, "fallback": null },
+      "names": { "arch": "zathura-pdf-mupdf", "debian": "zathura-pdf-poppler", "fedora": "zathura-pdf-mupdf", "suse": "zathura-plugin-pdf-mupdf", "gentoo": "app-text/zathura-pdf-mupdf" }, "fallback": null },
 
     { "id": "imv", "group": "full", "required": false, "desc": "Lightweight image viewer", "aur": false,
-      "names": { "arch": "imv", "debian": "imv", "fedora": "imv", "suse": "imv" }, "fallback": null },
+      "names": { "arch": "imv", "debian": "imv", "fedora": "imv", "suse": "imv", "gentoo": "media-gfx/imv" }, "fallback": null },
 
     { "id": "rnote", "group": "full", "required": false, "desc": "Handwritten notes and sketches", "aur": false,
-      "names": { "arch": "rnote", "debian": null, "fedora": null, "suse": "rnote" }, "fallback": "flatpak", "flatpak_id": "com.github.flxzt.rnote" },
+      "names": { "arch": "rnote", "debian": null, "fedora": null, "suse": "rnote", "gentoo": null }, "fallback": "flatpak", "flatpak_id": "com.github.flxzt.rnote" },
 
     { "id": "brave", "group": "extra", "required": false, "desc": "Brave browser with the matching Ricelin theme", "aur": true,
-      "names": { "arch": "brave-bin", "debian": null, "fedora": null, "suse": null },
+      "names": { "arch": "brave-bin", "debian": null, "fedora": null, "suse": null, "gentoo": null },
       "note": "extra group is never pulled by the core or full profiles; only installed when the Brave toggle is on. arch brave-bin is AUR; off arch use the Flathub build com.brave.Browser",
       "fallback": "flatpak", "flatpak_id": "com.brave.Browser" }
   ]

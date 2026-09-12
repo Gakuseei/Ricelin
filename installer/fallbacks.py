@@ -16,7 +16,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from distro import PM, load_manifest
+import distro
+import pkg as _pkg
+from distro import load_manifest
 
 # Where user-level assets land. Fonts, cursors and source-built binaries go under
 # the home directory so no root is needed for those, only for the udev and
@@ -55,32 +57,9 @@ _CARGO_PREP = (
 )
 
 
-def _pm_install(family, pkg):
-    """The native install argv for one package on this family, sudo included."""
-    pm = PM.get(family, "")
-    if pm == "pacman":
-        return ["sudo", "pacman", "-S", "--needed", "--noconfirm", pkg]
-    if pm == "apt-get":
-        return ["sudo", "apt-get", "install", "-y", pkg]
-    if pm == "dnf":
-        return ["sudo", "dnf", "install", "-y", pkg]
-    if pm == "zypper":
-        return ["sudo", "zypper", "--non-interactive", "install", pkg]
-    return ["sudo", pm or "pkg", "install", pkg]
-
-
-def _pm_install_many(family, pkgs):
-    """One native install step for several packages on this family."""
-    pm = PM.get(family, "")
-    if pm == "pacman":
-        return ["sudo", "pacman", "-S", "--needed", "--noconfirm"] + pkgs
-    if pm == "apt-get":
-        return ["sudo", "apt-get", "install", "-y"] + pkgs
-    if pm == "dnf":
-        return ["sudo", "dnf", "install", "-y"] + pkgs
-    if pm == "zypper":
-        return ["sudo", "zypper", "--non-interactive", "install"] + pkgs
-    return ["sudo", pm or "pkg", "install"] + pkgs
+def _pm_install(family, *pkgs):
+    """One privileged native install step for these packages on this family."""
+    return [distro.ROOT, *_pkg.install_argv(list(pkgs), family)]
 
 
 def _swww_build_deps(family):
@@ -94,9 +73,10 @@ def _swww_build_deps(family):
         "debian": ["build-essential", "pkg-config", "liblz4-dev"],
         "fedora": ["gcc", "pkgconf-pkg-config", "lz4-devel"],
         "suse": ["gcc", "pkg-config", "liblz4-devel"],
+        "gentoo": ["app-arch/lz4"],
     }
     return {"desc": "install the C toolchain, pkg-config and the liblz4 headers swww links against",
-            "run": _pm_install_many(family, deps.get(family, deps["debian"]))}
+            "run": _pm_install(family, *deps.get(family, deps["debian"]))}
 
 
 def _dotool_build_deps(family):
@@ -106,9 +86,10 @@ def _dotool_build_deps(family):
         "debian": ["golang", "scdoc", "libxkbcommon-dev"],
         "fedora": ["golang", "scdoc", "libxkbcommon-devel"],
         "suse": ["go", "scdoc", "libxkbcommon-devel"],
+        "gentoo": ["dev-lang/go", "app-text/scdoc", "x11-libs/libxkbcommon"],
     }
     return {"desc": "install go, scdoc and the libxkbcommon headers dotool builds against",
-            "run": _pm_install_many(family, deps.get(family, deps["debian"]))}
+            "run": _pm_install(family, *deps.get(family, deps["debian"]))}
 
 
 # The Zig the ghostty tip pins. Bumping this means checking the version ghostty's
@@ -183,10 +164,10 @@ def _ghostty(pkg, family):
     if family == "fedora":
         return [
             {"desc": "add the fyralabs Terra repo, a third-party repo that ships ghostty for fedora",
-             "shell": "sudo dnf install -y --nogpgcheck "
+             "shell": distro.ROOT + " dnf install -y --nogpgcheck "
                       "--repofrompath 'terra,https://repos.fyralabs.com/terra$releasever' terra-release"},
             {"desc": "install ghostty from Terra",
-             "run": ["sudo", "dnf", "install", "-y", "ghostty"]},
+             "run": [distro.ROOT, "dnf", "install", "-y", "ghostty"]},
         ]
     return [
         _zig_ensure_step(),
@@ -195,7 +176,7 @@ def _ghostty(pkg, family):
         {"desc": "compile a release build with Zig",
          "shell": 'export PATH="$HOME/.local/bin:$PATH"; ' + _in_build("ghostty", "zig build -Doptimize=ReleaseFast")},
         {"desc": "install ghostty into /usr",
-         "shell": _in_build("ghostty", 'sudo env "PATH=$HOME/.local/bin:$PATH" zig build -p /usr -Doptimize=ReleaseFast')},
+         "shell": _in_build("ghostty", distro.ROOT + ' env "PATH=$HOME/.local/bin:$PATH" zig build -p /usr -Doptimize=ReleaseFast')},
     ]
 
 
@@ -215,17 +196,18 @@ def _dotool(pkg, family):
         {"desc": "build the binaries (needs go, libxkbcommon-dev and scdoc)",
          "shell": _in_build("dotool", "./build.sh")},
         {"desc": "install dotool, dotoolc and dotoold plus the man page",
-         "shell": _in_build("dotool", "sudo ./build.sh install")},
+         "shell": _in_build("dotool", distro.ROOT + " ./build.sh install")},
         {"desc": "load the uinput module now and keep it loading on every boot",
-         "shell": "sudo modprobe uinput && echo uinput | sudo tee /etc/modules-load.d/uinput.conf"},
+         "shell": "%s modprobe uinput && echo uinput | %s tee /etc/modules-load.d/uinput.conf"
+                  % (distro.ROOT, distro.ROOT)},
         {"desc": "let the input group reach /dev/uinput at 0660, which cures the EACCES the 0620 rule leaves",
-         "shell": "printf '%%s\\n' '%s' | sudo tee /etc/udev/rules.d/99-uinput.rules" % rule},
+         "shell": "printf '%%s\\n' '%s' | %s tee /etc/udev/rules.d/99-uinput.rules" % (rule, distro.ROOT)},
         {"desc": "create the input group if it is missing and add you to it",
-         "shell": 'sudo groupadd -f input && sudo usermod -aG input "$(id -un)"'},
+         "shell": '%s groupadd -f input && %s usermod -aG input "$(id -un)"' % (distro.ROOT, distro.ROOT)},
         {"desc": "reload udev so the new rule takes effect",
-         "run": ["sudo", "udevadm", "control", "--reload"]},
+         "run": [distro.ROOT, "udevadm", "control", "--reload"]},
         {"desc": "re-trigger udev for /dev/uinput",
-         "run": ["sudo", "udevadm", "trigger"]},
+         "run": [distro.ROOT, "udevadm", "trigger"]},
     ]
 
 
@@ -273,9 +255,10 @@ def _flatpak(pkg, family):
     TTY install path can never answer.
     """
     app = pkg["flatpak_id"]
+    flatpak = "sys-apps/flatpak" if family == "gentoo" else "flatpak"
     return [
         {"desc": "make sure flatpak itself is installed",
-         "run": _pm_install(family, "flatpak")},
+         "run": _pm_install(family, flatpak)},
         {"desc": "add the flathub remote for this user if it is not there already",
          "run": ["flatpak", "--user", "remote-add", "--if-not-exists", "flathub",
                  "https://flathub.org/repo/flathub.flatpakrepo"]},
@@ -386,7 +369,7 @@ def _selftest():
     assert any("https://github.com/LGFae/swww" in s.get("shell", "") for s in swww)
     assert any("cargo build --release" in s.get("shell", "") for s in swww)
     deps = next(s for s in swww if "liblz4" in s.get("desc", ""))
-    assert deps["run"][:3] == ["sudo", "apt-get", "install"] and "liblz4-dev" in deps["run"]
+    assert deps["run"][:3] == [distro.ROOT, "apt-get", "install"] and "liblz4-dev" in deps["run"]
     fed_deps = next(s for s in steps_for("cargo", {"id": "swww"}, "fedora") if "liblz4" in s.get("desc", ""))
     assert "lz4-devel" in fed_deps["run"]
     install_sh = next(s["shell"] for s in swww if "install -m755" in s.get("shell", ""))
@@ -410,6 +393,16 @@ def _selftest():
     # flatpak installs per-user so a bare TTY needs no root or polkit.
     flat = steps_for("flatpak", {"flatpak_id": "com.example.App"}, "debian")
     assert all("--user" in s["run"] for s in flat if s["run"][0] == "flatpak")
+    gflat = steps_for("flatpak", {"flatpak_id": "com.example.App"}, "gentoo")
+    assert gflat[0]["run"] == ["sudo", "emerge", "--noreplace", "sys-apps/flatpak"]
+
+    # the root wrapper follows the wizard's pick into every privileged step
+    distro.ROOT = "doas"
+    dsteps = steps_for("dotool", {"id": "dotool"}, "gentoo")
+    assert dsteps[0]["run"][0] == "doas"
+    assert all("sudo" not in (st.get("shell", "") + " ".join(st.get("run", []))) for st in dsteps)
+    assert "doas tee" in dsteps[5]["shell"]
+    distro.ROOT = "sudo"
 
     print("fallbacks.py selftest: %d handlers, all return steps" % len(seen))
 

@@ -45,6 +45,9 @@ def is_installed(name, family):
             r = subprocess.run(["dpkg-query", "-W", "-f=${Status}", name],
                                capture_output=True, text=True)
             return "install ok installed" in r.stdout
+        if family == "gentoo":
+            r = subprocess.run(["portageq", "has_version", "/", name], capture_output=True)
+            return r.returncode == 0
         # fedora and suse are both rpm underneath; rpm -q is the reliable check.
         r = subprocess.run(["rpm", "-q", name], capture_output=True, text=True)
         return r.returncode == 0
@@ -79,6 +82,8 @@ def install_argv(names, family, aur=False):
         return ["apt-get", "install", "-y", *names]
     if family == "fedora":
         return ["dnf", "install", "-y", *names]
+    if family == "gentoo":
+        return ["emerge", "--noreplace", *names]
     return ["zypper", "--non-interactive", "install", *names]
 
 
@@ -151,6 +156,13 @@ def enable_repo_argv(repo, family):
             ["add-apt-repository", "-y", repo],
             ["apt-get", "update"],
         ]
+    if repo.startswith("overlay:") and family == "gentoo":
+        name = repo[len("overlay:"):]
+        return [
+            ["emerge", "--noreplace", "app-eselect/eselect-repository"],
+            ["eselect", "repository", "enable", name],
+            ["emerge", "--sync", name],
+        ]
     if repo.startswith("obs:") and family == "suse":
         project = repo[len("obs:"):]
         url = (f"https://download.opensuse.org/repositories/"
@@ -167,16 +179,81 @@ def refresh_argv(family):
     """
     The package-list refresh command for this family, run once before any installs
     so a stale index never sinks the first install. pacman folds the refresh into
-    -Sy; the rpm and apt families have a dedicated metadata step.
+    -Sy; the rpm and apt families have a dedicated metadata step; emerge syncs the
+    ebuild tree, which on a fresh box also pulls it the first time.
     """
     _require_family(family)
     if family == "arch":
-        return ["sudo", "pacman", "-Sy"]
+        return [distro.ROOT, "pacman", "-Sy"]
     if family == "debian":
-        return ["sudo", "apt-get", "update"]
+        return [distro.ROOT, "apt-get", "update"]
     if family == "fedora":
-        return ["sudo", "dnf", "makecache"]
-    return ["sudo", "zypper", "--non-interactive", "refresh"]
+        return [distro.ROOT, "dnf", "makecache"]
+    if family == "gentoo":
+        return [distro.ROOT, "emerge", "--sync"]
+    return [distro.ROOT, "zypper", "--non-interactive", "refresh"]
+
+
+# Gentoo portage overrides the rice needs, written to files named ricelin under
+# /etc/portage so nothing of the user's own config is ever edited and uninstall
+# can remove them by name. Keywords stay per atom: the whole GURU overlay would
+# unmask thousands of packages, and a ~amd64 line on a stable main-tree package
+# would silently pull its testing version. hyproverlay is the one exception, the
+# Gentoo wiki's own recipe, since every one of its ebuilds is ~amd64 and hyprland
+# drags a dozen of them in as deps (hyprutils, aquamarine, hyprlang, ...).
+# GENTOO_DEPS holds what one atom (or overlay) pulls in beyond itself: the wayland
+# trio the hypr tip builds against, the testing sdbus-c++ behind hypridle, the USE
+# flags a dep wants. Found by resolving the whole set on a stage3 with emerge -pv.
+PORTAGE_DIR = "/etc/portage"
+GENTOO_TESTING = ("app-shells/zoxide", "app-admin/keepassxc")
+GENTOO_DEPS = {
+    "overlay:hyproverlay": {"keywords": ["*/*::hyproverlay", "dev-libs/wayland",
+                                         "dev-libs/wayland-protocols", "dev-util/wayland-scanner"]},
+    "gui-wm/hyprland": {"use": ["gui-wm/hyprland LUA_SINGLE_TARGET: lua5-4"]},
+    "gui-apps/hypridle": {"keywords": ["dev-cpp/sdbus-c++"]},
+    "gui-apps/quickshell": {"use": ["gui-apps/quickshell -crash-handler"]},
+    "media-sound/cava": {"use": ["media-sound/cava pipewire"]},
+    "x11-terms/ghostty": {"use": ["x11-terms/ghostty wayland"]},
+    "app-admin/keepassxc": {"use": ["sys-libs/zlib minizip"]},
+}
+
+
+def portage_lines(atom_repos):
+    """
+    The keyword and USE lines for the atoms about to install, given as a dict of
+    atom to its overlay (None for the main tree). Each list is ready to write.
+    """
+    keywords, use = [], []
+    for trigger in [*sorted(set(atom_repos.values()) - {None}), *atom_repos]:
+        extra = GENTOO_DEPS.get(trigger, {})
+        keywords += extra.get("keywords", [])
+        use += extra.get("use", [])
+    keywords += [a for a, repo in atom_repos.items()
+                 if a in GENTOO_TESTING or repo == "overlay:guru"]
+    return [f"{k} ~amd64" for k in keywords], use
+
+
+def portage_config_argv(atom_repos):
+    """
+    The privileged steps that write the two ricelin override files. mkdir -p fails
+    loud on an old box where package.accept_keywords is still a single file, which
+    is the right outcome: converting the user's file is not this installer's call.
+    """
+    keywords, use = portage_lines(atom_repos)
+    steps = []
+    for sub, lines in (("package.accept_keywords", keywords), ("package.use", use)):
+        if not lines:
+            continue
+        d = f"{PORTAGE_DIR}/{sub}"
+        body = "\\n".join(lines)
+        steps.append(["sh", "-c", f"mkdir -p {d} && printf '{body}\\n' > {d}/ricelin"])
+    return steps
+
+
+def portage_config_files():
+    """The override files this installer may have written, for uninstall."""
+    return [f"{PORTAGE_DIR}/package.accept_keywords/ricelin",
+            f"{PORTAGE_DIR}/package.use/ricelin"]
 
 
 def ensure_aur_helper_steps():
@@ -197,7 +274,7 @@ def ensure_aur_helper_steps():
         return []
     build_dir = shlex.quote(os.path.join(tempfile.gettempdir(), "ricelin-yay-build"))
     return [
-        ["sudo", "pacman", "-S", "--needed", "--noconfirm", "git", "base-devel"],
+        [distro.ROOT, "pacman", "-S", "--needed", "--noconfirm", "git", "base-devel"],
         ["sh", "-c",
          f"rm -rf {build_dir} && git clone https://aur.archlinux.org/yay-bin.git {build_dir}"],
         ["sh", "-c", f"cd {build_dir} && makepkg -si --noconfirm"],
@@ -212,7 +289,7 @@ def privileged(argv, family):
     sudo would break makepkg and poison the cargo cache; they must stay un-wrapped.
     """
     _require_family(family)
-    return ["sudo", *argv]
+    return [distro.ROOT, *argv]
 
 
 def _write_os_release(fields):
@@ -282,7 +359,34 @@ def _selftest():
     assert refresh_argv("debian") == ["sudo", "apt-get", "update"]
     assert refresh_argv("fedora") == ["sudo", "dnf", "makecache"]
     assert refresh_argv("suse") == ["sudo", "zypper", "--non-interactive", "refresh"]
-    checks += 4
+    assert refresh_argv("gentoo") == ["sudo", "emerge", "--sync"]
+    checks += 5
+
+    assert install_argv(["gui-wm/hyprland"], "gentoo") == ["emerge", "--noreplace", "gui-wm/hyprland"]
+    assert enable_repo_argv("overlay:guru", "gentoo")[1:] == [
+        ["eselect", "repository", "enable", "guru"], ["emerge", "--sync", "guru"]]
+    kw, use = portage_lines({"gui-wm/hyprland": "overlay:hyproverlay",
+                             "gui-apps/quickshell": "overlay:guru", "app-shells/fish": None,
+                             "app-shells/zoxide": None, "media-sound/cava": None})
+    assert kw == ["*/*::hyproverlay ~amd64", "dev-libs/wayland ~amd64",
+                  "dev-libs/wayland-protocols ~amd64", "dev-util/wayland-scanner ~amd64",
+                  "gui-apps/quickshell ~amd64", "app-shells/zoxide ~amd64"], kw
+    assert use == ["gui-wm/hyprland LUA_SINGLE_TARGET: lua5-4",
+                   "gui-apps/quickshell -crash-handler", "media-sound/cava pipewire"], use
+    assert portage_lines({"app-misc/jq": None}) == ([], [])
+    steps = portage_config_argv({"gui-wm/hyprland": "overlay:hyproverlay"})
+    assert steps[0][2].startswith("mkdir -p /etc/portage/package.accept_keywords && printf")
+    assert steps[0][2].endswith("> /etc/portage/package.accept_keywords/ricelin")
+    assert "LUA_SINGLE_TARGET" in steps[1][2]
+    assert portage_config_argv({"app-misc/jq": None}) == []
+    checks += 7
+
+    # doas swaps in for every privileged step once the wizard picks it
+    distro.ROOT = "doas"
+    assert privileged(["emerge", "x"], "gentoo") == ["doas", "emerge", "x"]
+    assert refresh_argv("arch")[0] == "doas"
+    distro.ROOT = "sudo"
+    checks += 2
 
     assert INSTALL_ENV == {"DEBIAN_FRONTEND": "noninteractive"}
     checks += 1

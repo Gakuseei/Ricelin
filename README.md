@@ -48,8 +48,8 @@ One line, straight through the pipe:
 curl -fsSL https://raw.githubusercontent.com/Gakuseei/Ricelin/main/install.sh | bash
 ```
 
-`install.sh` is a thin bootstrap: it detects your distro (Arch, Debian, Fedora or
-openSUSE), makes sure git and python3 are there, clones the rice into
+`install.sh` is a thin bootstrap: it detects your distro (Arch, Debian, Fedora,
+openSUSE or Gentoo), makes sure git and python3 are there, clones the rice into
 `~/.local/share/ricelin`, then hands off to the guided Python installer. That part
 walks you through a short wizard, picks the right package names for your distro,
 pulls the deps and copies the configs into `~/.config`, backing up anything it

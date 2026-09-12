@@ -9,7 +9,11 @@ provides it. Pure logic, no installing, so it is cheap to unit-test anywhere.
 import json
 import os
 
-FAMILIES = ("arch", "debian", "fedora", "suse")
+FAMILIES = ("arch", "debian", "fedora", "suse", "gentoo")
+
+# The privilege wrapper every root step goes through. sudo by default, doas when
+# the user picks it in the wizard; read at call time, never at import.
+ROOT = "sudo"
 
 # os-release ID / ID_LIKE tokens that map onto each family. The real safety net is
 # the ID_LIKE=arch token, which catches any respin that sets it regardless of this
@@ -26,6 +30,7 @@ _FAMILY_TOKENS = {
     "debian": ("debian", "ubuntu", "linuxmint", "pop", "elementary", "zorin", "raspbian"),
     "fedora": ("fedora", "nobara", "rhel", "centos", "rocky", "almalinux"),
     "suse": ("suse", "opensuse", "sles", "sled", "tumbleweed", "leap"),
+    "gentoo": ("gentoo", "funtoo", "calculate", "pentoo", "redcore"),
 }
 
 # Distros with a read-only root, where the file deploy must stay under $HOME and
@@ -33,7 +38,8 @@ _FAMILY_TOKENS = {
 _IMMUTABLE = {"steamos"}
 
 # package manager per family.
-PM = {"arch": "pacman", "debian": "apt-get", "fedora": "dnf", "suse": "zypper"}
+PM = {"arch": "pacman", "debian": "apt-get", "fedora": "dnf", "suse": "zypper",
+      "gentoo": "emerge"}
 
 
 def _default_manifest_path():
@@ -52,7 +58,7 @@ def _os_release(path="/etc/os-release"):
             for line in fh:
                 if "=" in line and not line.startswith("#"):
                     k, v = line.rstrip().split("=", 1)
-                    data[k] = v.strip().strip('"')
+                    data[k] = v.strip().strip('"\'')
     except OSError:
         pass
     return data
@@ -112,7 +118,7 @@ def is_aur(pkg, family):
 
 
 def repo_for(pkg, family):
-    """An extra repo to enable before installing (copr: on Fedora, obs: on openSUSE)."""
+    """An extra repo to enable first (copr: on Fedora, obs: on openSUSE, overlay: on Gentoo)."""
     return (pkg.get("repo") or {}).get(family)
 
 
@@ -173,6 +179,12 @@ def _selftest():
     assert family_from_os_release({"ID": "fedora"}) == "fedora"
     assert family_from_os_release({"ID": "opensuse-tumbleweed", "ID_LIKE": "suse opensuse"}) == "suse"
     assert family_from_os_release({"ID": "void"}) == "unknown"
+    assert family_from_os_release({"ID": "gentoo"}) == "gentoo"
+    import tempfile
+    fd, osr = tempfile.mkstemp(); os.write(fd, b"NAME='Gentoo'\nID='gentoo'\n"); os.close(fd)
+    assert _os_release(osr) == {"NAME": "Gentoo", "ID": "gentoo"}, "single-quoted os-release (Gentoo)"
+    os.unlink(osr)
+    assert family_from_os_release({"ID": "funtoo", "ID_LIKE": "gentoo"}) == "gentoo"
     assert family_from_os_release({"ID": "artix"}) == "arch"
     assert family_from_os_release({"ID": "Snigdha"}) == "arch"
     assert family_from_os_release({"ID": "steamos", "ID_LIKE": "arch"}) == "arch"
@@ -186,6 +198,8 @@ def _selftest():
     assert native_name(by_id["networkmanager"], "fedora") == "NetworkManager"
     assert native_name(by_id["noto-fonts"], "fedora") == "google-noto-sans-fonts"
     assert native_name(by_id["kde-cli-tools"], "suse") == "kde-cli-tools6"
+    assert native_name(by_id["swww"], "gentoo") == "gui-apps/awww"
+    assert native_name(by_id["hyprpolkitagent"], "gentoo") == "sys-auth/hyprpolkitagent"
 
     # resolve rule
     assert resolve(by_id["bluez-utils"], "debian") == ("skip", None)
@@ -194,6 +208,10 @@ def _selftest():
     assert resolve(by_id["ghostty"], "suse") == ("native", "ghostty")
     assert resolve(by_id["dotool"], "fedora") == ("fallback", "dotool")
     assert resolve(by_id["dotool"], "arch") == ("native", "dotool")
+    assert resolve(by_id["dotool"], "gentoo") == ("native", "x11-misc/dotool")
+    assert resolve(by_id["ttf-jetbrains-mono-nerd"], "gentoo") == ("fallback", "nerdfont")
+    assert resolve(by_id["bibata-cursor-theme"], "gentoo") == ("fallback", "github")
+    assert resolve(by_id["bluez-utils"], "gentoo") == ("skip", None)
 
     # aur_choice "none" reroutes an Arch AUR package to its fallback, "yay" keeps it native
     assert resolve(by_id["dotool"], "arch", aur_choice="none") == ("fallback", "dotool")
@@ -210,6 +228,9 @@ def _selftest():
     assert repo_for(by_id["quickshell"], "fedora") == "copr:errornointernet/quickshell"
     assert repo_for(by_id["quickshell"], "debian") == "ppa:avengemedia/danklinux"
     assert repo_for(by_id["hyprland"], "arch") is None
+    assert repo_for(by_id["hyprland"], "gentoo") == "overlay:hyproverlay"
+    assert repo_for(by_id["quickshell"], "gentoo") == "overlay:guru"
+    assert repo_for(by_id["cava"], "gentoo") is None
 
     # plan covers core, skips full, marks fallbacks
     core = plan(m, "debian", groups=("core",))
@@ -238,7 +259,8 @@ def _check_token_mirrors():
 
     sh = open(os.path.join(root, "install.sh")).read()
     for fam, var in (("arch", "ARCH_IDS"), ("debian", "DEBIAN_IDS"),
-                     ("fedora", "FEDORA_IDS"), ("suse", "SUSE_IDS")):
+                     ("fedora", "FEDORA_IDS"), ("suse", "SUSE_IDS"),
+                     ("gentoo", "GENTOO_IDS")):
         m = re.search(var + r'="([^"]*)"', sh)
         assert m, f"{var} missing from install.sh"
         assert set(m.group(1).split()) == set(_FAMILY_TOKENS[fam]), \
