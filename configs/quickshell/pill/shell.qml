@@ -1,6 +1,7 @@
 //@ pragma UseQApplication
 
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -299,8 +300,8 @@ ShellRoot {
             Region {
                 id: pillRegion
                 readonly property real baseW: Math.max(pill.width, pill.targetW)
-                x: pill.x + (pill.width - baseW) / 2
-                y: pill.y
+                x: slot.x + pill.x + (pill.width - baseW) / 2
+                y: slot.y + pill.y
                 width: baseW + pill.inputPadRight
                 height: Math.max(pill.height, pill.targetH)
             }
@@ -411,11 +412,22 @@ ShellRoot {
                     }
                 }
 
-                Pill {
-                    id: pill
+                /**
+                 * Slot the pill rests in. While a toast is dragged the slot
+                 * becomes a soft-edged mask: the pill slides against an invisible
+                 * wall and dissolves at the edge it leaves through instead of
+                 * getting cut. The fade lives in the padding outside the pill's
+                 * resting footprint, so an unmoved pill is never touched by it.
+                 */
+                Item {
+                    id: slot
+                    readonly property real pad: 56 * overlay.s
+                    readonly property bool swiping: pill.swipeX !== 0 || pill.swipeY !== 0
                     anchors.top: parent.top
-                    anchors.topMargin: pill.mode === "game" ? 0 : overlay.topGap
+                    anchors.topMargin: (pill.mode === "game" ? 0 : overlay.topGap) - pad
                     anchors.horizontalCenter: parent.horizontalCenter
+                    width: pill.width + 2 * pad
+                    height: pill.height + 2 * pad
 
                     Behavior on anchors.topMargin {
                         NumberAnimation {
@@ -424,33 +436,73 @@ ShellRoot {
                             easing.bezierCurve: Motion.morphCurve
                         }
                     }
+
+                    layer.enabled: swiping
+                    layer.effect: MultiEffect {
+                        maskEnabled: true
+                        maskSource: wall
+                    }
+
+                    Item {
+                        id: wall
+                        width: slot.width
+                        height: slot.height
+                        visible: false
+                        layer.enabled: true
+
+                        Rectangle {
+                            id: wallRect
+                            anchors.fill: parent
+                            readonly property bool sideways: pill.swipeX !== 0
+                            readonly property bool leftward: pill.swipeX < 0
+                            readonly property real edge: slot.pad / (sideways ? slot.width : slot.height)
+                            gradient: Gradient {
+                                orientation: wallRect.sideways ? Gradient.Horizontal : Gradient.Vertical
+                                GradientStop { position: 0.0; color: wallRect.sideways && !wallRect.leftward ? "white" : "transparent" }
+                                GradientStop { position: wallRect.edge; color: "white" }
+                                GradientStop { position: 1 - wallRect.edge; color: "white" }
+                                GradientStop { position: 1.0; color: wallRect.sideways && wallRect.leftward ? "white" : "transparent" }
+                            }
+                        }
+                    }
+
+                Pill {
+                    id: pill
+                    anchors.top: parent.top
+                    anchors.topMargin: slot.pad
+                    anchors.horizontalCenter: parent.horizontalCenter
                     s: overlay.s
                     screenName: overlay.modelData.name
                     barWindow: overlay
                     surface: overlay.surface
                     forcePinned: root.peekMon === overlay.modelData.name
 
-                    opacity: overlay.pillHidden ? 0 : 1
+                    opacity: overlay.pillHidden ? 0 : pill.swipeFade
                     Behavior on opacity {
+                        enabled: !slot.swiping
                         NumberAnimation {
                             duration: Motion.morph
                             easing.type: Motion.easeMorph
                             easing.bezierCurve: Motion.morphCurve
                         }
                     }
-                    transform: Translate {
-                        y: overlay.pillHidden ? -(pill.height + overlay.topGap) : 0
-                        Behavior on y {
-                            NumberAnimation {
-                                duration: Motion.morph
-                                easing.type: Motion.easeMorph
-                                easing.bezierCurve: Motion.morphCurve
+                    transform: [
+                        Translate { x: pill.swipeX; y: pill.swipeY },
+                        Translate {
+                            y: overlay.pillHidden ? -(pill.height + overlay.topGap) : 0
+                            Behavior on y {
+                                NumberAnimation {
+                                    duration: Motion.morph
+                                    easing.type: Motion.easeMorph
+                                    easing.bezierCurve: Motion.morphCurve
+                                }
                             }
                         }
-                    }
+                    ]
 
                     onRequestSurface: (name) => root.toggleSurface(overlay.modelData.name, name)
                     onRequestClose: root.close()
+                }
                 }
             }
 

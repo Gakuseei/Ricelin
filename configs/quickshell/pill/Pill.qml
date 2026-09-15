@@ -28,6 +28,21 @@ Item {
     property var barWindow
     property string surface: ""
 
+    /**
+     * Toast swipe offset and fade, written by Toast while dragging and applied
+     * by the host in shell.qml. Once the last card is flung the pill sits
+     * behind the mask at zero opacity; it snaps home unseen and only the fade
+     * animates back.
+     */
+    property real swipeX: 0
+    property real swipeY: 0
+    property real swipeFade: 1
+    Behavior on swipeFade {
+        enabled: !toastLoader.active
+        NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+    }
+    onToastActiveChanged: if (!toastActive) { swipeX = 0; swipeY = 0; swipeFade = 1; }
+
     property bool hovered: false
     property bool pinned: false
     property bool forcePinned: false
@@ -2223,6 +2238,7 @@ Item {
                 anchors.top: parent.top
                 s: pill.s
                 live: pill.mode === "toast"
+                host: pill
                 notif: Notifs.popups.length > 0 ? Notifs.popups[Notifs.popups.length - 1] : null
             }
 
