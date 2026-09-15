@@ -56,9 +56,16 @@ Singleton {
         saveVibrance(pct);
     }
 
+    /**
+     * nvibrant takes one value per connector slot and ignores extras, so the
+     * same value goes to every slot rather than guessing which ones are lit.
+     */
     function applyVibrance(pct) {
         var raw = Math.round(Math.max(0, Math.min(100, pct)) * 1023 / 100);
-        Quickshell.execDetached(["nvibrant", String(raw), "0", String(raw)]);
+        var args = ["nvibrant"];
+        for (var i = 0; i < 16; i++)
+            args.push(String(raw));
+        Quickshell.execDetached(args);
     }
 
     function saveVibrance(pct) {
