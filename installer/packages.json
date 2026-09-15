@@ -78,6 +78,9 @@
     { "id": "wl-clipboard", "group": "core", "required": true, "desc": "Wayland clipboard plumbing", "aur": false,
       "names": { "arch": "wl-clipboard", "debian": "wl-clipboard", "fedora": "wl-clipboard", "suse": "wl-clipboard", "gentoo": "gui-apps/wl-clipboard" }, "fallback": null },
 
+    { "id": "libnotify", "group": "core", "required": true, "desc": "notify-send, the launch guard toasts failed app starts through it", "aur": false,
+      "names": { "arch": "libnotify", "debian": "libnotify-bin", "fedora": "libnotify", "suse": "libnotify-tools", "gentoo": "x11-libs/libnotify" }, "fallback": null },
+
     { "id": "imagemagick", "group": "core", "required": true, "desc": "Image conversion the wallpaper and palette steps lean on", "aur": false,
       "names": { "arch": "imagemagick", "debian": "imagemagick", "fedora": "ImageMagick", "suse": "ImageMagick", "gentoo": "media-gfx/imagemagick" }, "fallback": null },
 
