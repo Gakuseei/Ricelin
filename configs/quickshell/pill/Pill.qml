@@ -1595,15 +1595,32 @@ Item {
                         id: btIcon
                         anchors.verticalCenter: parent.verticalCenter
                         visible: pill.btAdapter !== null
-                        width: 15 * pill.s
+                        width: 15 * pill.s + (btLowPct.visible ? btLowPct.implicitWidth + 4 * pill.s : 0)
                         height: 15 * pill.s
 
                         GlyphIcon {
-                            anchors.fill: parent
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 15 * pill.s
+                            height: 15 * pill.s
                             name: "bluetooth"
                             color: btArea.containsMouse ? Theme.cream
-                                : (pill.btOn ? Theme.iconDim : Qt.alpha(Theme.iconDim, 0.4))
+                                : (Peripherals.connectedCount > 0 ? Theme.vermLit
+                                : (pill.btOn ? Theme.iconDim : Qt.alpha(Theme.iconDim, 0.4)))
                             stroke: 1.7
+                        }
+
+                        Text {
+                            id: btLowPct
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: Peripherals.lowestPct >= 0 && Peripherals.lowestPct <= Peripherals.lowAt
+                            text: Peripherals.lowestPct + "%"
+                            color: Theme.vermLit
+                            font.family: Theme.font
+                            font.pixelSize: 11 * pill.s
+                            font.weight: Font.DemiBold
+                            font.features: { "tnum": 1 }
                         }
 
                         MouseArea {
