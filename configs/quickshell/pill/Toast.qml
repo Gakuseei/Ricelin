@@ -223,6 +223,7 @@ Item {
             font.capitalization: Font.AllUppercase
             font.letterSpacing: 1.4 * root.s
             elide: Text.ElideRight
+            textFormat: Text.PlainText
         }
 
         Row {
@@ -261,6 +262,7 @@ Item {
                 font.weight: Font.DemiBold
                 maximumLineCount: 1
                 elide: Text.ElideRight
+                textFormat: Text.PlainText
             }
         }
 

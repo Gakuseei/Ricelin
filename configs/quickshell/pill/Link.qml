@@ -486,6 +486,7 @@ PillSurface {
                                     font.capitalization: Font.AllUppercase
                                     font.letterSpacing: 1.2 * root.s
                                     elide: Text.ElideRight
+                                    textFormat: Text.PlainText
                                 }
 
                                 Text {
