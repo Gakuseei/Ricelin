@@ -1,0 +1,250 @@
+#!/bin/sh
+#
+# ricelin-sys: the one place Ricelin talks to the init system, the login manager
+# or the session bus. The pill, hypridle, the autostart and the wallpaper script
+# call this instead of naming systemctl, loginctl or busctl, so the rice does not
+# care which init the distro runs.
+#
+# Every verb follows the same order: systemd when systemd is really PID 1, then
+# elogind (the same loginctl verbs), then do the job directly. tools/lint-init-calls.sh
+# fails the build when any other file under configs/ names one of those commands.
+#
+#   ricelin-sys power <suspend|hibernate|reboot|poweroff>
+#   ricelin-sys inhibit idle [reason]          holds an idle inhibitor until killed
+#   ricelin-sys service <start|stop|restart> <hypridle|hyprsunset|hyprpolkitagent>
+#   ricelin-sys session-start                  what the compositor runs at login
+#   ricelin-sys ghostty-reload
+#   ricelin-sys doctor                         what was detected, for bug reports
+#
+# RICELIN_SKIP_AUDIO=1 stops session-start from launching pipewire itself, for
+# distros whose own session scripts already do it.
+
+have() { command -v "$1" >/dev/null 2>&1; }
+note() { printf 'ricelin-sys: %s\n' "$*" >&2; }
+
+usage() {
+    cat >&2 <<'EOF'
+usage: ricelin-sys power <suspend|hibernate|reboot|poweroff>
+       ricelin-sys inhibit idle [reason]
+       ricelin-sys service <start|stop|restart> <hypridle|hyprsunset|hyprpolkitagent>
+       ricelin-sys session-start
+       ricelin-sys ghostty-reload
+       ricelin-sys doctor
+EOF
+    exit 2
+}
+
+# True only while systemd is PID 1, the same test sd_booted() uses. A systemctl
+# binary proves nothing: some non-systemd distros ship a stub, and a leftover
+# systemd install on an OpenRC box must not be talked to. The env var is a test
+# seam so the self-check does not depend on the machine it runs on.
+under_systemd() { [ -d "${RICELIN_TEST_SYSTEMD_DIR:-/run/systemd/system}" ]; }
+
+# A systemd user unit with this name exists for the current login.
+user_unit() { under_systemd && have systemctl && systemctl --user cat "$1.service" >/dev/null 2>&1; }
+
+is_running() { pgrep -x "$1" >/dev/null 2>&1; }
+
+wait_gone() {
+    i=0
+    while is_running "$1" && [ "$i" -lt 20 ]; do
+        sleep 0.1
+        i=$((i + 1))
+    done
+}
+
+# Wait up to three seconds for a socket or file to appear.
+wait_for() {
+    i=0
+    while [ ! -e "$1" ] && [ "$i" -lt 30 ]; do
+        sleep 0.1
+        i=$((i + 1))
+    done
+}
+
+# Run a program fully detached from the caller, silent, in its own session so it
+# outlives whatever launched this script.
+spawn() {
+    if have setsid; then
+        setsid "$@" </dev/null >/dev/null 2>&1 &
+    else
+        nohup "$@" </dev/null >/dev/null 2>&1 &
+    fi
+}
+
+exe() { [ -f "$1" ] && [ -x "$1" ]; }
+
+# Path of a daemon's executable. PATH first; hyprpolkitagent is usually not on
+# PATH, it sits in a libexec directory that differs per distro.
+daemon_bin() {
+    if command -v "$1" 2>/dev/null; then
+        return 0
+    fi
+    [ "$1" = hyprpolkitagent ] || return 1
+    for d in /usr/lib /usr/libexec /usr/lib64 /usr/local/libexec; do
+        if exe "$d/hyprpolkitagent/hyprpolkitagent"; then
+            echo "$d/hyprpolkitagent/hyprpolkitagent"
+            return 0
+        fi
+        if exe "$d/hyprpolkitagent"; then
+            echo "$d/hyprpolkitagent"
+            return 0
+        fi
+    done
+    return 1
+}
+
+cmd_power() {
+    action="$1"
+    case "$action" in
+        suspend|hibernate|reboot|poweroff) ;;
+        *) usage ;;
+    esac
+
+    if under_systemd && have systemctl && systemctl "$action"; then
+        return 0
+    fi
+    # elogind answers the same loginctl verbs; on systemd this is a second try.
+    if have loginctl && loginctl "$action"; then
+        return 0
+    fi
+    case "$action" in
+        reboot|poweroff)
+            if have "$action" && "$action"; then
+                return 0
+            fi
+            ;;
+    esac
+
+    note "cannot $action: no usable systemctl, loginctl or $action command"
+    have notify-send && notify-send -u critical -a Ricelin "Cannot $action" \
+        "Neither systemd, elogind nor a plain $action command worked."
+    return 1
+}
+
+cmd_inhibit() {
+    [ "${1:-idle}" = idle ] || usage
+    why="${2:-keep awake}"
+    if under_systemd && have systemd-inhibit; then
+        exec systemd-inhibit --what=idle:sleep --who=Ricelin --why="$why" \
+            --mode=block sleep infinity
+    fi
+    if have elogind-inhibit; then
+        exec elogind-inhibit --what=idle:sleep --who=Ricelin --why="$why" \
+            --mode=block sleep infinity
+    fi
+    # No logind at all: hold a plain Wayland idle inhibitor if a client is installed.
+    if have wlinhibit; then
+        exec wlinhibit
+    fi
+    note "no idle inhibitor available (tried systemd-inhibit, elogind-inhibit, wlinhibit)"
+    exit 127
+}
+
+cmd_service() {
+    verb="$1"
+    name="$2"
+    case "$verb" in
+        start|stop|restart) ;;
+        *) usage ;;
+    esac
+    [ "$name" = polkit ] && name=hyprpolkitagent
+    case "$name" in
+        hypridle|hyprsunset|hyprpolkitagent) ;;
+        *) usage ;;
+    esac
+
+    if user_unit "$name"; then
+        systemctl --user "$verb" "$name"
+        return
+    fi
+
+    case "$verb" in
+        stop)
+            pkill -x "$name" 2>/dev/null
+            return 0
+            ;;
+        start)
+            is_running "$name" && return 0
+            ;;
+        restart)
+            pkill -x "$name" 2>/dev/null
+            wait_gone "$name"
+            ;;
+    esac
+
+    bin="$(daemon_bin "$name")"
+    if [ -z "$bin" ]; then
+        note "$name is not installed"
+        return 1
+    fi
+    spawn "$bin"
+}
+
+# Without a user service manager nothing socket-activates PipeWire, so bring the
+# trio up in order and wait on each socket instead of guessing with sleeps.
+start_audio() {
+    have pipewire || return 0
+    rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    is_running pipewire || spawn pipewire
+    wait_for "$rt/pipewire-0"
+    if have wireplumber && ! is_running wireplumber; then
+        spawn wireplumber
+    fi
+    if have pipewire-pulse && ! is_running pipewire-pulse; then
+        spawn pipewire-pulse
+        wait_for "$rt/pulse/native"
+    fi
+}
+
+cmd_session_start() {
+    if under_systemd && have systemctl; then
+        systemctl --user start hyprland-session.target >/dev/null 2>&1
+    elif [ -z "${RICELIN_SKIP_AUDIO:-}" ]; then
+        start_audio
+    fi
+    cmd_service start hyprpolkitagent
+    cmd_service restart hypridle
+    # Under systemd the installer enables hyprsunset as a user unit; elsewhere
+    # nothing would ever start it.
+    if ! under_systemd && have hyprsunset; then
+        cmd_service start hyprsunset
+    fi
+    return 0
+}
+
+cmd_ghostty_reload() {
+    if have gdbus && gdbus call --session --dest com.mitchellh.ghostty \
+        --object-path /com/mitchellh/ghostty \
+        --method org.gtk.Actions.Activate reload-config '[]' '{}' >/dev/null 2>&1; then
+        return 0
+    fi
+    if have busctl; then
+        busctl --user call com.mitchellh.ghostty /com/mitchellh/ghostty \
+            org.gtk.Actions Activate 'sava{sv}' reload-config 0 0 >/dev/null 2>&1
+    fi
+    # Ghostty not running, or no bus tool: nothing to reload, and that is fine.
+    return 0
+}
+
+cmd_doctor() {
+    printf '%-14s %s\n' init "$(ps -p 1 -o comm= 2>/dev/null | tr -d ' ')"
+    printf '%-14s %s\n' systemd "$(under_systemd && echo running || echo no)"
+    for t in systemctl loginctl systemd-inhibit elogind-inhibit wlinhibit busctl gdbus \
+        pipewire wireplumber pipewire-pulse hypridle hyprsunset notify-send; do
+        printf '%-14s %s\n' "$t" "$(command -v "$t" || echo -)"
+    done
+    printf '%-14s %s\n' hyprpolkitagent "$(daemon_bin hyprpolkitagent || echo -)"
+}
+
+cmd="${1:-}"
+[ "$#" -gt 0 ] && shift
+case "$cmd" in
+    power)          cmd_power "$@" ;;
+    inhibit)        cmd_inhibit "$@" ;;
+    service)        cmd_service "$@" ;;
+    session-start)  cmd_session_start ;;
+    ghostty-reload) cmd_ghostty_reload ;;
+    doctor)         cmd_doctor ;;
+    *)              usage ;;
+esac

@@ -23,6 +23,7 @@ SettingsSurface {
 
     readonly property string confPath: Quickshell.env("HOME") + "/.config/hypr/hypridle.conf"
     readonly property string lockScript: Quickshell.env("HOME") + "/.config/hypr/scripts/lock.sh"
+    readonly property string sysScript: Quickshell.env("HOME") + "/.config/hypr/scripts/ricelin-sys"
 
     readonly property var lockOptions: [
         { label: "Off", value: 0 }, { label: "1 min", value: 1 }, { label: "3 min", value: 3 },
@@ -72,7 +73,7 @@ SettingsSurface {
         if (Flags.idleSuspendMin > 0)
             out += "\nlistener {\n"
                 + "    timeout = " + (Flags.idleSuspendMin * 60) + "\n"
-                + "    on-timeout = loginctl suspend\n"
+                + "    on-timeout = " + root.sysScript + " power suspend\n"
                 + "}\n";
 
         return out;
@@ -92,7 +93,7 @@ SettingsSurface {
 
     Process {
         id: restartProc
-        command: ["sh", "-c", "pkill -x hypridle; hypridle >/dev/null 2>&1 &"]
+        command: [root.sysScript, "service", "restart", "hypridle"]
     }
 
     /**

@@ -12,6 +12,8 @@ import Quickshell.Io
  * The mode, warmth and the two times all live in Flags, so the pill and a fresh
  * login restore the same state. The service is enabled once at install, which is
  * why nothing here ever starts it; it is already up under the graphical session.
+ * Restarts go through ricelin-sys, which uses the systemd unit when there is one
+ * and the plain daemon on any other init.
  */
 Singleton {
     id: root
@@ -79,12 +81,16 @@ Singleton {
         ipc.running = true;
     }
 
+    property bool pendingRestart: false
+
     /**
      * Persists conf for the next login and pushes live now. The conf write and
      * the daemon re-arm are both debounced, so a scrub flurry collapses into one
      * write and one restart.
      */
-    function commit() {
+    function commit(restart) {
+        if (restart)
+            root.pendingRestart = true;
         confTimer.restart();
         root.pushLive();
     }
@@ -96,23 +102,24 @@ Singleton {
      * conf is a single all-day profile that only fires at 0:00.
      */
     function setMode(m) {
+        var was = Flags.nightLightMode;
         Flags.nightLightMode = m;
-        root.commit();
+        root.commit(was === "scheduled" || m === "scheduled");
     }
 
     function setTemp(t) {
         Flags.nightLightTemp = root.clampTemp(t);
-        root.commit();
+        root.commit(Flags.nightLightMode === "scheduled");
     }
 
     function setOnMin(v) {
         Flags.nightLightOnMin = v;
-        root.commit();
+        root.commit(Flags.nightLightMode === "scheduled");
     }
 
     function setOffMin(v) {
         Flags.nightLightOffMin = v;
-        root.commit();
+        root.commit(Flags.nightLightMode === "scheduled");
     }
 
     SystemClock {
@@ -145,7 +152,15 @@ Singleton {
         interval: 250
         onTriggered: {
             writer.setText(root.buildConf());
+            if (root.pendingRestart) {
+                root.pendingRestart = false;
+                restartProc.running = true;
+            }
         }
     }
 
+    Process {
+        id: restartProc
+        command: [Quickshell.env("HOME") + "/.config/hypr/scripts/ricelin-sys", "service", "restart", "hyprsunset"]
+    }
 }

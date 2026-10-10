@@ -104,8 +104,7 @@ ShellRoot {
      */
     Process {
         running: Flags.keepAwake
-        command: ["elogind-inhibit", "--what=idle:sleep", "--who=Ricelin",
-                  "--why=keep awake", "--mode=block", "sleep", "infinity"]
+        command: [Quickshell.env("HOME") + "/.config/hypr/scripts/ricelin-sys", "inhibit", "idle", "keep awake"]
     }
 
     /**

@@ -1,0 +1,20 @@
+name: portability
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No init-specific calls outside ricelin-sys
+        run: sh tools/lint-init-calls.sh
+      - name: ricelin-sys self-check
+        run: sh tests/test_ricelin_sys.sh
+      - name: Shell syntax
+        run: |
+          sh -n configs/hypr/scripts/ricelin-sys
+          sh -n tools/lint-init-calls.sh
+          sh -n tests/test_ricelin_sys.sh

@@ -74,6 +74,22 @@ curl -fsSL https://raw.githubusercontent.com/Gakuseei/Ricelin/main/install.sh | 
 Ricelin is a Hyprland shell. On Niri, Sway or anything else only rishot (the
 screenshot tool) makes sense; grab it from [rishot](https://github.com/Gakuseei/rishot)'s own installer.
 
+## Init systems
+
+Ricelin does not need systemd. Every call that touches the init system, the login
+manager or the session bus goes through `configs/hypr/scripts/ricelin-sys`. It uses
+systemd when systemd is really running, elogind when it is not, and does the job
+directly when neither is there: power actions, keep-awake,
+restarting hypridle and hyprsunset, and reloading Ghostty. On a non-systemd host it
+also starts PipeWire, the polkit agent, hypridle and hyprsunset at login. Set
+`RICELIN_SKIP_AUDIO=1` if your distro already starts PipeWire for you.
+
+Run `~/.config/hypr/scripts/ricelin-sys doctor` to see what it detected. Existing
+`hypridle.conf` files keep their old commands until you change an idle setting in
+the pill, which rewrites them. `tools/lint-init-calls.sh` fails when any other file
+under `configs/` names `systemctl`, `loginctl` or `busctl`, and
+`tests/test_ricelin_sys.sh` checks every path through the helper.
+
 ## Keybinds
 
 | Key | Action |
