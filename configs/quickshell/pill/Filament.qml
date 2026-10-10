@@ -69,8 +69,8 @@ Item {
     Rectangle {
         visible: root.kind === "battery"
         anchors.left: parent.left
+        anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        width: 22 * root.s
         height: 3 * root.s
         radius: height / 2
         color: Theme.threadBg

@@ -6,7 +6,7 @@ import Quickshell.Io
 /**
  * Screen-recorder backend, shared by the 録 RECORD surface, the pill's hover
  * cluster record indicator and the record OSD. gpu-screen-recorder is the
- * encoder (cross-vendor nvenc/vaapi/cpu); this singleton owns the capture
+ * encoder (cross-vendor nvenc/vaapi/vulkan/cpu); this singleton owns the capture
  * settings, builds the argv from them, starts and stops the recorder and keeps
  * a live `recording` flag polled from the real process so an externally started
  * or stopped recorder is reflected too.
@@ -231,10 +231,31 @@ Singleton {
         windowProc.running = true;
     }
 
+    /**
+     * Codec override from the `--info` probe: empty keeps gsr's native nvenc/vaapi pick,
+     * `h264_vulkan` covers drivers the system FFmpeg's nvenc refuses (nvidia 580xx on FFmpeg 9).
+     */
+    property var codecArgs: []
+
+    Process {
+        id: infoProc
+        command: ["gpu-screen-recorder", "--info"]
+        running: true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var m = this.text.match(/section=video_codecs\n([\s\S]*?)(\nsection=|$)/);
+                var codecs = m ? m[1].split("\n") : [];
+                var native = ["h264", "hevc", "av1"].some(function(c) { return codecs.indexOf(c) >= 0; });
+                root.codecArgs = !native && codecs.indexOf("h264_vulkan") >= 0 ? ["-k", "h264_vulkan"] : [];
+            }
+        }
+    }
+
     function buildArgs(captureToken, file) {
         var args = ["gpu-screen-recorder", "-w", captureToken,
                     "-f", String(fps), "-q", qualityPreset[quality] || "high",
-                    "-cursor", captureCursor ? "yes" : "no"];
+                    "-cursor", captureCursor ? "yes" : "no",
+                    "-fallback-cpu-encoding", "yes"].concat(codecArgs);
         var a = audioArg();
         if (a.length > 0)
             args = args.concat(["-a", a]);

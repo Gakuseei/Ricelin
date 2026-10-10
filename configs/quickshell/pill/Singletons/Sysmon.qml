@@ -17,9 +17,18 @@ import Quickshell.Io
  * loopback, divided by the fast interval. CPU temperature resolves once to the
  * most accurate hwmon sensor available: AMD Tdie, else Intel "Package id 0",
  * else AMD Tctl, else the first temp1_input. The GPU path resolves once to
- * nvidia (nvidia-smi), AMD (sysfs gpu_busy_percent) or none; an Intel-only or
- * GPU-less machine reports `hasGpu` false so the surface drops to two dials and
- * hides the VRAM cell. Disk is the root filesystem's used percent.
+ * nvidia (nvidia-smi), AMD (sysfs gpu_busy_percent), Intel (i915 or xe) or
+ * none; a GPU-less machine reports `hasGpu` false so the surface drops to two
+ * dials and hides the VRAM cell. Disk is the root filesystem's used percent.
+ *
+ * Intel exposes no busy percent in sysfs and the PMU needs CAP_PERFMON, so
+ * load is summed from the DRM fdinfo of every process the user can read (the
+ * same numbers nvtop shows per process): i915 reports render busy time in ns,
+ * xe reports render cycles against a GT timestamp. Both are cumulative, so the
+ * dial is the delta between two polls; clients sharing one file description
+ * are deduped by `drm-client-id`. Package temperature comes from the card's
+ * hwmon (i915 temp1, xe temp2), absent on iGPUs and kernels before 6.12/6.15.
+ * VRAM has no sysfs total on Intel, so the cell stays hidden.
  */
 Singleton {
     id: root
@@ -31,7 +40,9 @@ Singleton {
 
     property bool hasGpu: false
     property string gpuVendor: ""
-    property string amdDev: ""
+    property string gpuDev: ""
+    property string gpuPdev: ""
+    property var gpuPrev: null
     property int gpu: 0
     property int gpuTemp: -1
     property bool hasVram: false
@@ -57,6 +68,23 @@ Singleton {
     property real prevTx: 0
     property real prevNetTime: 0
 
+    /**
+     * Turns a cumulative fdinfo sample into a percent: i915 render ns against
+     * wall time, xe render cycles against the GT timestamp delta. The first
+     * sample after opening only seeds the baseline.
+     */
+    function fdinfoLoad(ns, cyc, tot) {
+        var now = Date.now();
+        var prev = root.gpuPrev;
+        root.gpuPrev = { ns: ns, cyc: cyc, tot: tot, t: now };
+        if (!prev || now <= prev.t)
+            return 0;
+        var pct = tot > prev.tot
+            ? (cyc - prev.cyc) * 100 / (tot - prev.tot)
+            : (ns - prev.ns) / ((now - prev.t) * 1e4);
+        return Math.max(0, Math.min(100, Math.round(pct)));
+    }
+
     function primeAll() {
         if (tempPath.length === 0 || gpuVendor.length === 0) {
             detectProc.running = true;
@@ -65,6 +93,7 @@ Singleton {
         prevCpuTotal = 0;
         prevRx = 0;
         prevNetTime = 0;
+        gpuPrev = null;
         fastProc.running = true;
         if (hasGpu)
             gpuProc.running = true;
@@ -93,7 +122,8 @@ Singleton {
             + "[ -z \"$tp\" ] && for h in /sys/class/hwmon/hwmon*; do [ -r \"$h/temp1_input\" ] && { tp=\"$h/temp1_input\"; break; }; done; "
             + "echo \"TEMP $tp\"; "
             + "if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then echo 'GPU nvidia'; "
-            + "else for d in /sys/class/drm/card*/device; do [ -r \"$d/vendor\" ] || continue; [ \"$(cat \"$d/vendor\")\" = 0x1002 ] && [ -r \"$d/gpu_busy_percent\" ] && { v=0; [ -r \"$d/mem_info_vram_total\" ] && v=1; echo \"GPU amd $d $v\"; break; }; done; fi"]
+            + "else for d in /sys/class/drm/card*/device; do [ -r \"$d/vendor\" ] || continue; [ \"$(cat \"$d/vendor\")\" = 0x1002 ] && [ -r \"$d/gpu_busy_percent\" ] && { v=0; [ -r \"$d/mem_info_vram_total\" ] && v=1; echo \"GPU amd $d $v\"; exit; }; done; "
+            + "for d in /sys/class/drm/card*/device; do [ -r \"$d/vendor\" ] || continue; [ \"$(cat \"$d/vendor\")\" = 0x8086 ] || continue; case \"$(readlink \"$d/driver\")\" in */i915|*/xe) echo \"GPU intel $d $(basename \"$(readlink -f \"$d\")\")\"; exit;; esac; done; fi"]
         stdout: StdioCollector {
             onStreamFinished: {
                 var lines = this.text.split("\n");
@@ -107,9 +137,15 @@ Singleton {
                         root.hasVram = true;
                     } else if (p[0] === "GPU" && p[1] === "amd") {
                         root.gpuVendor = "amd";
-                        root.amdDev = p.slice(2, p.length - 1).join(" ");
+                        root.gpuDev = p.slice(2, p.length - 1).join(" ");
                         root.hasGpu = true;
                         root.hasVram = p[p.length - 1] === "1";
+                    } else if (p[0] === "GPU" && p[1] === "intel") {
+                        root.gpuVendor = "intel";
+                        root.gpuDev = p.slice(2, p.length - 1).join(" ");
+                        root.gpuPdev = p[p.length - 1];
+                        root.hasGpu = true;
+                        root.hasVram = false;
                     }
                 }
                 if (root.gpuVendor.length === 0)
@@ -176,11 +212,19 @@ Singleton {
         id: gpuProc
         command: root.gpuVendor === "nvidia"
             ? ["sh", "-c", "nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total --format=csv,noheader,nounits | head -1"]
+            : root.gpuVendor === "intel"
+            ? ["sh", "-c",
+                "d=\"$1\"; t=$( { cat \"$d\"/hwmon/hwmon*/temp2_input || cat \"$d\"/hwmon/hwmon*/temp1_input; } 2>/dev/null | head -1); echo \"TEMP ${t:--1000}\"; "
+                + "for f in $(find /proc/[0-9]*/fd -lname '/dev/dri/*' 2>/dev/null); do cat \"${f%/fd/*}/fdinfo/${f##*/}\"; done 2>/dev/null | awk -v pdev=\"$2\" "
+                + "'/^drm-pdev:/{p=$2} /^drm-client-id:/{dup=seen[$2]++} "
+                + "p==pdev && !dup && /^drm-engine-render:/{ns+=$2} p==pdev && !dup && /^drm-cycles-rcs:/{cyc+=$2} p==pdev && /^drm-total-cycles-rcs:/{tot=$2} "
+                + "END{print \"FD\", ns+0, cyc+0, tot+0}'",
+                "_", root.gpuDev, root.gpuPdev]
             : ["sh", "-c",
                 "d=\"$1\"; echo \"BUSY $(cat \"$d/gpu_busy_percent\" 2>/dev/null)\"; "
                 + "t=$(cat \"$d\"/hwmon/hwmon*/temp1_input 2>/dev/null | head -1); echo \"TEMP ${t:-0}\"; "
                 + "echo \"VU $(cat \"$d/mem_info_vram_used\" 2>/dev/null)\"; echo \"VT $(cat \"$d/mem_info_vram_total\" 2>/dev/null)\"",
-                "_", root.amdDev]
+                "_", root.gpuDev]
         stdout: StdioCollector {
             onStreamFinished: {
                 if (root.gpuVendor === "nvidia") {
@@ -198,6 +242,8 @@ Singleton {
                     var p = lines[i].trim().split(/\s+/);
                     if (p[0] === "BUSY")
                         root.gpu = Math.max(0, Math.min(100, Math.round(parseFloat(p[1]) || 0)));
+                    else if (p[0] === "FD")
+                        root.gpu = root.fdinfoLoad(parseFloat(p[1]) || 0, parseFloat(p[2]) || 0, parseFloat(p[3]) || 0);
                     else if (p[0] === "TEMP")
                         root.gpuTemp = Math.round((parseFloat(p[1]) || 0) / 1000);
                     else if (p[0] === "VU")

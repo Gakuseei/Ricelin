@@ -96,6 +96,21 @@ Item {
     property var barWindow
     property string surface: ""
 
+    /**
+     * Toast swipe offset and fade, written by Toast while dragging and applied
+     * by the host in shell.qml. Once the last card is flung the pill sits
+     * behind the mask at zero opacity; it snaps home unseen and only the fade
+     * animates back.
+     */
+    property real swipeX: 0
+    property real swipeY: 0
+    property real swipeFade: 1
+    Behavior on swipeFade {
+        enabled: !toastLoader.active
+        NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+    }
+    onToastActiveChanged: if (!toastActive) { swipeX = 0; swipeY = 0; swipeFade = 1; }
+
     property bool hovered: false
     property bool pinned: false
     property bool forcePinned: false
@@ -1660,15 +1675,32 @@ property real morphRadius: (mode === "rest" || mode === "hover" || mode === "gam
                         id: btIcon
                         anchors.verticalCenter: parent.verticalCenter
                         visible: pill.btAdapter !== null
-                        width: 15 * pill.s
+                        width: 15 * pill.s + (btLowPct.visible ? btLowPct.implicitWidth + 4 * pill.s : 0)
                         height: 15 * pill.s
 
                         GlyphIcon {
-                            anchors.fill: parent
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 15 * pill.s
+                            height: 15 * pill.s
                             name: "bluetooth"
                             color: btArea.containsMouse ? Theme.cream
-                                : (pill.btOn ? Theme.iconDim : Qt.alpha(Theme.iconDim, 0.4))
+                                : (Peripherals.connectedCount > 0 ? Theme.vermLit
+                                : (pill.btOn ? Theme.iconDim : Qt.alpha(Theme.iconDim, 0.4)))
                             stroke: 1.7
+                        }
+
+                        Text {
+                            id: btLowPct
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: Peripherals.lowestPct >= 0 && Peripherals.lowestPct <= Peripherals.lowAt
+                            text: Peripherals.lowestPct + "%"
+                            color: Theme.vermLit
+                            font.family: Theme.font
+                            font.pixelSize: 11 * pill.s
+                            font.weight: Font.DemiBold
+                            font.features: { "tnum": 1 }
                         }
 
                         MouseArea {
@@ -2397,6 +2429,7 @@ property real morphRadius: (mode === "rest" || mode === "hover" || mode === "gam
                 anchors.top: parent.top
                 s: pill.s
                 live: pill.mode === "toast"
+                host: pill
                 notif: Notifs.popups.length > 0 ? Notifs.popups[Notifs.popups.length - 1] : null
             }
 

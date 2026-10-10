@@ -38,6 +38,7 @@ DEPLOY_SET = [
     ("fish",       "fish",                                  "fish"),
     ("fastfetch",  "fastfetch",                             "fastfetch"),
     ("kdeglobals", "kde/kdeglobals",                        "kdeglobals"),
+    ("session",    "systemd/user/hyprland-session.target",  "systemd/user/hyprland-session.target"),
 ]
 
 # Personal bootloader entries that never deploy. A generic grub-theme installer

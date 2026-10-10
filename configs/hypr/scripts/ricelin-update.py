@@ -377,6 +377,7 @@ FAMILY_TOKENS = {
     "debian": ("debian", "ubuntu", "linuxmint", "pop", "elementary", "zorin", "raspbian"),
     "fedora": ("fedora", "nobara", "rhel", "centos", "rocky", "almalinux"),
     "suse": ("suse", "opensuse", "sles", "sled", "tumbleweed", "leap"),
+    "gentoo": ("gentoo", "funtoo", "calculate", "pentoo", "redcore"),
 }
 
 
@@ -387,7 +388,7 @@ def os_release(path="/etc/os-release"):
             for line in fh:
                 if "=" in line and not line.startswith("#"):
                     k, v = line.rstrip().split("=", 1)
-                    data[k] = v.strip().strip('"')
+                    data[k] = v.strip().strip('"\'')
     except OSError:
         pass
     return data
@@ -443,6 +444,9 @@ def pkg_installed(name, family):
             r = subprocess.run(["dpkg-query", "-W", "-f=${Status}", name],
                                capture_output=True, text=True)
             return "install ok installed" in r.stdout
+        if family == "gentoo":
+            return subprocess.run(["portageq", "has_version", "/", name],
+                                  capture_output=True).returncode == 0
         r = subprocess.run(["rpm", "-q", name], capture_output=True, text=True)
         return r.returncode == 0
     except (OSError, subprocess.SubprocessError):
@@ -480,6 +484,8 @@ def native_install_argv(family, names):
         return ["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", *names]
     if family == "fedora":
         return ["dnf", "install", "-y", *names]
+    if family == "gentoo":
+        return ["emerge", "--noreplace", *names]
     return ["zypper", "--non-interactive", "install", *names]
 
 
@@ -489,13 +495,17 @@ def manual_hint(pkg, family, fallbacks):
     its failure reason so the user is told what to run rather than left with a silent
     no-op. An Arch AUR package needs a helper that runs makepkg as the user (it
     refuses root, and the helper's own sudo has no askpass in a pill-spawned process),
-    so the engine never tries it from here and hands over the exact command. A
-    fallback-only package has no native package and points at its fallback method.
+    so the engine never tries it from here and hands over the exact command. Gentoo
+    compiles every package, hours of build with no terminal behind a pkexec prompt,
+    so there every package is handed over as an emerge line instead. A fallback-only
+    package has no native package and points at its fallback method.
     """
     name = native_name(pkg, family)
     if family == "arch" and name and pkg.get("aur"):
         helper = shutil.which("yay") or shutil.which("paru") or "yay"
         return f"AUR package, install it yourself: {helper} -S {name}"
+    if family == "gentoo" and name:
+        return f"compiles from source, run it in a terminal: emerge -av {name}"
     hint = fallbacks.get(pkg.get("fallback")) or "install it manually"
     return f"no native package on this system, {hint}"
 
@@ -537,7 +547,7 @@ def install_missing_deps(clone, head, ids):
             failures.append({"id": pid, "error": "unknown package"})
             continue
         name = native_name(pkg, family)
-        if not name or (family == "arch" and pkg.get("aur")):
+        if not name or (family == "arch" and pkg.get("aur")) or family == "gentoo":
             failures.append({"id": pid, "error": manual_hint(pkg, family, fallbacks)})
             continue
         repo.append((pid, name))

@@ -7,10 +7,14 @@ import "Singletons"
 
 /**
  * 歯 BLUETOOTH surface: kanji header, scan with 25s auto-stop, adapter toggle,
- * live device list. Known devices use the Quickshell connect/disconnect calls;
- * unpaired devices run a bluetoothctl pair-trust-connect flow with an inline
- * ember while running and a transient failure line. Standalone root surface, so
- * Escape and the backdrop dismiss it like every other surface.
+ * a connected block on top and the nearby list below. Connected rows are
+ * taller and carry a full-width battery thread fed by Peripherals (UPower),
+ * since BlueZ keeps Battery1 behind Experimental; USB-dongle peripherals with
+ * a battery join that block as display-only rows. Known devices use the
+ * Quickshell connect/disconnect calls; unpaired devices run a bluetoothctl
+ * pair-trust-connect flow with an inline ember while running and a transient
+ * failure line. Standalone root surface, so Escape and the backdrop dismiss
+ * it like every other surface.
  */
 PillSurface {
     id: root
@@ -26,19 +30,43 @@ PillSurface {
     /**
      * BlueZ hands the cache out in arbitrary order; sort connected first,
      * then paired, then named devices, nameless MACs last so a discovery scan
-     * doesn't churn the useful rows around.
+     * doesn't churn the useful rows around. Reads connectedCount so a
+     * connect flip re-sorts, which the raw device list never signals.
      */
-    readonly property var devicesSorted: devices.slice().sort(function(a, b) {
+    readonly property var devicesSorted: {
+        var tick = Peripherals.connectedCount;
         function rank(d) {
             if (!d) return 3;
             if (d.connected) return 0;
             if (d.paired) return 1;
             return (d.name && d.name.length) ? 2 : 3;
         }
-        var r = rank(a) - rank(b);
-        if (r !== 0) return r;
-        return String((a && a.name) || "").localeCompare(String((b && b.name) || ""));
-    })
+        return devices.slice().sort(function(a, b) {
+            var r = rank(a) - rank(b);
+            if (r !== 0) return r;
+            return String((a && a.name) || "").localeCompare(String((b && b.name) || ""));
+        });
+    }
+
+    /**
+     * Rows for the connected block: every connected Bluetooth device paired
+     * with its UPower battery entry by MAC, then USB-dongle peripherals that
+     * have no Bluetooth counterpart. `up` is null when nothing reports charge.
+     */
+    readonly property var connectedRows: {
+        var rows = [];
+        var byMac = Peripherals.byMac;
+        for (var i = 0; i < devicesSorted.length; i++) {
+            var d = devicesSorted[i];
+            if (!d || !d.connected) continue;
+            rows.push({ bt: d, up: byMac[String(d.address || "").toUpperCase()] || null });
+        }
+        var usb = Peripherals.usb;
+        for (var j = 0; j < usb.length; j++)
+            rows.push({ bt: null, up: usb[j] });
+        return rows;
+    }
+    readonly property var nearbyRows: devicesSorted.filter(function(d) { return d && !d.connected; })
     readonly property bool discovering: adapter ? adapter.discovering === true : false
 
     property string pairingAddress: ""
@@ -72,8 +100,7 @@ PillSurface {
     function metaFor(d) {
         if (!d) return "";
         var parts = [];
-        if (d.connected) parts.push("connected");
-        else if (d.paired) parts.push("paired");
+        if (d.paired) parts.push("paired");
         if (d.state !== undefined && typeof BluetoothDeviceState !== "undefined") {
             var st = BluetoothDeviceState.toString(d.state);
             if (st && st.length > 0 && parts.indexOf(st.toLowerCase()) === -1) parts.push(st.toLowerCase());
@@ -82,12 +109,16 @@ PillSurface {
         return parts.join(" · ");
     }
 
-    function batteryLevel(d) {
-        if (!d || d.battery === undefined || d.battery === null) return -1;
-        var b = d.battery;
-        if (b <= 0) return -1;
-        if (b <= 1) b = b * 100;
-        return Math.round(b);
+    function batteryFor(row) {
+        if (row.up) return Peripherals.pct(row.up);
+        var d = row.bt;
+        if (!d || d.battery === undefined || d.battery === null || d.battery <= 0) return -1;
+        return Math.round(d.battery <= 1 ? d.battery * 100 : d.battery);
+    }
+
+    function rowName(row) {
+        if (row.bt) return row.bt.deviceName || row.bt.name || "Unknown";
+        return (row.up && row.up.model) ? row.up.model : "Unknown";
     }
 
     /**
@@ -264,16 +295,132 @@ PillSurface {
         color: Theme.hair
     }
 
+    component Eyebrow: Item {
+        property string label: ""
+        width: parent ? parent.width : 0
+        height: 18 * root.s
+
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: 8 * root.s
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 2 * root.s
+            text: parent.label
+            color: Theme.faint
+            font.family: Theme.font
+            font.pixelSize: 8.5 * root.s
+            font.weight: Font.DemiBold
+            font.letterSpacing: 1.4 * root.s
+        }
+    }
+
+    /**
+     * Inline confirm row under a known device: Disconnect or Connect plus
+     * Forget, shared by the connected block and the nearby list.
+     */
+    component ConfirmRow: Item {
+        id: confirm
+        property var dev: null
+        property bool connected: false
+        width: parent ? parent.width : 0
+        height: 30 * root.s
+
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: 10 * root.s
+            anchors.right: confirmBtns.left
+            anchors.rightMargin: 8 * root.s
+            anchors.verticalCenter: parent.verticalCenter
+            text: confirm.connected ? "Connected" : "Paired"
+            color: Theme.faint
+            font.family: Theme.font
+            font.pixelSize: 9.5 * root.s
+            font.weight: Font.Medium
+            elide: Text.ElideRight
+        }
+
+        Row {
+            id: confirmBtns
+            anchors.right: parent.right
+            anchors.rightMargin: 10 * root.s
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6 * root.s
+
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: primaryLabel.implicitWidth + 20 * root.s
+                height: 22 * root.s
+                radius: 7 * root.s
+                color: primaryArea.containsMouse ? Theme.tileBg : "transparent"
+                border.width: 1
+                border.color: primaryArea.containsMouse ? Theme.vermDim : Theme.border
+
+                Text {
+                    id: primaryLabel
+                    anchors.centerIn: parent
+                    text: confirm.connected ? "Disconnect" : "Connect"
+                    color: Theme.cream
+                    font.family: Theme.font
+                    font.pixelSize: 10 * root.s
+                    font.weight: Font.DemiBold
+                    font.letterSpacing: 0.3 * root.s
+                }
+
+                MouseArea {
+                    id: primaryArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: confirm.connected
+                        ? root.disconnectDevice(confirm.dev)
+                        : root.connectDevice(confirm.dev)
+                }
+            }
+
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: forgetLabel.implicitWidth + 20 * root.s
+                height: 22 * root.s
+                radius: 7 * root.s
+                color: forgetArea.containsMouse
+                    ? Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.2)
+                    : Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.12)
+                border.width: 1
+                border.color: Qt.rgba(Theme.vermLit.r, Theme.vermLit.g, Theme.vermLit.b, 0.45)
+
+                Text {
+                    id: forgetLabel
+                    anchors.centerIn: parent
+                    text: "Forget"
+                    color: Theme.vermLit
+                    font.family: Theme.font
+                    font.pixelSize: 10 * root.s
+                    font.weight: Font.DemiBold
+                    font.letterSpacing: 0.3 * root.s
+                }
+
+                MouseArea {
+                    id: forgetArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.forgetDevice(confirm.dev)
+                }
+            }
+        }
+    }
+
     Item {
         id: listFrame
         anchors.top: divider.bottom
-        anchors.topMargin: 8 * root.s
+        anchors.topMargin: 6 * root.s
         anchors.left: parent.left
         anchors.right: parent.right
-        height: root.devices.length > 0 ? Math.min(devCol.implicitHeight, 200 * root.s) : 24 * root.s
+        readonly property bool empty: root.connectedRows.length === 0 && root.nearbyRows.length === 0
+        height: empty ? 24 * root.s : Math.min(devCol.implicitHeight, 260 * root.s)
 
         Text {
-            visible: root.devices.length === 0
+            visible: listFrame.empty
             anchors.centerIn: parent
             text: root.discovering ? "Scanning…" : "No devices found"
             color: Theme.faint
@@ -283,7 +430,7 @@ PillSurface {
 
         Flickable {
             id: devFlick
-            visible: root.devices.length > 0
+            visible: !listFrame.empty
             anchors.fill: parent
             contentHeight: devCol.implicitHeight
             clip: true
@@ -294,23 +441,215 @@ PillSurface {
                 width: devFlick.width
                 spacing: 2 * root.s
 
+                Eyebrow {
+                    visible: root.connectedRows.length > 0
+                    label: "CONNECTED"
+                }
+
                 Repeater {
-                    model: root.devicesSorted
+                    model: root.connectedRows
+
+                    Column {
+                        id: conItem
+                        required property var modelData
+                        readonly property var bt: modelData ? modelData.bt : null
+                        readonly property var up: modelData ? modelData.up : null
+                        readonly property string addr: (bt && bt.address) ? bt.address : ""
+                        readonly property int battery: root.batteryFor(modelData)
+                        readonly property bool hasBattery: battery >= 0
+                        readonly property bool charging: up ? Peripherals.charging(up) : false
+                        readonly property bool low: hasBattery && !charging && battery <= Peripherals.lowAt
+                        readonly property bool confirming: addr.length > 0 && root.expandedAddress === addr
+                        readonly property bool busy: (bt && typeof BluetoothDeviceState !== "undefined")
+                            ? bt.state === BluetoothDeviceState.Disconnecting : false
+                        width: devCol.width
+                        spacing: 2 * root.s
+
+                        Rectangle {
+                            width: parent.width
+                            height: 50 * root.s
+                            radius: 10 * root.s
+                            color: (conHover.hovered && conItem.bt) ? Theme.frameBg : "transparent"
+
+                            HoverHandler { id: conHover }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: conItem.bt !== null
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.activateDevice(conItem.bt)
+                            }
+
+                            Rectangle {
+                                id: conTile
+                                anchors.left: parent.left
+                                anchors.leftMargin: 6 * root.s
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 32 * root.s
+                                height: 32 * root.s
+                                radius: 9 * root.s
+                                color: Theme.tileBg
+                                border.width: 1
+                                border.color: conItem.low ? Qt.alpha(Theme.vermLit, 0.55) : Theme.border
+
+                                GlyphIcon {
+                                    anchors.centerIn: parent
+                                    width: 17 * root.s
+                                    height: 17 * root.s
+                                    name: conItem.bt ? root.iconFor(conItem.bt) : Peripherals.glyphFor(conItem.up)
+                                    color: Theme.vermLit
+                                    stroke: 1.7
+                                }
+                            }
+
+                            Item {
+                                anchors.left: conTile.right
+                                anchors.leftMargin: 11 * root.s
+                                anchors.right: parent.right
+                                anchors.rightMargin: 10 * root.s
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                anchors.topMargin: 8 * root.s
+                                anchors.bottomMargin: 10 * root.s
+
+                                Row {
+                                    id: nameRow
+                                    anchors.left: parent.left
+                                    anchors.right: conRight.left
+                                    anchors.rightMargin: 8 * root.s
+                                    anchors.top: parent.top
+                                    spacing: 6 * root.s
+
+                                    Text {
+                                        id: conName
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: Math.min(implicitWidth, nameRow.width - (usbTag.visible ? usbTag.width + nameRow.spacing : 0))
+                                        text: root.rowName(conItem.modelData)
+                                        color: Theme.cream
+                                        font.family: Theme.font
+                                        font.pixelSize: 12 * root.s
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Rectangle {
+                                        id: usbTag
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: conItem.bt === null
+                                        width: usbLabel.implicitWidth + 8 * root.s
+                                        height: 13 * root.s
+                                        radius: 4 * root.s
+                                        color: "transparent"
+                                        border.width: 1
+                                        border.color: Theme.hair
+
+                                        Text {
+                                            id: usbLabel
+                                            anchors.centerIn: parent
+                                            text: "USB"
+                                            color: Theme.faint
+                                            font.family: Theme.font
+                                            font.pixelSize: 7.5 * root.s
+                                            font.weight: Font.DemiBold
+                                            font.letterSpacing: 1 * root.s
+                                        }
+                                    }
+                                }
+
+                                Row {
+                                    id: conRight
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: nameRow.verticalCenter
+                                    spacing: 5 * root.s
+
+                                    Rectangle {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: conItem.busy
+                                        width: 4 * root.s
+                                        height: 4 * root.s
+                                        radius: width / 2
+                                        color: Theme.flameGlow
+
+                                        SequentialAnimation on opacity {
+                                            running: conItem.busy
+                                            loops: Animation.Infinite
+                                            NumberAnimation { from: 0.35; to: 1; duration: Motion.pulse; easing.type: Easing.InOutSine }
+                                            NumberAnimation { from: 1; to: 0.35; duration: Motion.pulse; easing.type: Easing.InOutSine }
+                                        }
+                                    }
+
+                                    GlyphIcon {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: conItem.charging
+                                        width: 10 * root.s
+                                        height: 10 * root.s
+                                        name: "bolt"
+                                        color: Theme.flameGlow
+                                        stroke: 2
+                                    }
+
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: conItem.hasBattery
+                                        text: conItem.battery + "%"
+                                        color: conItem.low ? Theme.vermLit : (conItem.charging ? Theme.flameGlow : Theme.subtle)
+                                        font.family: Theme.font
+                                        font.pixelSize: 11 * root.s
+                                        font.weight: Font.DemiBold
+                                        font.features: { "tnum": 1 }
+                                    }
+                                }
+
+                                Filament {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    visible: conItem.hasBattery
+                                    s: root.s
+                                    kind: "battery"
+                                    level: Math.max(0, conItem.battery) / 100
+                                }
+
+                                Text {
+                                    anchors.left: parent.left
+                                    anchors.bottom: parent.bottom
+                                    anchors.bottomMargin: -2 * root.s
+                                    visible: !conItem.hasBattery
+                                    text: "No battery reading"
+                                    color: Theme.faint
+                                    font.family: Theme.font
+                                    font.pixelSize: 9 * root.s
+                                    font.weight: Font.Medium
+                                }
+                            }
+                        }
+
+                        ConfirmRow {
+                            visible: conItem.confirming
+                            dev: conItem.bt
+                            connected: true
+                        }
+                    }
+                }
+
+                Eyebrow {
+                    visible: root.connectedRows.length > 0 && root.nearbyRows.length > 0
+                    label: "NEARBY"
+                }
+
+                Repeater {
+                    model: root.nearbyRows
 
                     Column {
                         id: devItem
                         required property var modelData
-                        readonly property bool isConnected: modelData ? modelData.connected === true : false
                         readonly property bool isPaired: modelData ? modelData.paired === true : false
                         readonly property string addr: (modelData && modelData.address) ? modelData.address : ""
                         readonly property bool pairing: addr.length > 0 && root.pairingAddress === addr
                         readonly property bool failed: addr.length > 0 && root.failedAddress === addr
                         readonly property bool busy: (modelData && typeof BluetoothDeviceState !== "undefined")
-                            ? (modelData.state === BluetoothDeviceState.Connecting
-                                || modelData.state === BluetoothDeviceState.Disconnecting)
-                            : false
+                            ? modelData.state === BluetoothDeviceState.Connecting : false
                         readonly property bool confirming: addr.length > 0 && root.expandedAddress === addr
-                        readonly property int battery: root.batteryLevel(modelData)
                         width: devCol.width
                         spacing: 2 * root.s
 
@@ -345,7 +684,7 @@ PillSurface {
                                     width: 15 * root.s
                                     height: 15 * root.s
                                     name: root.iconFor(devItem.modelData)
-                                    color: devItem.isConnected ? Theme.vermLit : Theme.iconDim
+                                    color: Theme.iconDim
                                     stroke: 1.7
                                 }
                             }
@@ -361,10 +700,10 @@ PillSurface {
                                 Text {
                                     width: parent.width
                                     text: devItem.modelData ? (devItem.modelData.deviceName || devItem.modelData.name || "Unknown") : "Unknown"
-                                    color: devItem.isConnected ? Theme.cream : Theme.subtle
+                                    color: Theme.subtle
                                     font.family: Theme.font
                                     font.pixelSize: 11.5 * root.s
-                                    font.weight: devItem.isConnected ? Font.DemiBold : Font.Medium
+                                    font.weight: Font.Medium
                                     elide: Text.ElideRight
                                 }
 
@@ -403,25 +742,6 @@ PillSurface {
                                     }
                                 }
 
-                                Filament {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    visible: devItem.isConnected && devItem.battery >= 0
-                                    s: root.s
-                                    kind: "battery"
-                                    level: Math.max(0, devItem.battery) / 100
-                                }
-
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    visible: devItem.isConnected && devItem.battery >= 0
-                                    text: devItem.battery + "%"
-                                    color: Theme.faint
-                                    font.family: Theme.font
-                                    font.pixelSize: 9.5 * root.s
-                                    font.weight: Font.Medium
-                                    font.features: { "tnum": 1 }
-                                }
-
                                 Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
                                     visible: !devItem.isPaired && !devItem.pairing
@@ -455,94 +775,10 @@ PillSurface {
                             }
                         }
 
-                        Item {
+                        ConfirmRow {
                             visible: devItem.confirming
-                            width: parent.width
-                            height: 30 * root.s
-
-                            Text {
-                                anchors.left: parent.left
-                                anchors.leftMargin: 10 * root.s
-                                anchors.right: confirmBtns.left
-                                anchors.rightMargin: 8 * root.s
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: devItem.isConnected ? "Connected" : "Paired"
-                                color: Theme.faint
-                                font.family: Theme.font
-                                font.pixelSize: 9.5 * root.s
-                                font.weight: Font.Medium
-                                elide: Text.ElideRight
-                            }
-
-                            Row {
-                                id: confirmBtns
-                                anchors.right: parent.right
-                                anchors.rightMargin: 10 * root.s
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 6 * root.s
-
-                                Rectangle {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: primaryLabel.implicitWidth + 20 * root.s
-                                    height: 22 * root.s
-                                    radius: 7 * root.s
-                                    color: primaryArea.containsMouse ? Theme.tileBg : "transparent"
-                                    border.width: 1
-                                    border.color: primaryArea.containsMouse ? Theme.vermDim : Theme.border
-
-                                    Text {
-                                        id: primaryLabel
-                                        anchors.centerIn: parent
-                                        text: devItem.isConnected ? "Disconnect" : "Connect"
-                                        color: Theme.cream
-                                        font.family: Theme.font
-                                        font.pixelSize: 10 * root.s
-                                        font.weight: Font.DemiBold
-                                        font.letterSpacing: 0.3 * root.s
-                                    }
-
-                                    MouseArea {
-                                        id: primaryArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: devItem.isConnected
-                                            ? root.disconnectDevice(devItem.modelData)
-                                            : root.connectDevice(devItem.modelData)
-                                    }
-                                }
-
-                                Rectangle {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: forgetLabel.implicitWidth + 20 * root.s
-                                    height: 22 * root.s
-                                    radius: 7 * root.s
-                                    color: forgetArea.containsMouse
-                                        ? Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.2)
-                                        : Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.12)
-                                    border.width: 1
-                                    border.color: Qt.rgba(Theme.vermLit.r, Theme.vermLit.g, Theme.vermLit.b, 0.45)
-
-                                    Text {
-                                        id: forgetLabel
-                                        anchors.centerIn: parent
-                                        text: "Forget"
-                                        color: Theme.vermLit
-                                        font.family: Theme.font
-                                        font.pixelSize: 10 * root.s
-                                        font.weight: Font.DemiBold
-                                        font.letterSpacing: 0.3 * root.s
-                                    }
-
-                                    MouseArea {
-                                        id: forgetArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.forgetDevice(devItem.modelData)
-                                    }
-                                }
-                            }
+                            dev: devItem.modelData
+                            connected: false
                         }
 
                         Text {

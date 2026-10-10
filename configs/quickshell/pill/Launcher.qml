@@ -48,6 +48,20 @@ PillSurface {
     property int editIndex: -1
 
     readonly property string appimageScript: Quickshell.env("HOME") + "/.config/hypr/scripts/app-install.sh"
+    readonly property string guardScript: Quickshell.env("HOME") + "/.config/hypr/scripts/launch-guard.sh"
+
+    /**
+     * entry.execute() is fire and forget, so an app that dies on startup fails
+     * silently. The guard watches the first seconds and toasts exit code plus
+     * stderr with a Copy action when it does.
+     */
+    function launch(entry) {
+        if (!entry.command || entry.command.length === 0) {
+            entry.execute();
+            return;
+        }
+        Quickshell.execDetached(["bash", root.guardScript, entry.name, entry.icon || "", entry.workingDirectory || ""].concat(entry.command));
+    }
 
     function appimageSlug(entry) {
         return entry && entry.id && entry.id.indexOf("ricelin-") === 0 ? entry.id.substring(8) : "";
@@ -126,7 +140,7 @@ PillSurface {
                 root.usage[entry.id] = (root.usage[entry.id] || 0) + 1;
                 usageStore.setText(JSON.stringify(root.usage));
             }
-            entry.execute();
+            root.launch(entry);
         }
         root.requestClose();
     }
