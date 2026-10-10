@@ -52,8 +52,8 @@ SettingsSurface {
     function buildConf() {
         var out = "general {\n"
             + "    lock_cmd = " + root.lockScript + "\n"
-            + "    before_sleep_cmd = loginctl lock-session\n"
-            + "    after_sleep_cmd = hyprctl dispatch dpms on\n"
+            + "    before_sleep_cmd = " + root.lockScript + " sleep\n"
+            + "    after_sleep_cmd = sh -c \"hyprctl dispatch dpms on; sleep 0.05; qs -c lock ipc call lock reveal >/dev/null 2>&1\"\n"
             + "}\n";
 
         if (Flags.idleLockMin > 0)
@@ -72,7 +72,7 @@ SettingsSurface {
         if (Flags.idleSuspendMin > 0)
             out += "\nlistener {\n"
                 + "    timeout = " + (Flags.idleSuspendMin * 60) + "\n"
-                + "    on-timeout = systemctl suspend\n"
+                + "    on-timeout = loginctl suspend\n"
                 + "}\n";
 
         return out;
@@ -92,7 +92,7 @@ SettingsSurface {
 
     Process {
         id: restartProc
-        command: ["systemctl", "--user", "restart", "hypridle"]
+        command: ["sh", "-c", "pkill -x hypridle; hypridle >/dev/null 2>&1 &"]
     }
 
     /**

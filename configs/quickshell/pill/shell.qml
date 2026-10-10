@@ -29,6 +29,15 @@ ShellRoot {
 
     property string openMon: ""
     property string openSurface: ""
+    property bool captureHidden: false
+    property bool captureRequested: false
+
+    Timer {
+        id: captureSettle
+        interval: 450
+        repeat: false
+        onTriggered: root.captureHidden = true
+    }
     property string peekMon: ""
 
     function refresh() {
@@ -94,7 +103,7 @@ ShellRoot {
      */
     Process {
         running: Flags.keepAwake
-        command: ["systemd-inhibit", "--what=idle:sleep", "--who=Ricelin",
+        command: ["elogind-inhibit", "--what=idle:sleep", "--who=Ricelin",
                   "--why=keep awake", "--mode=block", "sleep", "infinity"]
     }
 
@@ -196,6 +205,19 @@ ShellRoot {
         function peek(mon: string): void { root.peek(mon); }
         function hide(): void { root.close(); }
 
+        function captureHide(): void {
+            root.close();
+            root.captureRequested = true;
+            root.captureHidden = false;
+            captureSettle.restart();
+        }
+
+        function captureShow(): void {
+            captureSettle.stop();
+            root.captureRequested = false;
+            root.captureHidden = false;
+        }
+
         /** Opens any surface by name, settings sub-pages included; dev and scripting door. */
         function page(mon: string, name: string): void { root.toggleSurface(mon, name); }
 
@@ -218,7 +240,22 @@ ShellRoot {
         }
     }
 
+
+    /*
+     * Floating application blades.
+     *
+     * Separate from the pill and its surfaces. Each monitor gets its own
+     * top-left layer, with no exclusive-zone reservation.
+     */
     Variants {
+        model: Quickshell.screens
+
+        BladeLayer {
+            modelData: modelData
+        }
+    }
+
+   Variants {
         model: Quickshell.screens
 
         PanelWindow {
@@ -287,6 +324,7 @@ ShellRoot {
 
             screen: modelData
             color: "transparent"
+            visible: !root.captureHidden
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: ((surfaceOpen || pill.quickChoosing) && !pill.authPending) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -428,6 +466,7 @@ ShellRoot {
                     screenName: overlay.modelData.name
                     barWindow: overlay
                     surface: overlay.surface
+                    captureClosing: root.captureRequested
                     forcePinned: root.peekMon === overlay.modelData.name
 
                     opacity: overlay.pillHidden ? 0 : 1

@@ -78,6 +78,8 @@ PillSurface {
         }
         if (blLoader.item)
             out.push(blLoader.item);
+        if (kbBlLoader.item)
+            out.push(kbBlLoader.item);
         out.push(vibFader, volFader, micFader);
         return out;
     }
@@ -159,6 +161,7 @@ PillSurface {
 
     property real pendingVibrance: -1
     property int pendingBacklight: -1
+    property int pendingKeyboardBacklight: -1
 
     Timer {
         id: vibDebounce
@@ -175,6 +178,15 @@ PillSurface {
         onTriggered: if (root.pendingBacklight >= 0) {
             Devices.setBacklight(root.pendingBacklight);
             root.pendingBacklight = -1;
+        }
+    }
+
+    Timer {
+        id: kbBlDebounce
+        interval: 160
+        onTriggered: if (root.pendingKeyboardBacklight >= 0) {
+            Devices.setKeyboardBacklight(root.pendingKeyboardBacklight);
+            root.pendingKeyboardBacklight = -1;
         }
     }
 
@@ -554,8 +566,32 @@ PillSurface {
                 focused: root.focusIndex === brRep.count
                 value: Devices.backlightPct / 100
                 valueLabel: Devices.backlightPct + "%"
-                onMoved: (v) => Devices.backlightPct = Math.max(1, Math.min(100, Math.round(v * 100)))
-                onCommitted: (v) => { root.pendingBacklight = Math.max(1, Math.min(100, Math.round(v * 100))); blDebounce.restart(); }
+                onMoved: (v) => {
+                    const pct = Math.max(1, Math.min(100, Math.round(v * 100)));
+                    Devices.setBacklight(pct);
+                }
+            }
+        }
+
+        Loader {
+            id: kbBlLoader
+            active: Devices.keyboardBacklightDevice.length > 0
+            visible: active
+            width: active ? faderRow.colW : 0
+
+            sourceComponent: VFader {
+                width: faderRow.colW
+                s: root.s
+                icon: "keyboard"
+                subLabel: "Keyboard"
+                subPersistent: false
+                focused: root.focusIndex === brRep.count + (blLoader.active ? 1 : 0)
+                value: Devices.keyboardBacklightPct / 100
+                valueLabel: Devices.keyboardBacklightPct + "%"
+                onMoved: (v) => {
+                    const pct = Math.max(0, Math.min(100, Math.round(v * 100)));
+                    Devices.setKeyboardBacklight(pct);
+                }
             }
         }
 

@@ -18,6 +18,8 @@ Item {
      * just runs on unlock.
      */
     property bool active: false
+    property bool sleepLock: false
+    property bool effectRequested: false
     property real maskP: 0
 
     readonly property bool overlayReady: deskOverlay.status === Image.Ready
@@ -63,7 +65,9 @@ Item {
     Loader {
         id: blurLayer
         anchors.fill: parent
-        active: true
+        active:
+            (surface.effectRequested || surface.sleepLock) &&
+            surface.overlayReady
         asynchronous: true
 
         sourceComponent: Component {
@@ -251,21 +255,88 @@ Item {
                 visible: false
             }
 
+            /*
+             * Manual-lock text wash.
+             *
+             * This renderer is only instantiated when effectRequested is true,
+             * so the sleep/static path is untouched.
+             */
+            ShaderEffect {
+                id: manualTextWash
+
+                anchors.fill: parent
+                visible: false
+
+                property var source: blurV3Src
+
+                property vector2d resolution:
+                    surface.eighthVec
+
+                fragmentShader:
+                    "shaders/manual-textwash.frag.qsb"
+            }
+
+            ShaderEffectSource {
+                id: manualTextWashSrc
+
+                anchors.fill: parent
+
+                sourceItem:
+                    manualTextWash
+
+                textureSize:
+                    surface.eighth
+
+                smooth: true
+                hideSource: true
+                visible: false
+            }
+
             ShaderEffect {
                 anchors.fill: parent
-                property var source: blurV3Src
-                property vector2d srcSize: surface.eighthVec
-                property real darken: 0.62
-                fragmentShader: "shaders/grade.frag.qsb"
+
+                property var source:
+                    manualTextWashSrc
+
+                property vector2d srcSize:
+                    surface.eighthVec
+
+                property real darken:
+                    surface.sleepLock ? 0.52 : 0.78
+
+                fragmentShader:
+                    "shaders/grade.frag.qsb"
             }
           }
         }
+    }
+
+    /*
+     * Sleep-only atmosphere.
+     *
+     * The source is the already reconstructed/blurred desktop. This adds
+     * only a barely visible vignette and static grain; it does not animate.
+     */
+    ShaderEffect {
+        id: sleepAtmosphere
+
+        anchors.fill: parent
+        visible: surface.sleepLock
+        z: 100
+
+        property var source: blurLayer.item
+
+        fragmentShader:
+            "shaders/sleep-atmosphere.frag.qsb"
     }
 
     GlowField {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
+        visible:
+            surface.effectRequested &&
+            !surface.sleepLock
         /**
          * Full height: the shader already fades the glow out across the top
          * 15% of the field, so capping the field at half the screen stamped a
@@ -276,9 +347,13 @@ Item {
 
     Content {
         anchors.fill: parent
+        z: 200
         s: surface.s
         auth: surface.auth
         isMain: surface.isMain
+        effectsEnabled:
+            surface.effectRequested &&
+            !surface.sleepLock
     }
 
     /**
@@ -325,6 +400,7 @@ Item {
 
     MultiEffect {
         anchors.fill: parent
+        visible: !surface.sleepLock
         source: deskOverlay
         maskEnabled: true
         maskInverted: true

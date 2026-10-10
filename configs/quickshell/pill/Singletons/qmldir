@@ -18,3 +18,8 @@ singleton Spaces Spaces.qml
 singleton Players Players.qml
 singleton NightLight NightLight.qml
 singleton GameMode GameMode.qml
+singleton Peripherals Peripherals.qml
+singleton CameraRec CameraRec.qml
+singleton MediaRec MediaRec.qml
+singleton AppRegistry AppRegistry.qml
+singleton AppLauncher AppLauncher.qml

@@ -23,6 +23,74 @@ import "Singletons"
 Item {
     id: pill
 
+   property bool personaRunning: false
+   property bool boomboxRunning: false
+
+   Process {
+       id: personaProbe
+       command: ["sh", "-c",
+           "pgrep -f '[P]ersona-Quickshell' >/dev/null 2>&1"]
+       running: false
+       onExited: (exitCode) => {
+           pill.personaRunning = exitCode === 0;
+       }
+   }
+
+   Process {
+       id: boomboxProbe
+       command: ["sh", "-c",
+           "pgrep -f '[Q]t6-Cava-plugin/main.qml' >/dev/null 2>&1"]
+       running: false
+       onExited: (exitCode) => {
+           pill.boomboxRunning = exitCode === 0;
+       }
+   }
+
+   Timer {
+       interval: 1000
+       running: true
+       repeat: true
+       onTriggered: {
+           if (!personaProbe.running)
+               personaProbe.running = true;
+           if (!boomboxProbe.running)
+               boomboxProbe.running = true;
+       }
+   }
+
+   function togglePersona() {
+       if (pill.personaRunning) {
+           Quickshell.execDetached([
+               "pkill", "-f",
+               "qs -c " + Quickshell.env("HOME") + "/.config/quickshell/Persona-Quickshell"
+           ]);
+       } else {
+           Quickshell.execDetached([
+               "sh", "-c",
+               'QML2_IMPORT_PATH="$HOME/.local/lib/qt6/qml" ' +
+               'LD_LIBRARY_PATH="$HOME/.local/lib/qt6/qml/CavaMonitor:$HOME/.local/lib/qt6/qml:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ' +
+               'qs -c "$HOME/.config/quickshell/Persona-Quickshell"'
+           ]);
+       }
+   }
+
+   function toggleBoombox() {
+       if (pill.boomboxRunning) {
+           Quickshell.execDetached([
+               "pkill", "-f",
+               "quickshell.*" + Quickshell.env("HOME") + "/Development/Qt6-Cava-plugin/main.qml"
+           ]);
+       } else {
+           Quickshell.execDetached([
+               "sh", "-c",
+               'QML2_IMPORT_PATH="$HOME/.local/lib/qt6/qml" ' +
+               'LD_LIBRARY_PATH="$HOME/.local/lib/qt6/qml/CavaMonitor:/usr/local/lib" ' +
+               'quickshell -p "$HOME/Development/Qt6-Cava-plugin/main.qml"'
+           ]);
+       }
+   }
+
+
     property real s: 1
     property string screenName: ""
     property var barWindow
@@ -51,6 +119,7 @@ Item {
     readonly property bool spaceappsOpen: surface === "spaceapps"
     readonly property bool recorderOpen: surface === "recorder"
     readonly property bool sysmonOpen: surface === "sysmon"
+    readonly property bool appsOpen: surface === "apps"
     readonly property bool appearanceOpen: surface === "appearance"
     readonly property bool updatesOpen: surface === "updates"
     readonly property bool displayOpen: surface === "display"
@@ -73,6 +142,7 @@ Item {
     readonly property bool btOn: btAdapter ? btAdapter.enabled === true : false
     readonly property bool surfaceOpen: surface.length > 0
     property bool hoverLatch: false
+    property bool captureClosing: false
 
     /**
      * False for the first seconds after the shell maps. Hyprland hands pointer
@@ -89,7 +159,7 @@ Item {
         onTriggered: pill.bootSettled = true
     }
 
-    readonly property bool expanded: surfaceOpen || held || hoverLatch
+    readonly property bool expanded: !captureClosing && (surfaceOpen || held || hoverLatch)
 
     /**
      * True while the open surface is waiting on an external auth dialog (the
@@ -166,6 +236,7 @@ Item {
     readonly property real spaceappsW: 392 * s
     readonly property real recorderW: 384 * s
     readonly property real sysmonW: 392 * s
+    readonly property real appsW: 392 * s
     readonly property real appearanceW: 392 * s
     readonly property real updatesW: 360 * s
     readonly property real displayW: 392 * s
@@ -229,6 +300,7 @@ Item {
         spaceapps: { size: () => Qt.size(spaceappsW, surfaceItem(ldSpaceapps).implicitHeight + 29 * s), ame: () => surfaceItem(ldSpaceapps) },
         recorder:  { size: () => Qt.size(recorderW, surfaceItem(ldRecorder).implicitHeight + 33 * s), ame: () => surfaceItem(ldRecorder) },
         sysmon:    { size: () => Qt.size(sysmonW, surfaceItem(ldSysmon).implicitHeight + 33 * s), ame: () => surfaceItem(ldSysmon) },
+        apps:      { size: () => Qt.size(appsW, surfaceItem(ldApps).implicitHeight + 33 * s), ame: () => surfaceItem(ldApps) },
         appearance: { size: () => Qt.size(appearanceW, surfaceItem(ldAppearance).implicitHeight + 29 * s), ame: () => surfaceItem(ldAppearance) },
         updates:    { size: () => Qt.size(updatesW, surfaceItem(ldUpdates).implicitHeight + 29 * s), ame: () => surfaceItem(ldUpdates) },
         display:    { size: () => Qt.size(displayW, surfaceItem(ldDisplay).implicitHeight + 29 * s), ame: () => surfaceItem(ldDisplay) },
@@ -239,14 +311,15 @@ Item {
         fontpicker: { size: () => Qt.size(fontpickerW, surfaceItem(ldFontpicker).implicitHeight + 29 * s), ame: () => surfaceItem(ldFontpicker) }
     })
 
-    readonly property string mode: dragActive ? "dragOver"
+    readonly property string mode: captureClosing ? "rest"
+        : (dragActive ? "dragOver"
         : (surfaceOpen && surfaces[surface] !== undefined ? surface
         : (Flags.gameMode ? "game"
         : (quickChoosing ? "quickChoose"
         : (quickCounting ? "quickCount"
         : (osdActive && !held ? "osd"
         : (toastActive && !held ? "toast"
-        : (expanded ? "hover" : "rest")))))))
+        : (expanded ? "hover" : "rest"))))))))
 
     /**
      * AppImage drag-install state, live only while a file hovers the resting pill.
@@ -503,7 +576,7 @@ Item {
             ldPower.item.releaseFocused();
     }
 
-    onSurfaceOpenChanged: if (surfaceOpen) {
+   onSurfaceOpenChanged: if (surfaceOpen) {
         pinned = false;
         if (quickHere && ScreenRec.quickChoosing) {
             ScreenRec.quickChoosing = false;
@@ -527,7 +600,7 @@ Item {
         precision: Flags.clockSeconds ? SystemClock.Seconds : SystemClock.Minutes
     }
 
-    property real morphRadius: (mode === "rest" || mode === "hover" || mode === "game") ? restCorner : openCorner
+property real morphRadius: (mode === "rest" || mode === "hover" || mode === "game") ? restCorner : openCorner
 
     /**
      * Target geometry for the non-surface morph modes. Surface sizes come from
@@ -626,10 +699,11 @@ Item {
         id: bud
         readonly property bool shown: pill.mode === "hover" && pill.hasMedia
         property real budR: (budArea.containsMouse ? 15 : 12) * pill.s
-        width: budR * 2
+        property real budW: budR * 2.5
+        width: budW
         height: budR * 2
         radius: budR
-        x: pill.width - budR
+        x: pill.width - budW / 2
         anchors.verticalCenter: parent.verticalCenter
         visible: opacity > 0.01
         opacity: shown ? 1 : 0
@@ -762,6 +836,12 @@ Item {
             return recorderIcon.mapToItem(pill, recorderIcon.width / 2, recorderIcon.height + drop * 0.55);
         if (soulTarget === "sysmon")
             return sysmonIcon.mapToItem(pill, sysmonIcon.width / 2, sysmonIcon.height + drop * 0.55);
+        if (soulTarget === "apps")
+            return appsIcon.mapToItem(pill, appsIcon.width / 2, appsIcon.height + drop * 0.55);
+        if (soulTarget === "persona")
+            return personaIcon.mapToItem(pill, personaIcon.width / 2, personaIcon.height + drop * 0.55);
+        if (soulTarget === "boombox")
+            return boomboxIcon.mapToItem(pill, boomboxIcon.width / 2, boomboxIcon.height + drop * 0.55);
         if (soulTarget === "ws" && soulWsIndex >= 0) {
             void ws.activeName;
             void ws.width;
@@ -803,7 +883,7 @@ Item {
      * bud)". That sidesteps the per-item hover flicker the child MouseAreas and
      * the centred width morph would otherwise cause.
      */
-    readonly property real inputPadRight: bud.shown ? bud.budR + 2 * s : 0
+    readonly property real inputPadRight: bud.shown ? bud.budW / 2 + 2 * s : 0
 
     onHoveredChanged: {
         if (hovered) {
@@ -1155,7 +1235,7 @@ Item {
                     anchors.fill: parent
                     source: Players.artUrl
                     fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
+                    asynchronous: false
                     visible: status === Image.Ready
                 }
             }
@@ -1783,6 +1863,85 @@ Item {
                 }
 
                 Item {
+                    id: personaIcon
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 17 * pill.s
+                    height: 17 * pill.s
+
+                    GlyphIcon {
+                        anchors.fill: parent
+                        name: "screen-twinkle"
+                        color: personaArea.containsMouse
+                            ? Theme.cream
+                            : (pill.personaRunning ? Theme.vermLit : Theme.iconDim)
+                        stroke: 1.7
+                    }
+
+                    MouseArea {
+                        id: personaArea
+                        anchors.fill: parent
+                        anchors.margins: -6 * pill.s
+                        hoverEnabled: true
+                        enabled: hover.live
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: pill.togglePersona()
+                        onContainsMouseChanged: if (containsMouse) pill.soulTarget = "persona"
+                    }
+                }
+
+                Item {
+                    id: boomboxIcon
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 17 * pill.s
+                    height: 17 * pill.s
+
+                    GlyphIcon {
+                        anchors.fill: parent
+                        name: "boombox"
+                        color: boomboxArea.containsMouse
+                            ? Theme.cream
+                            : (pill.boomboxRunning ? Theme.vermLit : Theme.iconDim)
+                        stroke: 1.7
+                    }
+
+                    MouseArea {
+                        id: boomboxArea
+                        anchors.fill: parent
+                        anchors.margins: -6 * pill.s
+                        hoverEnabled: true
+                        enabled: hover.live
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: pill.toggleBoombox()
+                        onContainsMouseChanged: if (containsMouse) pill.soulTarget = "boombox"
+                    }
+                }
+
+                Item {
+                    id: appsIcon
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 17 * pill.s
+                    height: 17 * pill.s
+
+                    GlyphIcon {
+                        anchors.fill: parent
+                        name: "app-window"
+                        color: appsArea.containsMouse ? Theme.cream : Theme.iconDim
+                        stroke: 1.7
+                    }
+
+                    MouseArea {
+                        id: appsArea
+                        anchors.fill: parent
+                        anchors.margins: -6 * pill.s
+                        hoverEnabled: true
+                        enabled: hover.live
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: pill.requestSurface("apps")
+                        onContainsMouseChanged: if (containsMouse) pill.soulTarget = "apps"
+                    }
+                }
+
+                Item {
                     id: settingsIcon
                     anchors.verticalCenter: parent.verticalCenter
                     width: 17 * pill.s
@@ -1852,6 +2011,7 @@ Item {
             ldMixer.active = true;
             ldMedia.active = true;
             ldLink.active = true;
+            ldRecorder.active = true;
         }
     }
 
@@ -1921,8 +2081,9 @@ Item {
             s: pill.s
             open: pill.powerOpen
             morphCloseness: pill.morphCloseness
+
             onRequestClose: pill.requestClose()
-        }
+         }
     }
 
     Loader {
@@ -2063,6 +2224,7 @@ Item {
         }
     }
 
+
     Loader {
         id: ldSysmon
         active: false
@@ -2070,6 +2232,18 @@ Item {
         sourceComponent: SysmonSurface {
             s: pill.s
             open: pill.sysmonOpen
+            morphCloseness: pill.morphCloseness
+            onRequestClose: pill.requestClose()
+        }
+    }
+
+    Loader {
+        id: ldApps
+        active: false
+        anchors.fill: parent
+        sourceComponent: AppsSurface {
+            s: pill.s
+            open: pill.appsOpen
             morphCloseness: pill.morphCloseness
             onRequestClose: pill.requestClose()
         }

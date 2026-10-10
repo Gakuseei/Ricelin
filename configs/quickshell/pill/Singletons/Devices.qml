@@ -33,6 +33,11 @@ Singleton {
     /** Current internal-backlight level, 0..100. */
     property int backlightPct: 75
 
+    /** Keyboard backlight LED device, when the machine exposes one. */
+    property string keyboardBacklightDevice: ""
+    /** Current keyboard-backlight level, 0..100. */
+    property int keyboardBacklightPct: 100
+
     /**
      * Loads the persisted vibrance percent and applies it once, so the saved
      * tint is restored on boot. Singletons init lazily, so a startup caller
@@ -44,6 +49,9 @@ Singleton {
         root.vibrance = isNaN(v) ? 40 : v;
         if (raw && raw.trim().length)
             applyVibrance(root.vibrance);
+
+        // Discover hardware-backed brightness controls at startup.
+        detect();
     }
 
     /**
@@ -70,6 +78,7 @@ Singleton {
     function detect() {
         ddcDetect.running = true;
         blDetect.running = true;
+        kbDetect.running = true;
     }
 
     function setBrightness(bus, pct) {
@@ -85,6 +94,16 @@ Singleton {
     function setBacklight(pct) {
         root.backlightPct = Math.round(Math.max(1, Math.min(100, pct)));
         Quickshell.execDetached(["brightnessctl", "set", root.backlightPct + "%"]);
+    }
+
+    function setKeyboardBacklight(pct) {
+        if (!root.keyboardBacklightDevice)
+            return;
+        root.keyboardBacklightPct = Math.round(Math.max(0, Math.min(100, pct)));
+        Quickshell.execDetached([
+            "brightnessctl", "-d", root.keyboardBacklightDevice,
+            "set", root.keyboardBacklightPct + "%"
+        ]);
     }
 
     /**
@@ -107,10 +126,35 @@ Singleton {
                 for (var i = 0; i < blocks.length; i++) {
                     var bus = /I2C bus:\s+\/dev\/i2c-(\d+)/.exec(blocks[i]);
                     var conn = /DRM connector:\s+card\d+-(\S+)/.exec(blocks[i]);
-                    if (bus)
+                    if (bus && !/Invalid display/.test(blocks[i]))
                         mons.push({ bus: bus[1], label: conn ? conn[1] : "BUS " + bus[1] });
                 }
                 root.ddcMonitors = mons;
+            }
+        }
+    }
+
+    Process {
+        id: kbDetect
+        command: ["sh", "-c",
+            "dev=$(find /sys/class/leds -maxdepth 1 -type l -name '*::kbd_backlight' -printf '%f\\n' 2>/dev/null | head -n1); " +
+            "[ -n \"$dev\" ] || exit 0; " +
+            "cur=$(brightnessctl -d \"$dev\" get 2>/dev/null) || exit 0; " +
+            "max=$(brightnessctl -d \"$dev\" max 2>/dev/null) || exit 0; " +
+            "printf '%s\\n%s\\n%s\\n' \"$dev\" \"$cur\" \"$max\""]
+        running: false
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var lines = this.text.trim().split("\n");
+                if (lines.length >= 3) {
+                    var dev = lines[0].trim();
+                    var cur = parseInt(lines[1], 10);
+                    var max = parseInt(lines[2], 10);
+                    if (dev && !isNaN(cur) && !isNaN(max) && max > 0) {
+                        root.keyboardBacklightDevice = dev;
+                        root.keyboardBacklightPct = Math.max(0, Math.min(100, Math.round(cur * 100 / max)));
+                    }
+                }
             }
         }
     }

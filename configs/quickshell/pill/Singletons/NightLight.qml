@@ -79,16 +79,12 @@ Singleton {
         ipc.running = true;
     }
 
-    property bool pendingRestart: false
-
     /**
      * Persists conf for the next login and pushes live now. The conf write and
      * the daemon re-arm are both debounced, so a scrub flurry collapses into one
      * write and one restart.
      */
-    function commit(restart) {
-        if (restart)
-            root.pendingRestart = true;
+    function commit() {
         confTimer.restart();
         root.pushLive();
     }
@@ -100,24 +96,23 @@ Singleton {
      * conf is a single all-day profile that only fires at 0:00.
      */
     function setMode(m) {
-        var was = Flags.nightLightMode;
         Flags.nightLightMode = m;
-        root.commit(was === "scheduled" || m === "scheduled");
+        root.commit();
     }
 
     function setTemp(t) {
         Flags.nightLightTemp = root.clampTemp(t);
-        root.commit(Flags.nightLightMode === "scheduled");
+        root.commit();
     }
 
     function setOnMin(v) {
         Flags.nightLightOnMin = v;
-        root.commit(Flags.nightLightMode === "scheduled");
+        root.commit();
     }
 
     function setOffMin(v) {
         Flags.nightLightOffMin = v;
-        root.commit(Flags.nightLightMode === "scheduled");
+        root.commit();
     }
 
     SystemClock {
@@ -150,15 +145,7 @@ Singleton {
         interval: 250
         onTriggered: {
             writer.setText(root.buildConf());
-            if (root.pendingRestart) {
-                root.pendingRestart = false;
-                restartProc.running = true;
-            }
         }
     }
 
-    Process {
-        id: restartProc
-        command: ["systemctl", "--user", "restart", "hyprsunset"]
-    }
 }

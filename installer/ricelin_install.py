@@ -717,12 +717,9 @@ def run(args):
                 record(ok, detail, "Enable bluetooth", "Enable bluetooth.service yourself.")
                 if shutil.which("hyprsunset"):
                     ok, detail = _run(
-                        ["systemctl", "--user", "enable", "--now", "hyprsunset.service"], dry)
                     record(ok, detail, "Enable night light",
-                           "Run: systemctl --user enable --now hyprsunset.service")
                 else:
                     notes.append("hyprsunset is not installed, night light left off. "
-                                 "Install it and run: systemctl --user enable --now hyprsunset.service")
             else:
                 notes.extend(_service_note(info["init"]))
 
