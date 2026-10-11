@@ -24,6 +24,7 @@ Rectangle {
      */
     property bool flushLeft: false
 
+    property bool compact: false
     readonly property real pad: 1
     readonly property real edgePad: seg.pad + 9 * seg.s
 
@@ -36,8 +37,7 @@ Rectangle {
     Row {
         id: pills
         anchors.centerIn: parent
-        spacing: 2 * seg.s
-
+        spacing: (seg.compact ? 1 : 2) * seg.s
         Repeater {
             model: seg.options
 
@@ -47,9 +47,9 @@ Rectangle {
                 readonly property bool current: seg.value === modelData.value
                 property bool hovered: false
 
-                width: optLabel.implicitWidth + 18 * seg.s
-                height: optLabel.implicitHeight + 12 * seg.s
-                radius: 8 * seg.s
+                width: optLabel.implicitWidth + (seg.compact ? 14 : 18) * seg.s
+                height: optLabel.implicitHeight + (seg.compact ? 8 : 12) * seg.s
+                radius: (seg.compact ? 7 : 8) * seg.s
                 color: opt.current ? Qt.alpha(Theme.onGlow, 0.16) : (opt.hovered ? Theme.frameBg : "transparent")
                 Behavior on color { ColorAnimation { duration: Motion.fast } }
 
@@ -59,7 +59,7 @@ Rectangle {
                     text: opt.modelData.label
                     color: opt.current ? Theme.cream : Theme.subtle
                     font.family: Theme.font
-                    font.pixelSize: 10.5 * seg.s
+                    font.pixelSize: (seg.compact ? 10 : 10.5) * seg.s
                     font.weight: Font.Bold
                     font.letterSpacing: 0.3 * seg.s
                 }

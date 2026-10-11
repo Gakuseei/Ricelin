@@ -214,8 +214,7 @@ palette_update() {
         python3 "$(dirname "$0")/wallcolors.py" "$show" >>"$WLOG" 2>&1 || true
     fi
     hyprctl reload >/dev/null 2>&1 || true
-    busctl --user call com.mitchellh.ghostty /com/mitchellh/ghostty org.gtk.Actions \
-        Activate "sava{sv}" reload-config 0 0 >/dev/null 2>&1 || true
+    "$(dirname "$0")/ricelin-sys" ghostty-reload >/dev/null 2>&1 || true
 }
 
 map_has_video() {

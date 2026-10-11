@@ -9,76 +9,160 @@ import "Singletons"
 ShellRoot {
     id: root
 
-    readonly property string currentUser: Quickshell.env("USER") || Quickshell.env("LOGNAME") || ""
+    readonly property string currentUser:
+        Quickshell.env("USER") || Quickshell.env("LOGNAME") || ""
 
-    /** Drives the pill-to-lock reveal. Kept off while the surface first mounts so the mask starts as the pill, then flipped on to grow it open; flipped back to collapse it before the session actually unlocks. */
+    readonly property string runtimeDir:
+        Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
+
     property bool revealed: false
+    property bool sleepLock: false
+    property bool effectRequested: false
 
     Auth {
         id: pamAuth
         user: root.currentUser
+
         onSucceeded: {
+            /*
+             * First return to the known-safe static state.
+             * We are intentionally NOT testing an animated unlock yet.
+             */
+            root.effectRequested = false;
             root.revealed = false;
+
+            // The Pill is hidden during the lock capture. Restore it only after
+            // PAM authentication succeeds and the lock is actually collapsing.
+            Quickshell.execDetached([
+                "qs", "-c", "pill", "ipc", "call", "pill", "captureShow"
+            ]);
+
             collapse.restart();
         }
     }
 
     Timer {
         id: collapse
+
         interval: 640
+
         onTriggered: {
             sessionLock.locked = false;
-            Cava.enabled = false;
             Pw.text = "";
         }
     }
 
-    /** Fires as soon as the event loop frees after the lock surfaces are built, which is the earliest the grow can start without the fresh output dropping its first frames. */
     Timer {
         id: reveal
         interval: 1
-        onTriggered: root.revealed = true
+
+        onTriggered:
+            root.revealed = true
+    }
+
+    Timer {
+        id: effectDelay
+        interval: 350
+
+        onTriggered: {
+            if (sessionLock.locked && sessionLock.secure && !root.sleepLock)
+                root.effectRequested = true;
+        }
     }
 
     function doLock(): void {
         Pw.text = "";
+
+        root.sleepLock = false;
+        root.effectRequested = false;
         root.revealed = false;
+
+        /*
+         * This is the known-good lock sequence.
+         * Keep it untouched.
+         */
         sessionLock.locked = true;
-        Cava.enabled = true;
         reveal.restart();
     }
 
-    /**
-     * Fast lock trigger. Spawning a fresh `qs ipc call` client to ask for the lock
-     * cost a quarter second of Qt startup on the critical path; instead lock.sh just
-     * touches this file and the watch fires the lock, shaving that off the delay.
-     * The IPC handler stays as a fallback for any other caller.
-     *
-     * An external write lands as a burst of change events, so the fire is debounced
-     * into one; primed gates out the startup events (including the file's own
-     * creation) so the daemon never locks itself on launch.
+    function doSleepLock(): void {
+        Pw.text = "";
+
+        root.sleepLock = true;
+        root.effectRequested = false;
+        root.revealed = true;
+
+        /*
+         * Sleep remains completely static.
+         */
+        sessionLock.locked = true;
+    }
+
+    Connections {
+        target: sessionLock
+
+        function onSecureChanged() {
+            if (!sessionLock.secure || !sessionLock.locked)
+                return;
+
+            if (!root.sleepLock)
+                effectDelay.restart();
+        }
+    }
+
+    IpcHandler {
+        target: "lock"
+
+        function lock(): void {
+            root.doLock();
+        }
+
+        function sleepLock(): void {
+            root.doSleepLock();
+        }
+
+        function reveal(): void {
+            root.revealed = true;
+        }
+    }
+
+    /*
+     * Keep the existing fast file-trigger path.
      */
     property bool triggerPrimed: false
+
     Timer {
         interval: 800
         running: true
-        onTriggered: root.triggerPrimed = true
+
+        onTriggered:
+            root.triggerPrimed = true
     }
+
     Timer {
         id: triggerFire
         interval: 60
-        onTriggered: if (root.triggerPrimed)
-            root.doLock()
+
+        onTriggered: {
+            if (root.triggerPrimed)
+                root.doLock();
+        }
     }
+
     FileView {
-        path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/ricelin-lock-trigger"
+        path:
+            (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") +
+            "/ricelin-lock-trigger"
+
         watchChanges: true
         printErrors: false
-        onLoadFailed: setText("0")
-        onFileChanged: triggerFire.restart()
+
+        onLoadFailed:
+            setText("0")
+
+        onFileChanged:
+            triggerFire.restart()
     }
-
-
 
     WlSessionLock {
         id: sessionLock
@@ -86,22 +170,26 @@ ShellRoot {
 
         WlSessionLockSurface {
             id: lockSurface
-            color: "#160f0a"
+            color: "#0e1014"
 
             LockSurface {
                 anchors.fill: parent
-                s: lockSurface.screen ? lockSurface.screen.height / 1080 : 1
-                screenName: lockSurface.screen ? lockSurface.screen.name : ""
+
+                s:
+                    lockSurface.screen
+                        ? lockSurface.screen.height / 1080
+                        : 1
+
+                screenName:
+                    lockSurface.screen
+                        ? lockSurface.screen.name
+                        : ""
+
                 auth: pamAuth
                 active: root.revealed
+                sleepLock: root.sleepLock
+                effectRequested: root.effectRequested
             }
-        }
-    }
-
-    IpcHandler {
-        target: "lock"
-        function lock(): void {
-            root.doLock();
         }
     }
 }

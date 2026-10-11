@@ -1,7 +1,7 @@
 general {
     lock_cmd = /home/erik/.config/hypr/scripts/lock.sh
-    before_sleep_cmd = loginctl lock-session
-    after_sleep_cmd = hyprctl dispatch dpms on
+    before_sleep_cmd = /home/erik/.config/hypr/scripts/lock.sh sleep
+    after_sleep_cmd = sh -c "hyprctl dispatch dpms on; sleep 0.05; qs -c lock ipc call lock reveal >/dev/null 2>&1"
 }
 
 listener {

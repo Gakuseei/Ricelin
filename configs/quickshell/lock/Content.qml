@@ -11,6 +11,7 @@ Item {
     property real s: 1
     property var auth: null
     property bool isMain: true
+    property bool effectsEnabled: true
 
     readonly property bool authenticating: auth ? auth.authenticating : false
     property bool showError: false
@@ -124,7 +125,7 @@ Item {
         font.pixelSize: 11 * content.s
         font.letterSpacing: 3.5 * content.s
         font.capitalization: Font.AllUppercase
-        layer.enabled: true
+        layer.enabled: content.effectsEnabled
         layer.effect: MultiEffect {
             shadowEnabled: true
             shadowColor: Qt.rgba(0, 0, 0, 0.45)
@@ -154,7 +155,7 @@ Item {
             var m = d.getMinutes();
             return h + ":" + (m < 10 ? "0" : "") + m;
         }
-        layer.enabled: true
+        layer.enabled: content.effectsEnabled
         layer.effect: MultiEffect {
             shadowEnabled: true
             shadowColor: Qt.rgba(0, 0, 0, 0.5)
@@ -205,7 +206,7 @@ Item {
                     mipmap: true
                     cache: false
                     asynchronous: true
-                    layer.enabled: true
+                    layer.enabled: content.effectsEnabled
                     layer.effect: MultiEffect {
                         maskEnabled: true
                         maskSource: coverMask

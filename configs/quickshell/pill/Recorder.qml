@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Shapes
+import QtMultimedia
 import Quickshell.Io
 import Quickshell.Widgets
 import Quickshell.Services.Pipewire
@@ -54,12 +55,38 @@ PillSurface {
     property bool chooserOpen: false
     property bool screenChooserOpen: false
 
+    // Capture mode:
+    //   screen       = existing screen/window/region recorder
+    //   camera       = camera-only photo/video
+    //   screenCamera = screen/window/region + webcam PiP
+    property string captureMode: "screen"
+
+    readonly property bool cameraMode: captureMode === "camera"
+    readonly property bool screenCameraMode: captureMode === "screenCamera"
+    readonly property bool screenMode: captureMode === "screen"
+
+    property string cameraCaptureMode: "photo"
+
+    readonly property bool cameraPhotoMode:
+        cameraCaptureMode === "photo"
+
+    readonly property bool cameraVideoMode:
+        cameraCaptureMode === "video"
+
+    readonly property bool cameraBusy:
+        CameraRec.videoRecording ||
+        CameraRec.capturingPhoto
+
     /**
      * Audio-fader keyboard focus index: 0 mic, 1 desktop, -1 none. Only an
      * enabled (toggled-on) fader accepts the focus; the host's hover and arrow
      * keys set it.
      */
     property int faderFocus: -1
+
+    // Stable display values while PipeWire objects are still resolving.
+    property real micDisplayLevel: 1.0
+    property real desktopDisplayLevel: 0.37
 
     readonly property point recPoint: {
         void root.width;
@@ -75,14 +102,38 @@ PillSurface {
         return q.charAt(0).toUpperCase() + q.slice(1);
     }
 
-    readonly property string stageTitle: ScreenRec.recording ? "Recording" : "Screen recorder"
+    readonly property string stageTitle: {
+        if (ScreenRec.recording)
+            return screenCameraMode ? "Screen + Camera" : "Screen recorder";
+        if (cameraMode)
+            return "Camera";
+        if (screenCameraMode)
+            return "Screen + Camera";
+        return "Screen recorder";
+    }
 
-    readonly property string stageSpec: ScreenRec.fps + " fps · " + root.qualityLabel
+    readonly property string stageSpec: {
+        if (cameraMode) {
+            if (CameraRec.videoRecording)
+                return CameraRec.selectedResolution
+                    + " · " + CameraRec.selectedFps
+                    + " fps · recording"
+
+            return CameraRec.selectedResolution
+                + " · " + CameraRec.selectedFps
+                + " fps"
+        }
+
+        if (screenCameraMode)
+            return ScreenRec.fps + " fps · " + root.qualityLabel + " · webcam"
+
+        return ScreenRec.fps + " fps · " + root.qualityLabel;
+    }
 
     /** Deletes one clip file (argv form, no shell), then re-reads the strip. */
     Process {
         id: rmClipProc
-        onExited: ScreenRec.refreshRecent()
+        onExited: MediaRec.refresh()
     }
 
     function fmtTime(sec) {
@@ -91,22 +142,57 @@ PillSurface {
         return m + ":" + (s < 10 ? "0" + s : s);
     }
 
-    function press() {
-        if (ScreenRec.recording) {
-            ScreenRec.stop();
+    function setCaptureMode(mode) {
+        if (ScreenRec.recording || counting)
             return;
-        }
-        if (counting) {
-            ScreenRec.cancel();
-            return;
-        }
-        if (chooserOpen) {
-            chooserOpen = false;
-            screenChooserOpen = false;
-            return;
-        }
-        chooserOpen = true;
+
+        captureMode = mode;
+        chooserOpen = false;
         screenChooserOpen = false;
+        drawerOpen = false;
+
+        ScreenRec.cameraOverlayEnabled = screenCameraMode;
+
+        if (cameraMode || screenCameraMode)
+            CameraRec.startCamera();
+        else
+            CameraRec.stopCamera();
+    }
+
+    function press() {
+        if (cameraMode) {
+            if (CameraRec.videoRecording) {
+                CameraRec.stopVideo()
+                return
+            }
+
+            if (cameraPhotoMode) {
+                CameraRec.takePhoto()
+                return
+            }
+
+            CameraRec.startVideo()
+            return
+        }
+
+        if (ScreenRec.recording) {
+            ScreenRec.stop()
+            return
+        }
+
+        if (counting) {
+            ScreenRec.cancel()
+            return
+        }
+
+        if (chooserOpen) {
+            chooserOpen = false
+            screenChooserOpen = false
+            return
+        }
+
+        chooserOpen = true
+        screenChooserOpen = false
     }
 
     /**
@@ -122,6 +208,7 @@ PillSurface {
             }
             ScreenRec.prepareScreen(root.screenName);
         } else if (kind === "window") {
+            ScreenRec.currentMonitor = root.screenName;
             ScreenRec.prepareWindow();
         }
         chooserOpen = false;
@@ -157,15 +244,29 @@ PillSurface {
 
     onActiveChanged: {
         ScreenRec.recorderOpen = active;
+
+        if (!active) {
+            ScreenRec.cameraOverlayEnabled = false;
+
+            if (CameraRec.videoRecording)
+                CameraRec.stopVideo();
+
+            if (!root.screenCameraMode)
+                CameraRec.stopCamera();
+        }
         if (active) {
-            ScreenRec.refreshRecent();
+            MediaRec.refresh();
             faderFocus = -1;
             drawerOpen = false;
             chooserOpen = false;
             screenChooserOpen = false;
+
+            if (cameraMode || screenCameraMode)
+                CameraRec.startCamera();
         } else {
             chooserOpen = false;
             screenChooserOpen = false;
+            CameraRec.stopCamera();
         }
     }
 
@@ -202,46 +303,82 @@ PillSurface {
 
         readonly property real pad: 2 * root.s
 
-        width: pills.implicitWidth + 2 * pad
+        width: Math.min(
+            pills.implicitWidth + 2 * pad,
+            240 * root.s
+        )
         height: pills.implicitHeight + 2 * pad
         radius: 9 * root.s
         color: "transparent"
+        clip: true
 
-        Row {
-            id: pills
-            anchors.centerIn: parent
-            spacing: 2 * root.s
+        Flickable {
+            id: segFlick
+            anchors.fill: parent
+            contentWidth: Math.max(width, pills.width)
+            contentHeight: height
+            clip: true
+            interactive: contentWidth > width
+            flickableDirection: Flickable.HorizontalFlick
+            boundsBehavior: Flickable.StopAtBounds
 
-            Repeater {
-                model: seg.options
+            Row {
+                id: pills
+                width: implicitWidth
+                anchors.verticalCenter: parent.verticalCenter
+                x: segFlick.contentWidth > segFlick.width
+                    ? 0
+                    : (segFlick.width - width) / 2
+                spacing: 1 * root.s
 
-                Rectangle {
-                    id: opt
-                    required property var modelData
-                    readonly property bool current: seg.value === modelData.value
+                Repeater {
+                    model: seg.options
 
-                    width: optLabel.implicitWidth + 18 * root.s
-                    height: optLabel.implicitHeight + 12 * root.s
-                    radius: 7 * root.s
-                    color: opt.current ? Theme.cardTop : "transparent"
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    Rectangle {
+                        id: opt
+                        required property var modelData
+                        readonly property bool current: seg.value === modelData.value
 
-                    Text {
-                        id: optLabel
-                        anchors.centerIn: parent
-                        text: opt.modelData.label
-                        color: opt.current ? Theme.cream : Theme.subtle
-                        font.family: Theme.font
-                        font.pixelSize: 10.5 * root.s
-                        font.weight: Font.Bold
-                        font.letterSpacing: 0.3 * root.s
+                        width: optLabel.implicitWidth + 10 * root.s
+                        height: optLabel.implicitHeight + 10 * root.s
+                        radius: 7 * root.s
+                        color: opt.current ? Theme.cardTop : "transparent"
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+                        Text {
+                            id: optLabel
+                            anchors.centerIn: parent
+                            text: opt.modelData.label
+                            color: opt.current ? Theme.cream : Theme.subtle
+                            font.family: Theme.font
+                            font.pixelSize: 9.5 * root.s
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.15 * root.s
+                            elide: Text.ElideRight
+                            maximumLineCount: 1
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: seg.picked(opt.modelData.value)
+                        }
                     }
+                }
+            }
 
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: seg.picked(opt.modelData.value)
-                    }
+            WheelHandler {
+                onWheel: function(event) {
+                    if (segFlick.contentWidth <= segFlick.width)
+                        return
+                    segFlick.contentX = Math.max(
+                        0,
+                        Math.min(
+                            segFlick.contentWidth - segFlick.width,
+                            segFlick.contentX - event.angleDelta.y / 120 * 42 * root.s
+                        )
+                    )
+                    event.accepted = true
                 }
             }
         }
@@ -258,7 +395,7 @@ PillSurface {
         default property alias control: controlSlot.data
 
         width: parent ? parent.width : 0
-        height: 35 * root.s
+        height: visible ? 35 * root.s : 0
 
         Rectangle {
             anchors.top: parent.top
@@ -393,7 +530,7 @@ PillSurface {
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "RECORD"
+                    text: root.cameraMode ? "CAMERA" : "RECORD"
                     color: Theme.subtle
                     font.family: Theme.font
                     font.pixelSize: 10 * root.s
@@ -410,13 +547,17 @@ PillSurface {
 
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: ScreenRec.recording
+                    visible: root.cameraMode
+                        ? CameraRec.videoRecording
+                        : ScreenRec.recording
                     width: 7 * root.s
                     height: 7 * root.s
                     radius: width / 2
                     color: Theme.verm
                     SequentialAnimation on opacity {
-                        running: ScreenRec.recording
+                        running: root.cameraMode
+                            ? CameraRec.videoRecording
+                            : ScreenRec.recording
                         loops: Animation.Infinite
                         NumberAnimation { to: 0.25; duration: 500 }
                         NumberAnimation { to: 1; duration: 500 }
@@ -425,9 +566,20 @@ PillSurface {
 
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: ScreenRec.recording ? root.fmtTime(root.elapsed)
-                        : (root.counting ? "GET READY" : "IDLE")
-                    color: ScreenRec.recording ? Theme.vermLit : Theme.dim
+                    text: root.cameraMode
+                        ? (CameraRec.videoRecording
+                            ? "REC"
+                            : (CameraRec.capturingPhoto
+                                ? "SAVING"
+                                : (CameraRec.cameraActive
+                                    ? "LIVE"
+                                    : "OFF")))
+                        : (ScreenRec.recording
+                            ? root.fmtTime(root.elapsed)
+                            : (root.counting ? "GET READY" : "IDLE"))
+                    color: root.cameraMode
+                        ? (CameraRec.videoRecording ? Theme.vermLit : Theme.dim)
+                        : (ScreenRec.recording ? Theme.vermLit : Theme.dim)
                     font.family: Theme.font
                     font.pixelSize: 10 * root.s
                     font.weight: Font.Bold
@@ -440,13 +592,415 @@ PillSurface {
 
         Item { width: 1; height: 13 * root.s }
 
+        MiniSeg {
+            id: captureModeSeg
+
+            anchors.horizontalCenter: parent.horizontalCenter
+
+            options: [
+                { label: "Screen", value: "screen" },
+                { label: "Camera", value: "camera" },
+                { label: "Screen + Cam", value: "screenCamera" }
+            ]
+
+            value: root.captureMode
+            onPicked: (v) => root.setCaptureMode(v)
+        }
+
+        Item { width: 1; height: 9 * root.s }
+
+        Item {
+            id: cameraPreviewGroup
+
+            visible: root.cameraMode
+            width: parent.width
+
+            readonly property real previewHeight:
+                width * 9 / 16
+
+            height: visible ? previewHeight : 0
+
+            Rectangle {
+                anchors.fill: parent
+                radius: 14 * root.s
+                color: "black"
+                clip: true
+
+                VideoOutput {
+                    id: cameraVideoOutput
+
+                    anchors.fill: parent
+                    fillMode: VideoOutput.PreserveAspectCrop
+                    mirrored: CameraRec.mirrored
+                }
+            }
+
+            Binding {
+                target: CameraRec.captureSession
+                property: "videoOutput"
+                value: cameraVideoOutput
+                when: root.cameraMode
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                radius: 14 * root.s
+                color: "transparent"
+                border.width: 1
+                border.color:
+                    Qt.alpha(Theme.vermLit, 0.45)
+            }
+
+            Row {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.margins: 12 * root.s
+                spacing: 6 * root.s
+
+                Rectangle {
+                    visible: CameraRec.videoRecording
+
+                    anchors.verticalCenter:
+                        parent.verticalCenter
+
+                    width: 7 * root.s
+                    height: 7 * root.s
+                    radius: width / 2
+                    color: Theme.verm
+
+                    SequentialAnimation on opacity {
+                        running: CameraRec.videoRecording
+                        loops: Animation.Infinite
+
+                        NumberAnimation {
+                            to: 0.25
+                            duration: 500
+                        }
+
+                        NumberAnimation {
+                            to: 1
+                            duration: 500
+                        }
+                    }
+                }
+
+                Text {
+                    visible: CameraRec.videoRecording
+                    text: "REC"
+                    color: Theme.vermLit
+                    font.family: Theme.font
+                    font.pixelSize: 9 * root.s
+                    font.weight: Font.ExtraBold
+                    font.letterSpacing: 1.1 * root.s
+                }
+            }
+
+            Text {
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.margins: 10 * root.s
+
+                text:
+                    CameraRec.selectedResolution
+                    + " · "
+                    + CameraRec.selectedFps
+                    + " fps"
+
+                color: Qt.alpha("white", 0.8)
+                font.family: Theme.font
+                font.pixelSize: 9 * root.s
+                font.weight: Font.DemiBold
+                font.features: { "tnum": 1 }
+            }
+        }
+
+        Item {
+            visible: root.cameraMode
+            width: 1
+            height: 10 * root.s
+        }
+
+        Item {
+            id: cameraModeControls
+
+            visible: root.cameraMode
+            width: parent.width
+            height: 36 * root.s
+
+            MiniSeg {
+                id: cameraCaptureSeg
+
+                anchors.left: parent.left
+                anchors.verticalCenter:
+                    parent.verticalCenter
+
+                options: [
+                    { label: "Photo", value: "photo" },
+                    { label: "Video", value: "video" }
+                ]
+
+                value: root.cameraCaptureMode
+
+                onPicked: (v) => {
+                    if (!CameraRec.videoRecording &&
+                        !CameraRec.capturingPhoto)
+                        root.cameraCaptureMode = v
+                }
+            }
+
+            Text {
+                anchors.right: parent.right
+                anchors.verticalCenter:
+                    parent.verticalCenter
+
+                text: CameraRec.cameraActive
+                    ? (CameraRec.photoReady
+                        ? "READY"
+                        : "STARTING…")
+                    : "OFF"
+
+                color: CameraRec.photoReady
+                    ? Theme.subtle
+                    : Theme.faint
+
+                font.family: Theme.font
+                font.pixelSize: 9 * root.s
+                font.weight: Font.Bold
+                font.letterSpacing: 1.1 * root.s
+            }
+        }
+
+        Item {
+            visible: root.cameraMode
+            width: 1
+            height: 10 * root.s
+        }
+
+
+                Item {
+            id: cameraSettingsGroup
+            visible: false
+            width: parent.width
+            height: 0
+        }
+
+        Column {
+            id: cameraSettingsCol
+            anchors.left: cameraSettingsGroup.left
+            anchors.right: cameraSettingsGroup.right
+            spacing: 0
+            visible: root.cameraMode
+
+            Item { width: 1; height: 8 * root.s }
+
+            Text {
+                text: root.cameraVideoMode ? "VIDEO" : "PHOTO"
+                color: Theme.faint
+                font.family: Theme.font
+                font.pixelSize: 9 * root.s
+                font.weight: Font.Bold
+                font.capitalization: Font.AllUppercase
+                font.letterSpacing: 1.2 * root.s
+            }
+
+            ORow {
+                name: "Resolution"
+                first: true
+
+                MiniSeg {
+                    // MiniSeg only needs the display label and selected value.
+                    // CameraRec entries also carry QCameraVideoFormat and
+                    // other metadata, so expose a simple UI model here just
+                    // like the other working segmented controls.
+                    width: 240 * root.s
+                    height: 27 * root.s
+
+                    options: CameraRec.availableResolutions.map(
+                        function(resolution) {
+                            return {
+                                label: String(resolution.label),
+                                value: String(resolution.value)
+                            }
+                        }
+                    )
+
+                    value: CameraRec.selectedResolution
+                    onPicked: (v) => CameraRec.setResolution(v)
+                }
+            }
+
+            ORow {
+                name: "Frame rate"
+                visible: CameraRec.availableFps.length > 0
+
+                MiniSeg {
+                    options: CameraRec.availableFps.map(
+                        function(fps) {
+                            return {
+                                label: String(fps),
+                                value: fps
+                            }
+                        }
+                    )
+
+                    value: CameraRec.selectedFps
+                    onPicked: (v) => CameraRec.setFps(v)
+                }
+            }
+
+            ORow {
+                name: "Quality"
+
+                MiniSeg {
+                    options: [
+                        { label: "Med", value: "medium" },
+                        { label: "High", value: "high" },
+                        { label: "V.High", value: "veryHigh" },
+                        { label: "Ultra", value: "ultra" }
+                    ]
+
+                    value: CameraRec.selectedQuality
+                    onPicked: (v) => CameraRec.setQuality(v)
+                }
+            }
+
+            ORow {
+                name: "Codec"
+                visible: root.cameraVideoMode && CameraRec.availableCodecs.length > 0
+
+                MiniSeg {
+                    options: CameraRec.availableCodecs
+                    value: CameraRec.selectedCodec
+                    onPicked: (v) => CameraRec.setCodec(v)
+                }
+            }
+
+            ORow {
+                name: "Mirror"
+
+                LinkToggle {
+                    s: root.s
+                    on: CameraRec.mirrored
+                    onToggled:
+                        CameraRec.setMirror(!CameraRec.mirrored)
+                }
+            }
+
+            ORow {
+                name: "Zoom"
+                visible: CameraRec.hasZoomOptions
+
+                MiniSeg {
+                    options: CameraRec.availableZoom
+                    value: CameraRec.zoomFactor
+                    onPicked: (v) => CameraRec.setZoom(v)
+                }
+            }
+
+            ORow {
+                name: "Focus"
+                visible: CameraRec.hasFocusModes
+
+                MiniSeg {
+                    options: CameraRec.availableFocusModes
+                    value: CameraRec.focusModeName
+                    onPicked: (v) => CameraRec.setFocusMode(v)
+                }
+            }
+
+            ORow {
+                name: "Exposure mode"
+                visible: CameraRec.hasExposureModes
+
+                MiniSeg {
+                    options: CameraRec.availableExposureModes
+                    value: CameraRec.exposureModeName
+                    onPicked: (v) => CameraRec.setExposureMode(v)
+                }
+            }
+
+            ORow {
+                name: "Shutter"
+                visible: CameraRec.exposureModeName === "manual"
+
+                MiniSeg {
+                    options: CameraRec.exposureOptions()
+                    value: CameraRec.manualExposureAbsolute
+                    onPicked: (v) => CameraRec.setExposureTime(v)
+                }
+            }
+
+            ORow {
+                name: "Gain"
+                visible: CameraRec.exposureModeName === "manual"
+
+                MiniSeg {
+                    options: CameraRec.gainOptions()
+                    value: CameraRec.manualGain
+                    onPicked: (v) => CameraRec.setGain(v)
+                }
+            }
+
+            ORow {
+                name: "White balance"
+                visible: CameraRec.hasWhiteBalances
+
+                MiniSeg {
+                    options: CameraRec.availableWhiteBalances
+                    value: CameraRec.whiteBalanceName
+                    onPicked: (v) => CameraRec.setWhiteBalance(v)
+                }
+            }
+
+            // Video-only settings
+            Item {
+                width: parent.width
+                height: 8 * root.s
+                visible: root.cameraVideoMode
+            }
+
+            ORow {
+                name: "Bitrate"
+                visible: root.cameraVideoMode
+
+                MiniSeg {
+                    options: [
+                        { label: "Auto", value: 0 },
+                        { label: "4M", value: 4000000 },
+                        { label: "8M", value: 8000000 },
+                        { label: "12M", value: 12000000 },
+                        { label: "20M", value: 20000000 }
+                    ]
+
+                    value: CameraRec.selectedBitrate
+                    onPicked: (v) => CameraRec.setBitrate(v)
+                }
+            }
+
+            ORow {
+                name: "Microphone"
+                visible: root.cameraVideoMode && CameraRec.microphoneAvailable
+
+                LinkToggle {
+                    s: root.s
+                    on: CameraRec.audioEnabled
+                    onToggled:
+                        CameraRec.setAudioEnabled(!CameraRec.audioEnabled)
+                }
+            }
+        }
+
+        Item { width: 1; height: 13 * root.s }
+
         Item {
             id: stageGroup
             width: parent.width
-            height: stage.height + drawer.height
+            visible: !root.cameraMode
+            height: root.cameraMode ? 0 : stage.height + drawer.height
 
             Rectangle {
                 id: stage
+                visible: !root.cameraMode
                 property bool pressActive: false
                 width: parent.width
                 height: 76 * root.s
@@ -626,10 +1180,9 @@ PillSurface {
                     anchors.rightMargin: 16 * root.s
                     topPadding: 2 * root.s
                     bottomPadding: 10 * root.s
-
                     ORow {
                         name: "Frame rate"
-                        first: true
+                        visible: !root.cameraMode
                         MiniSeg {
                             options: [
                                 { label: "30", value: 30 },
@@ -679,7 +1232,10 @@ PillSurface {
             }
         }
 
-        Item { width: 1; height: 13 * root.s }
+        Item {
+            width: 1
+            height: 13 * root.s
+        }
 
         Item {
             id: actionGroup
@@ -720,7 +1276,11 @@ PillSurface {
                     anchors.left: parent.left
                     anchors.leftMargin: 18 * root.s
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: !root.counting && !ScreenRec.recording
+                    visible: root.cameraMode
+                        ? !CameraRec.videoRecording &&
+                          !CameraRec.capturingPhoto
+                        : !root.counting &&
+                          !ScreenRec.recording
                     width: 17 * root.s
                     height: 17 * root.s
                     radius: width / 2
@@ -735,7 +1295,9 @@ PillSurface {
                     anchors.left: parent.left
                     anchors.leftMargin: 18 * root.s
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: ScreenRec.recording
+                    visible: root.cameraMode
+                        ? CameraRec.videoRecording
+                        : ScreenRec.recording
                     width: 15 * root.s
                     height: 15 * root.s
                     radius: 4 * root.s
@@ -766,8 +1328,17 @@ PillSurface {
                     anchors.left: parent.left
                     anchors.leftMargin: root.counting ? 46 * root.s : 47 * root.s
                     anchors.verticalCenter: parent.verticalCenter
-                    text: ScreenRec.recording ? "Stop recording"
-                        : (root.counting ? "Starting…" : "Start recording")
+                    text: root.cameraMode
+                        ? (CameraRec.videoRecording
+                            ? "Stop video"
+                            : (root.cameraPhotoMode
+                                ? "Take photo"
+                                : "Start video"))
+                        : (ScreenRec.recording
+                            ? "Stop recording"
+                            : (root.counting
+                                ? "Starting…"
+                                : "Start recording"))
                     color: Theme.cream
                     font.family: Theme.font
                     font.pixelSize: 13 * root.s
@@ -779,7 +1350,15 @@ PillSurface {
                     anchors.right: parent.right
                     anchors.rightMargin: 18 * root.s
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.counting ? "tap to cancel" : "tap"
+                    text: root.cameraMode
+                        ? (CameraRec.capturingPhoto
+                            ? "saving…"
+                            : (root.cameraVideoMode
+                                ? "tap to record"
+                                : "tap"))
+                        : (root.counting
+                            ? "tap to cancel"
+                            : "tap")
                     color: Theme.faint
                     font.family: Theme.font
                     font.pixelSize: 10 * root.s
@@ -796,7 +1375,7 @@ PillSurface {
             Rectangle {
                 id: chooser
                 anchors.fill: parent
-                visible: root.chooserOpen
+                visible: root.chooserOpen && !root.cameraMode
                 radius: 14 * root.s
                 color: Theme.cardBot
                 border.width: 1
@@ -866,7 +1445,7 @@ PillSurface {
             Rectangle {
                 id: screenChooser
                 anchors.fill: parent
-                visible: root.screenChooserOpen
+                visible: root.screenChooserOpen && !root.cameraMode
                 radius: 14 * root.s
                 color: Theme.cardBot
                 border.width: 1
@@ -962,23 +1541,41 @@ PillSurface {
             }
         }
 
-        Item { width: 1; height: 13 * root.s }
+        Item {
+            visible: !root.cameraMode
+            width: 1
+            height: 13 * root.s
+        }
 
         Rectangle {
+            visible: !root.cameraMode
             width: parent.width
             height: 1
             color: Theme.hair
         }
 
-        Item { width: 1; height: 11 * root.s }
+        Item {
+            visible: !root.cameraMode
+            width: 1
+            height: 11 * root.s
+        }
 
         AudioRow {
+            visible: !root.cameraMode
+
             glyph: "mic"
             name: "Microphone"
             on: ScreenRec.micOn
             faderIndex: 0
-            level: root.source && root.source.audio ? root.source.audio.volume : 0
-            onFaderMoved: (v) => { if (root.source && root.source.audio) root.source.audio.volume = v; }
+            level: root.source && root.source.audio
+                ? root.source.audio.volume
+                : root.micDisplayLevel
+
+            onFaderMoved: (v) => {
+                root.micDisplayLevel = v
+                if (root.source && root.source.audio)
+                    root.source.audio.volume = v
+            }
 
             MouseArea {
                 anchors.left: parent.left
@@ -991,12 +1588,21 @@ PillSurface {
         }
 
         AudioRow {
+            visible: !root.cameraMode
+
             glyph: "speaker"
             name: "Desktop"
             on: ScreenRec.desktopOn
             faderIndex: 1
-            level: root.sink && root.sink.audio ? root.sink.audio.volume : 0
-            onFaderMoved: (v) => { if (root.sink && root.sink.audio) root.sink.audio.volume = v; }
+            level: root.sink && root.sink.audio
+                ? root.sink.audio.volume
+                : root.desktopDisplayLevel
+
+            onFaderMoved: (v) => {
+                root.desktopDisplayLevel = v
+                if (root.sink && root.sink.audio)
+                    root.sink.audio.volume = v
+            }
 
             MouseArea {
                 anchors.left: parent.left
@@ -1025,6 +1631,7 @@ PillSurface {
          */
         Item {
             id: pathRow
+            visible: !root.cameraMode
             width: parent.width
             height: 18 * root.s
 
@@ -1146,7 +1753,7 @@ PillSurface {
                 Text {
                     height: 16 * root.s
                     verticalAlignment: Text.AlignVCenter
-                    text: "RECENT · " + ScreenRec.recentCount
+                    text: "RECENT · " + MediaRec.recentCount
                     color: Theme.faint
                     font.family: Theme.font
                     font.pixelSize: 9 * root.s
@@ -1161,7 +1768,7 @@ PillSurface {
                 anchors.verticalCenter: parent.verticalCenter
                 height: parent.height
                 width: clearTxt.width + (Flags.showGlyphs ? clearKanji.width + 5 * root.s : 0)
-                visible: ScreenRec.recentCount > 0
+                visible: MediaRec.recentCount > 0
 
                 Text {
                     id: clearKanji
@@ -1178,7 +1785,7 @@ PillSurface {
                     id: clearTxt
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "CLEAR"
+                    text: "REFRESH"
                     color: clearArea.containsMouse ? Theme.flameGlow : Theme.vermDeep
                     font.family: Theme.font
                     font.pixelSize: 9 * root.s
@@ -1193,7 +1800,7 @@ PillSurface {
                     anchors.margins: -6 * root.s
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: ScreenRec.clearRecent()
+                    onClicked: MediaRec.refresh()
                 }
             }
         }
@@ -1207,8 +1814,10 @@ PillSurface {
             Text {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                visible: ScreenRec.recentCount === 0
-                text: "No recordings yet"
+                visible: MediaRec.recentCount === 0
+                text: root.cameraMode
+                    ? "No media yet"
+                    : "No recordings yet"
                 color: Theme.faint
                 font.family: Theme.font
                 font.pixelSize: 10.5 * root.s
@@ -1217,12 +1826,12 @@ PillSurface {
             ListView {
                 id: filmstrip
                 anchors.fill: parent
-                visible: ScreenRec.recentCount > 0
+                visible: MediaRec.recentCount > 0
                 orientation: ListView.Horizontal
                 clip: true
                 spacing: 9 * root.s
                 boundsBehavior: Flickable.StopAtBounds
-                model: ScreenRec.recent
+                model: MediaRec.recent
 
                 delegate: Item {
                     id: frame
@@ -1240,6 +1849,22 @@ PillSurface {
                                  : frame.modelData.name.replace("recording_", "").replace(".mp4", "");
                     }
                     readonly property bool coverReady: cover.status === Image.Ready && cover.source !== ""
+                   readonly property string sizeLabel: {
+                       var bytes = Number(frame.modelData.size || 0);
+                       if (!isFinite(bytes) || bytes < 0)
+                           bytes = 0;
+
+                       if (bytes < 1024)
+                           return Math.round(bytes) + " B";
+
+                       if (bytes < 1024 * 1024)
+                           return (bytes / 1024).toFixed(1) + " KiB";
+
+                       if (bytes < 1024 * 1024 * 1024)
+                           return (bytes / (1024 * 1024)).toFixed(1) + " MiB";
+
+                       return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GiB";
+                   }
 
                     /** Two-step delete: first ✕ click arms it red, the next removes the clip. */
                     property bool armed: false
@@ -1268,9 +1893,9 @@ PillSurface {
                         Image {
                             id: cover
                             anchors.fill: parent
-                            source: frame.modelData.thumb ? "file://" + frame.modelData.thumb : ""
+                            source: MediaRec.localFileUrl(frame.modelData.thumb)
                             fillMode: Image.PreserveAspectCrop
-                            asynchronous: true
+                            asynchronous: false
                             cache: false
                             smooth: true
                             sourceSize.width: 216 * root.s
@@ -1281,7 +1906,8 @@ PillSurface {
                             anchors.centerIn: parent
                             width: 14 * root.s
                             height: 14 * root.s
-                            visible: !frame.coverReady
+                            visible: !frame.coverReady &&
+                                frame.modelData.kind !== "photo"
                             name: "play"
                             color: frameArea.containsMouse ? Theme.cream : Theme.iconDim
                         }
@@ -1344,7 +1970,7 @@ PillSurface {
                             id: sizeTxt
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
-                            text: frame.modelData.sizeLabel
+                            text: frame.sizeLabel
                             color: Theme.faint
                             font.family: Theme.font
                             font.pixelSize: 8.5 * root.s
@@ -1358,7 +1984,7 @@ PillSurface {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: ScreenRec.openFile(frame.modelData.path)
+                        onClicked: MediaRec.open(frame.modelData.path)
                     }
 
                     Rectangle {

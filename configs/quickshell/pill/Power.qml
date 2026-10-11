@@ -47,12 +47,14 @@ PillSurface {
     ameForm: holdingIndex >= 0 ? "dock" : (soulKey.length ? "soul" : "off")
     amePoint: Qt.point(heatX, heatY)
 
+    readonly property string sysScript: Quickshell.env("HOME") + "/.config/hypr/scripts/ricelin-sys"
+
     readonly property var actions: [
         { key: "lock",     glyph: "lock",     label: "Lock",     confirm: false, dispatch: "",             argv: [Quickshell.env("HOME") + "/.config/hypr/scripts/lock.sh"] },
         { key: "logout",   glyph: "logout",   label: "Logout",   confirm: true,  dispatch: "hl.dsp.exit()", argv: [] },
-        { key: "suspend",  glyph: "suspend",  label: "Sleep",    confirm: false, dispatch: "",             argv: ["systemctl", "suspend"] },
-        { key: "reboot",   glyph: "reboot",   label: "Restart",  confirm: true,  dispatch: "",             argv: ["systemctl", "reboot"] },
-        { key: "shutdown", glyph: "shutdown", label: "Shutdown", confirm: true,  dispatch: "",             argv: ["systemctl", "poweroff"] }
+        { key: "suspend",  glyph: "suspend",  label: "Sleep",    confirm: false, dispatch: "",             argv: [sysScript, "power", "suspend"] },
+        { key: "reboot",   glyph: "reboot",   label: "Restart",  confirm: true,  dispatch: "",             argv: [sysScript, "power", "reboot"] },
+        { key: "shutdown", glyph: "shutdown", label: "Shutdown", confirm: true,  dispatch: "",             argv: [sysScript, "power", "poweroff"] }
     ]
 
     readonly property int splitAfter: 2

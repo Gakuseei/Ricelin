@@ -12,6 +12,8 @@ import Quickshell.Io
  * The mode, warmth and the two times all live in Flags, so the pill and a fresh
  * login restore the same state. The service is enabled once at install, which is
  * why nothing here ever starts it; it is already up under the graphical session.
+ * Restarts go through ricelin-sys, which uses the systemd unit when there is one
+ * and the plain daemon on any other init.
  */
 Singleton {
     id: root
@@ -159,6 +161,6 @@ Singleton {
 
     Process {
         id: restartProc
-        command: ["systemctl", "--user", "restart", "hyprsunset"]
+        command: [Quickshell.env("HOME") + "/.config/hypr/scripts/ricelin-sys", "service", "restart", "hyprsunset"]
     }
 }
