@@ -263,6 +263,20 @@ Item {
             }
         }
 
+        Text {
+            anchors.horizontalCenter: body.horizontalCenter
+            anchors.bottom: body.top
+            anchors.bottomMargin: 8 * root.s
+            width: 280 * root.s
+            visible: Dock.loadError.length > 0
+            text: Dock.loadError
+            color: Theme.vermLit
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+            font.family: Theme.font
+            font.pixelSize: 10.5 * root.s
+        }
+
         // The hint bubble: follows the lens, sits on the room side of the capsule.
         Item {
             id: hint

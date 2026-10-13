@@ -26,14 +26,14 @@ new_env() {
     LOG="$fake/log"
     : >"$LOG"
     export LOG HOME="$fake/home"
-    for t in sed printf dirname cat setsid nohup; do
+    for t in sed printf dirname cat setsid nohup grep id; do
         p="$(command -v "$t" 2>/dev/null)" && ln -s "$p" "$fake/bin/$t"
     done
     unset RICELIN_BOOMBOX_QML RICELIN_PERSONA_DIR
-    # pgrep reports "running" only when FAKE_RUNNING=1.
-    printf '#!/bin/sh\necho "pgrep $*" >>"$LOG"\n[ "${FAKE_RUNNING:-0}" = 1 ]\n' >"$fake/bin/pgrep"
+    # Match the fixture command line using the same ERE pattern as pgrep.
+    printf '#!/bin/sh\necho "pgrep $*" >>"$LOG"\npattern=""\nwhile [ "$#" -gt 0 ]; do\n  if [ "$1" = "--" ]; then shift; pattern="${1:-}"; break; fi\n  shift\ndone\n[ -n "$pattern" ] && [ -n "${FAKE_CMDLINE:-}" ] || exit 1\nprintf "%s\\n" "$FAKE_CMDLINE" | grep -E -- "$pattern" >/dev/null\n' >"$fake/bin/pgrep"
     chmod +x "$fake/bin/pgrep"
-    unset FAKE_RUNNING
+    unset FAKE_CMDLINE
     stub pkill
     stub notify-send
 }
@@ -64,6 +64,7 @@ echo "boombox"
 new_env; stub quickshell
 mkdir -p "$HOME/Development/Qt6-Cava-plugin"; : >"$HOME/Development/Qt6-Cava-plugin/main.qml"
 run boombox; status 0 $? "starts when it is not running"
+expect "pgrep is scoped to the current uid" '^pgrep -u [0-9][0-9]* -f'
 await "uses -p with the default entry file" "^quickshell -p $HOME/Development/Qt6-Cava-plugin/main.qml"
 
 new_env; stub quickshell
@@ -71,10 +72,11 @@ new_env; stub quickshell
 run boombox
 await "RICELIN_BOOMBOX_QML overrides the path" "^quickshell -p $fake/box.qml"
 
-new_env; stub quickshell; export FAKE_RUNNING=1
+new_env; stub quickshell
 : >"$fake/box.qml"; export RICELIN_BOOMBOX_QML="$fake/box.qml"
+export FAKE_CMDLINE="/usr/bin/quickshell -p $fake/box.qml"
 run boombox; status 0 $? "running: the same call stops it"
-expect "stop kills by the exact pattern" '^pkill -f'
+expect "pkill is scoped to the current uid" '^pkill -u [0-9][0-9]* -f'
 sleep 0.3
 refute "stop does not start a second copy" '^quickshell'
 
@@ -107,8 +109,8 @@ new_env; run path; status 2 $? "path without an argument is a usage error"
 new_env; run nonsense; status 2 $? "unknown verb is a usage error"
 
 echo "start, stop and status"
-new_env; stub quickshell; export FAKE_RUNNING=1
-mkdir -p "$fake/cfg"
+new_env; stub quickshell
+mkdir -p "$fake/cfg"; export FAKE_CMDLINE="/usr/bin/quickshell -c $fake/cfg"
 run --start config "$fake/cfg"; status 0 $? "--start on a running instance is a no-op"
 sleep 0.3
 refute "and does not launch a second copy" '^quickshell'
@@ -119,8 +121,8 @@ mkdir -p "$fake/cfg"
 run --start config "$fake/cfg"
 await "--start launches a stopped instance" "^quickshell -c $fake/cfg"
 
-new_env; stub quickshell; export FAKE_RUNNING=1
-mkdir -p "$fake/cfg"
+new_env; stub quickshell
+mkdir -p "$fake/cfg"; export FAKE_CMDLINE="/usr/bin/quickshell -c $fake/cfg"
 run --stop config "$fake/cfg"; status 0 $? "--stop on a running instance succeeds"
 expect "and kills it" '^pkill -f'
 
@@ -129,8 +131,8 @@ mkdir -p "$fake/cfg"
 run --stop config "$fake/cfg"; status 0 $? "--stop on a stopped instance is a no-op"
 refute "and kills nothing" '^pkill'
 
-new_env; stub quickshell; export FAKE_RUNNING=1
-mkdir -p "$fake/cfg"
+new_env; stub quickshell
+mkdir -p "$fake/cfg"; export FAKE_CMDLINE="/usr/bin/quickshell -c $fake/cfg"
 run --status config "$fake/cfg"; status 0 $? "--status exits 0 when running"
 sleep 0.2
 refute "and starts nothing" '^quickshell'
@@ -139,10 +141,14 @@ run --status config "$fake/never-made"; status 1 $? "--status exits 1 when stopp
 refute "and does not complain on screen" '^notify-send'
 
 echo "pattern safety"
-new_env; stub quickshell; export FAKE_RUNNING=1
+new_env
 mkdir -p "$fake/odd.dir+1"; export RICELIN_PERSONA_DIR="$fake/odd.dir+1"
-run persona
-expect "regex characters in the path are escaped" 'odd\\.dir\\+1'
+export FAKE_CMDLINE="/usr/bin/quickshell -c $fake/odd.dir+1"
+run --status persona; status 0 $? "escaped metacharacters match the actual command line"
+export FAKE_CMDLINE="/usr/bin/quickshell -c $fake/oddXdirrr1"
+run --status persona; status 1 $? "metacharacter lookalikes do not match"
+export FAKE_CMDLINE="/usr/bin/quickshell -c $fake/odd.dir+1.bak"
+run --status persona; status 1 $? "path suffixes do not match"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "all ok"; else echo "$fails failed"; exit 1; fi

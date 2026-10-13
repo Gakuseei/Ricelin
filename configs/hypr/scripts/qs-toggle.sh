@@ -72,10 +72,11 @@ esac
 flag='-p'
 [ "$kind" = config ] && flag='-c'
 escaped="$(printf '%s' "$target" | sed 's/[][\.*^$+?(){}|/]/\\&/g')"
-pattern="(^|/)(quickshell|qs) .*${flag} ${escaped}( |\$)"
+pattern="(^|/)(quickshell|qs) .*${flag} ${escaped}( |$)"
 
+uid="$(id -u)" || fail "cannot determine the current user id"
 running=0
-pgrep -f -- "$pattern" >/dev/null 2>&1 && running=1
+pgrep -u "$uid" -f -- "$pattern" >/dev/null 2>&1 && running=1
 
 case "$act" in
     status)
@@ -83,7 +84,7 @@ case "$act" in
         exit $?
         ;;
     stop)
-        [ "$running" = 1 ] && pkill -f -- "$pattern" 2>/dev/null
+        [ "$running" = 1 ] && pkill -u "$uid" -f -- "$pattern" 2>/dev/null
         exit 0
         ;;
     start)
@@ -91,7 +92,7 @@ case "$act" in
         ;;
     toggle)
         if [ "$running" = 1 ]; then
-            pkill -f -- "$pattern" 2>/dev/null
+            pkill -u "$uid" -f -- "$pattern" 2>/dev/null
             exit 0
         fi
         ;;

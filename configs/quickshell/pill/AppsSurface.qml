@@ -120,6 +120,15 @@ PillSurface {
             onPicked: (v) => { root.category = v; appsList.currentIndex = AppRegistry.countFor(v) > 0 ? 0 : -1; }
         }
         Item { width: 1; height: visible ? 10 * root.s : 0; visible: root.viewState === "list" }
+        Text {
+            width: parent.width
+            visible: root.viewState === "list" && AppRegistry.loadError.length > 0
+            text: AppRegistry.loadError
+            color: Theme.vermLit
+            wrapMode: Text.WordWrap
+            font.family: Theme.font
+            font.pixelSize: 10.5 * root.s
+        }
        Text {
            width: parent.width
            visible: root.viewState === "list" && AppRegistry.ready && appsList.count === 0

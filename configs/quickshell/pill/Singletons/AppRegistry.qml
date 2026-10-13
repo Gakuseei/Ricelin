@@ -26,6 +26,9 @@ Singleton {
 
     property bool ready: false
     property var apps: []
+    property string loadError: ""
+    property bool backupPending: false
+    readonly property string backupPath: root.path + ".broken-" + Date.now()
 
     readonly property string dir: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/ricelin"
     readonly property string path: root.dir + "/applications.json"
@@ -212,9 +215,26 @@ Singleton {
     /** Receives the raw text of an unparsable store; written from memory, so nothing races the replacement file. */
     FileView {
         id: brokenStore
-        path: root.path + ".broken"
+        path: root.backupPath
         atomicWrites: true
         printErrors: false
+
+        onSaved: {
+            if (!root.backupPending)
+                return;
+            root.backupPending = false;
+            root.loadError = "";
+            console.warn("AppRegistry: unreadable registry backed up to", root.backupPath);
+            root.ready = true;
+            root.seedDefaults();
+        }
+        onSaveFailed: function(error) {
+            if (!root.backupPending)
+                return;
+            root.backupPending = false;
+            root.loadError = "Could not back up applications.json. The original file was left untouched.";
+            console.warn("AppRegistry: backup failed; refusing to replace applications.json:", error);
+        }
     }
 
     FileView {
@@ -252,10 +272,13 @@ Singleton {
             } catch (e) {
                 // A hand-edit with a stray comma must never cost the whole list:
                 // keep the unreadable file aside before the empty list replaces it.
-                console.warn("AppRegistry: applications.json failed to parse, keeping it as applications.json.broken:", e);
+                root.loadError = "Invalid applications.json; preserving the original while creating a backup.";
+                root.backupPending = true;
                 brokenStore.setText(raw);
+                return;
             }
         }
+        root.loadError = "";
         root.ready = true;
         root.seedDefaults();
     }

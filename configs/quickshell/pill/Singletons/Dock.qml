@@ -27,6 +27,9 @@ Singleton {
 
     property bool ready: false
     property var pinned: []
+    property string loadError: ""
+    property bool backupPending: false
+    readonly property string backupPath: root.path + ".broken-" + Date.now()
     /** True: windows tile around the dock. False: the dock floats over them. */
     property bool reserve: true
     /** "right" or "left": which screen edge the dock sits on. */
@@ -153,8 +156,8 @@ Singleton {
             return;
         }
         if (w.workspace === "special:minimized")
-            Hyprland.dispatch('hl.dsp.window.move({ workspace = ' + root.restoreWorkspace(screenName) + ', window = "address:' + w.address + '" })');
-        Hyprland.dispatch('hl.dsp.focus({ window = "address:' + w.address + '" })');
+            Hyprland.dispatch("movetoworkspace " + root.restoreWorkspace(screenName) + ",address:" + w.address);
+        Hyprland.dispatch("focuswindow address:" + w.address);
     }
 
     function persist() {
@@ -166,9 +169,29 @@ Singleton {
     /** Receives the raw text of an unparsable dock.json before the defaults replace it. */
     FileView {
         id: brokenStore
-        path: root.path + ".broken"
+        path: root.backupPath
         atomicWrites: true
         printErrors: false
+
+        onSaved: {
+            if (!root.backupPending)
+                return;
+            root.backupPending = false;
+            root.loadError = "";
+            console.warn("Dock: invalid configuration backed up to", root.backupPath);
+            root.pinned = root.defaultPins.slice();
+            root.reserve = true;
+            root.side = "right";
+            root.ready = true;
+            root.persist();
+        }
+        onSaveFailed: function(error) {
+            if (!root.backupPending)
+                return;
+            root.backupPending = false;
+            root.loadError = "Could not back up dock.json. The original file was left untouched.";
+            console.warn("Dock: backup failed; refusing to replace dock.json:", error);
+        }
     }
 
     FileView {
@@ -196,16 +219,24 @@ Singleton {
         if (raw && raw.length > 0) {
             try {
                 var data = JSON.parse(raw);
+                if (!data || typeof data !== "object" || Array.isArray(data))
+                    throw new Error("dock.json must contain an object");
+                if (data.pinned !== undefined && !Array.isArray(data.pinned))
+                    throw new Error("dock.json pinned must be an array");
                 root.pinned = Array.isArray(data.pinned) ? data.pinned.map(String) : [];
                 root.reserve = data.reserve !== false;
                 root.side = data.side === "left" ? "left" : "right";
+                root.loadError = "";
                 root.ready = true;
                 return;
             } catch (e) {
-                console.warn("Dock: dock.json failed to parse, keeping it as dock.json.broken:", e);
+                root.loadError = "Invalid dock.json; preserving the original while creating a backup.";
+                root.backupPending = true;
                 brokenStore.setText(raw);
+                return;
             }
         }
+        root.loadError = "";
         root.pinned = root.defaultPins.slice();
         root.ready = true;
         root.persist();
