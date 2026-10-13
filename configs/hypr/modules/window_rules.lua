@@ -77,6 +77,16 @@ hl.layer_rule({
     no_anim = true,
 })
 
+-- The glass surfaces (blade fan, dock) paint translucent panels; the blur behind
+-- them comes from here. ignore_alpha keeps the transparent rest of their
+-- full-screen layer surface from being blurred.
+hl.layer_rule({
+    name         = "ricelin-glass",
+    match        = { namespace = "ricelin-.*" },
+    blur         = true,
+    ignore_alpha = 0.05,
+})
+
 local ok, stashApps = pcall(require, "modules.stash-apps")
 if ok and type(stashApps) == "table" then
     for _, cls in ipairs(stashApps) do

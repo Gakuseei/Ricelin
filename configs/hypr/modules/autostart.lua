@@ -3,6 +3,8 @@ hl.on("hyprland.start", function()
     hl.exec_cmd(os.getenv("HOME") .. "/.config/hypr/scripts/wallpaper.sh init")
     hl.exec_cmd("hyprctl setcursor Bibata-Modern-Ice 24")
     hl.exec_cmd(os.getenv("HOME") .. "/.config/hypr/scripts/ricelin-sys session-start")
+    -- bring back the style that was active last time (a no-op when none was)
+    hl.exec_cmd(os.getenv("HOME") .. "/.config/hypr/scripts/ricelin-style apply")
     hl.exec_cmd(os.getenv("HOME") .. "/.config/hypr/scripts/watchdog.sh pill")
     hl.exec_cmd(os.getenv("HOME") .. "/.config/hypr/scripts/watchdog.sh lock")
     -- warm the page cache so a user's first fastfetch run doesn't stall on cold pacman db reads

@@ -18,6 +18,32 @@ Everything you see is hand-written Quickshell. One pill bar that morphs into wha
 
 The pill becomes media and now playing, a calendar, the wallpaper picker, clipboard history, an audio and brightness mixer, and network and bluetooth controls. There is also an app launcher, a lock screen, and [rishot](https://github.com/Gakuseei/rishot), my own screenshot and annotation tool, which lives in its own repo so you can read all of it there.
 
+## Layout
+
+The shell is split by what each part is for:
+
+- **The pill** (top centre) keeps the things you glance at or change constantly:
+  workspaces, clock and calendar, weather, recording, settings, power, and the
+  palette button for wallpapers and styles.
+- **The dock** (right edge, translucent glass) holds your pinned and running apps
+  and a status cluster: Wi-Fi, Bluetooth, battery, notifications, sound and
+  display, and system stats. The status buttons open the same panels the pill
+  used to, so nothing was lost. Pins, the side (`"right"` or `"left"`) and whether
+  windows tile around it live in `~/.config/ricelin/dock.json`.
+- **The blade fan** (top-left corner) is the games and Wine launcher. Rest on the
+  corner bead and it opens; click the bead to pin it open. It lists the games and
+  Wine/Proton/Steam entries from your app registry, and each app has an
+  Auto / Pin / Hide switch in its editor.
+- **Styles** are extra Quickshell setups (Persona is one). Anything in
+  `~/.config/quickshell/<name>` with a `shell.qml` shows up in the pill's palette
+  panel; `~/.config/ricelin/styles/<id>.conf` covers setups that live elsewhere.
+  See `configs/hypr/scripts/ricelin-style`.
+- **Boombox** is one key: `Super` + `Z` starts it and the same key stops it. Set
+  `RICELIN_BOOMBOX_QML` if its `main.qml` is not in the default place.
+
+The glass panels get their blur from the `ricelin-glass` layer rule in
+`configs/hypr/modules/window_rules.lua`.
+
 ## Stack
 
 - WM: Hyprland, configured in Lua
@@ -102,6 +128,8 @@ under `configs/` names `systemctl`, `loginctl` or `busctl`, and
 | `Super` + `E` | file manager |
 | `Super` + `T` | toggle floating |
 | `Super` + `L` | lock |
+| `Super` + `Z` | Boombox on / off |
+| `Super` + `Shift` + `Z` | Persona style on / off |
 | `Print` | rishot |
 
 ## Notes

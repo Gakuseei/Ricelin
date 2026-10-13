@@ -341,8 +341,18 @@ Item {
         }
         SettingsRow {
             name: "Favorite"
-            last: true
             control: ToggleSwitch { checked: root.app.favorite; onToggled: root.patch({ favorite: !root.app.favorite }) }
+        }
+        SettingsRow {
+            name: "Blades"
+            sub: "Auto lists games and Wine apps on the corner fan. Pin always lists this app, Hide never does."
+            last: true
+            control: SettingsSeg {
+                s: root.s
+                options: [ { label: "Auto", value: "auto" }, { label: "Pin", value: "pin" }, { label: "Hide", value: "hide" } ]
+                value: root.app.blade || "auto"
+                onPicked: (v) => root.patch({ blade: v })
+            }
         }
         Item { width: 1; height: 10 * root.s }
         LabeledField { s: root.s; label: "Custom icon (optional)"; text: root.app.iconImage; placeholder: "Auto (first letter of name)"; browse: "file"; last: true; onCommitted: (v) => root.patch({ iconImage: v }) }

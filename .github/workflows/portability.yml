@@ -13,8 +13,20 @@ jobs:
         run: sh tools/lint-init-calls.sh
       - name: ricelin-sys self-check
         run: sh tests/test_ricelin_sys.sh
+      - name: qs-toggle self-check
+        run: sh tests/test_qs_toggle.sh
+      - name: ricelin-style self-check
+        run: sh tests/test_ricelin_style.sh
+      - name: Blade and dock logic
+        run: |
+          node tests/test_blades.js
+          node tests/test_dock.js
       - name: Shell syntax
         run: |
           sh -n configs/hypr/scripts/ricelin-sys
           sh -n tools/lint-init-calls.sh
           sh -n tests/test_ricelin_sys.sh
+          sh -n configs/hypr/scripts/qs-toggle.sh
+          sh -n tests/test_qs_toggle.sh
+          sh -n configs/hypr/scripts/ricelin-style
+          sh -n tests/test_ricelin_style.sh

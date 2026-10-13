@@ -198,6 +198,7 @@ ShellRoot {
         function system(mon: string): void { root.toggleSurface(mon, "sysmon"); }
         function clipboard(mon: string): void { root.toggleSurface(mon, "clipboard"); }
         function wallpaper(mon: string): void { root.toggleSurface(mon, "wallpaper"); }
+        function styles(mon: string): void { root.toggleSurface(mon, "styles"); }
         function media(mon: string): void {
             if (Players.list.length > 0)
                 root.toggleSurface(mon, "media");
@@ -252,6 +253,21 @@ ShellRoot {
 
         BladeLayer {
             modelData: modelData
+        }
+    }
+
+    /*
+     * Edge-of-screen glass dock (right by default): pinned and running apps plus the status cluster
+     * (network, Bluetooth, battery, notifications, sound and display, system).
+     * The status buttons open the pill's own surfaces on the same monitor.
+     */
+    Variants {
+        model: Quickshell.screens
+
+        DockLayer {
+            modelData: modelData
+            visible: !root.captureHidden
+            onSurfaceRequested: (name) => root.toggleSurface(modelData.name, name)
         }
     }
 

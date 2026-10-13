@@ -57,6 +57,13 @@ hl.bind(mod .. " + C",          hl.dsp.exec_cmd(os.getenv("HOME") .. "/.config/h
 hl.bind(mod .. " + D",          hl.dsp.exec_cmd(os.getenv("HOME") .. "/.config/hypr/scripts/record.sh"))
 hl.bind(mod .. " + G",          hl.dsp.exec_cmd(os.getenv("HOME") .. "/.config/hypr/scripts/open-surface.sh gameMode"))
 
+-- One key summons the Boombox visualizer and the same key sends it away.
+-- Where it lives: RICELIN_BOOMBOX_QML (see scripts/qs-toggle.sh).
+hl.bind(mod .. " + Z",          hl.dsp.exec_cmd(os.getenv("HOME") .. "/.config/hypr/scripts/qs-toggle.sh boombox")) -- Boombox
+-- Persona is a style, like any other setup in ~/.config/quickshell. The same
+-- switch lives in the pill's palette button; see scripts/ricelin-style.
+hl.bind(mod .. " + SHIFT + Z",  hl.dsp.exec_cmd(os.getenv("HOME") .. "/.config/hypr/scripts/ricelin-style toggle persona")) -- Persona style
+
 hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true })
 hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),      { locked = true, repeating = true })
 hl.bind("XF86AudioMute",        hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),     { locked = true })

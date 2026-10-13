@@ -51,6 +51,7 @@ Singleton {
             name: "",
             category: "game",
             favorite: false,
+            blade: "auto",
             iconImage: "",
             runner: "wine",
             executable: "",
@@ -196,49 +197,9 @@ Singleton {
             root.update(id, { lastLaunched: Date.now(), launchCount: (a.launchCount || 0) + 1 });
     }
 
-    /** Seeds the three games carried over from the shell-function era, exactly as they were launched by hand, so the first run of the surface isn't empty. Only runs once, when the store is missing entirely. */
+    /** First run: start with an empty list. Nothing machine-specific is baked in; the Add and Scan sheets are how apps arrive. */
     function seedDefaults() {
-        var home = Quickshell.env("HOME");
-        root.apps = [
-            root.normalizeRecord({
-                id: "cyberpunk2077",
-                name: "Cyberpunk 2077",
-                category: "game",
-                runner: "umu",
-                executable: home + "/Games/Cyberpunk2077/Cyberpunk 2077/bin/x64/Cyberpunk2077.exe",
-                workingDirectory: home + "/Games/Cyberpunk2077/Cyberpunk 2077",
-                prefix: home + "/Games/Cyberpunk2077/proton-prefix",
-                umuId: "umu-cyberpunk2077",
-                protonBuild: "GE-Proton",
-                graphicsApi: "d3d12",
-                runtime: { variant: "proton" },
-                createdAt: Date.now()
-            }),
-            root.normalizeRecord({
-                id: "undertale",
-                name: "Undertale",
-                category: "game",
-                runner: "wine",
-                executable: home + "/Games/Undertale/game/UNDERTALE.exe",
-                workingDirectory: home + "/Games/Undertale/game",
-                prefix: home + "/Games/Undertale/prefix",
-                graphicsApi: "d3d9",
-                runtime: { variant: "dxvk" },
-                createdAt: Date.now()
-            }),
-            root.normalizeRecord({
-                id: "hollowknight",
-                name: "Hollow Knight",
-                category: "game",
-                runner: "wine",
-                executable: home + "/Games/HollowKnight/game/hollow_knight.exe",
-                workingDirectory: home + "/Games/HollowKnight/game",
-                prefix: home + "/Games/HollowKnight/prefix",
-                graphicsApi: "d3d11",
-                runtime: { variant: "dxvk" },
-                createdAt: Date.now()
-            })
-        ];
+        root.apps = [];
         root.persist();
     }
 
@@ -246,6 +207,14 @@ Singleton {
         if (!root.ready)
             return;
         store.setText(JSON.stringify(root.apps, null, 2));
+    }
+
+    /** Receives the raw text of an unparsable store; written from memory, so nothing races the replacement file. */
+    FileView {
+        id: brokenStore
+        path: root.path + ".broken"
+        atomicWrites: true
+        printErrors: false
     }
 
     FileView {
@@ -281,7 +250,10 @@ Singleton {
                 root.ready = true;
                 return;
             } catch (e) {
-                console.warn("AppRegistry: applications.json failed to parse, starting fresh:", e);
+                // A hand-edit with a stray comma must never cost the whole list:
+                // keep the unreadable file aside before the empty list replaces it.
+                console.warn("AppRegistry: applications.json failed to parse, keeping it as applications.json.broken:", e);
+                brokenStore.setText(raw);
             }
         }
         root.ready = true;

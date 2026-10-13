@@ -1,0 +1,258 @@
+#!/bin/sh
+#
+# ricelin-style: the list of styles (extra Quickshell setups such as Persona) and
+# the switch between them. The pill's Styles surface and the login autostart call
+# this; it starts and stops instances through qs-toggle.
+#
+#   ricelin-style list             one line per style: id, name, state, note (tab separated)
+#   ricelin-style current          id of the running style, or "ricelin" when none runs
+#   ricelin-style switch <id>      stop every other style, start <id>, remember it
+#   ricelin-style switch ricelin   same as "off"
+#   ricelin-style toggle <id>      start it if stopped, stop it if running
+#   ricelin-style off              stop every style and forget the choice
+#   ricelin-style apply            at login: start the style that was last chosen
+#
+# A style is one Quickshell config that runs on top of Ricelin. Two places supply
+# them:
+#
+#   * Every folder in ~/.config/quickshell that holds a shell.qml, apart from
+#     Ricelin's own (pill, launcher, lock). A trailing "-Quickshell" is dropped
+#     from the name, so Persona-Quickshell becomes the style "persona". Dropping
+#     another setup's Quickshell folder in there is all it takes.
+#   * ~/.config/ricelin/styles/<id>.conf, for anything that lives elsewhere:
+#
+#         name=Persona
+#         config=~/dotfiles/persona/quickshell      (a config folder), or
+#         path=~/dotfiles/persona/main.qml          (a single entry file)
+#         note=Shown under the name in the pill
+#
+#     A .conf file wins over a folder with the same id. The files are read as
+#     plain text, never run as shell.
+#
+# Replacing Ricelin's own pill and dock with another setup is not done here yet;
+# a style runs alongside them.
+
+have() { command -v "$1" >/dev/null 2>&1; }
+note() { printf 'ricelin-style: %s\n' "$*" >&2; }
+
+usage() {
+    cat >&2 <<'EOF'
+usage: ricelin-style list
+       ricelin-style current
+       ricelin-style switch <id|ricelin>
+       ricelin-style toggle <id>
+       ricelin-style off
+       ricelin-style apply
+EOF
+    exit 2
+}
+
+cfg_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ricelin"
+state_file="$state_dir/style"
+conf_dir="$cfg_home/ricelin/styles"
+qs_dir="$cfg_home/quickshell"
+here="$(cd "$(dirname "$0")" && pwd)"
+qs_toggle="${RICELIN_QS_TOGGLE:-$here/qs-toggle.sh}"
+
+# ~/x -> $HOME/x
+expand() {
+    case "$1" in
+        "~") printf '%s\n' "$HOME" ;;
+        "~/"*) printf '%s/%s\n' "$HOME" "${1#"~/"}" ;;
+        *) printf '%s\n' "$1" ;;
+    esac
+}
+
+valid_id() {
+    case "$1" in
+        "" | *[!a-z0-9._-]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+# "Persona-Quickshell" -> "persona"
+slug() {
+    printf '%s' "$1" | tr 'A-Z' 'a-z' | sed 's/-quickshell$//; s/[^a-z0-9._-]/-/g'
+}
+
+# conf_value <file> <key>: the last "key=value" line, value as written.
+conf_value() {
+    v=""
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            "$2="*) v="${line#"$2="}" ;;
+        esac
+    done <"$1"
+    printf '%s\n' "$v"
+}
+
+# Every style id, conf files first, then discovered folders, each once.
+all_ids() {
+    seen=" "
+    if [ -d "$conf_dir" ]; then
+        for f in "$conf_dir"/*.conf; do
+            [ -f "$f" ] || continue
+            id="${f##*/}"
+            id="${id%.conf}"
+            valid_id "$id" || continue
+            case "$seen" in *" $id "*) continue ;; esac
+            seen="$seen$id "
+            printf '%s\n' "$id"
+        done
+    fi
+    if [ -d "$qs_dir" ]; then
+        for d in "$qs_dir"/*/; do
+            [ -f "${d}shell.qml" ] || continue
+            base="${d%/}"
+            base="${base##*/}"
+            case "$base" in pill | launcher | lock) continue ;; esac
+            id="$(slug "$base")"
+            valid_id "$id" || continue
+            case "$seen" in *" $id "*) continue ;; esac
+            seen="$seen$id "
+            printf '%s\n' "$id"
+        done
+    fi
+}
+
+# Sets kind (config|path), target, label and blurb for an id; fails if unknown.
+resolve() {
+    kind=""
+    target=""
+    label=""
+    blurb=""
+    valid_id "$1" || return 1
+    f="$conf_dir/$1.conf"
+    if [ -f "$f" ]; then
+        c="$(conf_value "$f" config)"
+        p="$(conf_value "$f" path)"
+        if [ -n "$c" ]; then
+            kind=config
+            target="$(expand "$c")"
+        elif [ -n "$p" ]; then
+            kind=path
+            target="$(expand "$p")"
+        else
+            return 1
+        fi
+        label="$(conf_value "$f" name)"
+        blurb="$(conf_value "$f" note)"
+        [ -n "$label" ] || label="$1"
+        return 0
+    fi
+    for d in "$qs_dir"/*/; do
+        [ -f "${d}shell.qml" ] || continue
+        base="${d%/}"
+        base="${base##*/}"
+        case "$base" in pill | launcher | lock) continue ;; esac
+        if [ "$(slug "$base")" = "$1" ]; then
+            kind=config
+            target="${d%/}"
+            label="$(printf '%s' "$base" | sed 's/-[Qq]uickshell$//')"
+            return 0
+        fi
+    done
+    return 1
+}
+
+is_running() { "$qs_toggle" --status "$kind" "$target" >/dev/null 2>&1; }
+
+start_style() {
+    resolve "$1" || { note "unknown style: $1"; return 1; }
+    "$qs_toggle" --start "$kind" "$target"
+}
+
+stop_style() {
+    resolve "$1" || return 0
+    "$qs_toggle" --stop "$kind" "$target"
+}
+
+remember() {
+    mkdir -p "$state_dir" 2>/dev/null
+    printf '%s\n' "$1" >"$state_file" 2>/dev/null
+}
+
+forget() { rm -f "$state_file" 2>/dev/null; }
+
+stop_all_except() {
+    for id in $(all_ids); do
+        [ "$id" = "$1" ] && continue
+        stop_style "$id"
+    done
+}
+
+cmd_list() {
+    for id in $(all_ids); do
+        resolve "$id" || continue
+        if is_running; then st=running; else st=stopped; fi
+        printf '%s\t%s\t%s\t%s\n' "$id" "$label" "$st" "$blurb"
+    done
+}
+
+cmd_current() {
+    for id in $(all_ids); do
+        resolve "$id" || continue
+        if is_running; then
+            printf '%s\n' "$id"
+            return 0
+        fi
+    done
+    printf 'ricelin\n'
+}
+
+cmd_switch() {
+    id="${1:-}"
+    [ -n "$id" ] || usage
+    if [ "$id" = ricelin ]; then
+        cmd_off
+        return
+    fi
+    resolve "$id" || { note "unknown style: $id"; return 1; }
+    stop_all_except "$id"
+    start_style "$id" || return 1
+    remember "$id"
+}
+
+cmd_toggle() {
+    id="${1:-}"
+    [ -n "$id" ] || usage
+    resolve "$id" || {
+        note "unknown style: $id"
+        have notify-send && notify-send -u normal -a Ricelin "No style called $id" \
+            "Put its Quickshell folder in $qs_dir, or describe it in $conf_dir/$id.conf."
+        return 1
+    }
+    if is_running; then
+        stop_style "$id"
+        forget
+    else
+        cmd_switch "$id"
+    fi
+}
+
+cmd_off() {
+    stop_all_except ""
+    forget
+}
+
+cmd_apply() {
+    [ -r "$state_file" ] || return 0
+    IFS= read -r id <"$state_file"
+    [ -n "$id" ] || return 0
+    resolve "$id" || return 0
+    is_running && return 0
+    start_style "$id"
+}
+
+cmd="${1:-}"
+[ "$#" -gt 0 ] && shift
+case "$cmd" in
+    list)    cmd_list ;;
+    current) cmd_current ;;
+    switch)  cmd_switch "$@" ;;
+    toggle)  cmd_toggle "$@" ;;
+    off)     cmd_off ;;
+    apply)   cmd_apply ;;
+    *)       usage ;;
+esac

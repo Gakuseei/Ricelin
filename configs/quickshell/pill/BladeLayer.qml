@@ -1,30 +1,20 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Layouts
-import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
-import "Singletons" as S
+import "Singletons"
 
-/*
- * Ricelin corner application launcher.
+/**
+ * The corner launcher window: one per screen, a click-through overlay that only
+ * accepts input over the bead (closed) or over the fan (open). It sits in the
+ * top-left corner.
  *
- * The visual language is a quarter-circle sector:
- *
- *        blade
- *          ─────────
- *        /
- *       /
- *      ●──────────── blade
- *       \
- *        \
- *          ─────────
- *
- * The origin is the physical top-left corner. Guide rays and concentric
- * arcs establish the sector, while application blades branch between them.
- *
- * This layer is independent from Pill.qml.
+ * It behaves like the pill. Resting on the bead for a beat opens the fan, the
+ * pointer leaving lets it close again after a short grace, and a click on the
+ * bead pins it open until the next click. The pointer is read from one
+ * window-level HoverHandler: events only exist inside the input mask, so
+ * "the window is hovered" means "the pointer is over the bead or the fan".
  */
 PanelWindow {
     id: root
@@ -32,9 +22,10 @@ PanelWindow {
     required property var modelData
     screen: modelData
 
-    visible: true
-    color: "transparent"
+    readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
 
+    color: "transparent"
+    visible: true
     aboveWindows: true
     focusable: false
     exclusionMode: ExclusionMode.Ignore
@@ -43,403 +34,85 @@ PanelWindow {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     WlrLayershell.namespace: "ricelin-blades"
 
-    anchors {
-        top: true
-        left: true
-        right: true
-        bottom: true
+    // Only as large as the fan, in the top-left corner. If the dock is set to the
+    // left edge the fan starts just past it, so the two can never overlap.
+    anchors { top: true; left: true }
+    margins { left: Dock.onRight ? 0 : Math.round((Dock.footprintPx + 12) * root.s) }
+    implicitWidth: Math.ceil(fan.extent)
+    implicitHeight: Math.ceil(fan.extent)
+
+    property bool hoverLatch: false
+    property bool pinned: false
+    readonly property bool open: pinned || hoverLatch
+
+    /**
+     * False for the first seconds after the shell maps. Hyprland hands pointer
+     * focus to a freshly mapped layer surface at the cursor, which would read as
+     * a hover and open the fan by itself. A real hover in that window just opens
+     * a moment late.
+     */
+    property bool bootSettled: false
+    Timer {
+        interval: 3000
+        running: true
+        onTriggered: root.bootSettled = true
     }
 
-    /*
-     * This is deliberately the same small input envelope as the visual
-     * launcher. The rest of the fullscreen layer remains click-through.
-     */
+    /** Input envelope: the bead while closed, a disc around the origin while open. The rest of the screen stays click-through. */
+    readonly property real maskReach: root.open ? fan.reach : fan.beadSize / 2 + 4 * root.s
     mask: Region {
-       x: state.expanded
-           ? state.originX - (state.sectorSize + 30)
-           : state.originX - 21
-
-       y: state.expanded
-           ? state.originY - (state.sectorSize + 30)
-           : state.originY - 21
-
-       width: state.expanded
-           ? (state.sectorSize + 30) * 2
-           : 42
-
-       height: state.expanded
-           ? (state.sectorSize + 30) * 2
-           : 42
-
-       shape: RegionShape.Ellipse
-   }
-
-    BladeLauncherModel {
-        id: bladeModel
+        x: fan.originX - root.maskReach
+        y: fan.originY - root.maskReach
+        width: root.maskReach * 2
+        height: root.maskReach * 2
+        shape: RegionShape.Ellipse
     }
 
-    QtObject {
-        id: state
+    BladeLauncherModel { id: bladeModel }
 
-        property bool expanded: false
-
-        readonly property real originX: 24
-        readonly property real originY: 24
-
-        readonly property real sectorSize: 540
-
-        readonly property real rayLength: 500
-
-        readonly property int visibleCount:
-            Math.min(bladeModel.count, bladeModel.maxVisible)
-
-        /*
-         * Keep the quarter-circle fan concept, but start the actual
-         * capsules farther away from the origin so they do not stack.
-         */
-        readonly property real fanStartRadius: 235
-        readonly property real fanEndRadius: 505
-
-        function fanAngle(index) {
-            var n = state.visibleCount
-
-            if (n <= 1)
-                return 43
-
-            return 8 + (78 - 8) * index / (n - 1)
-        }
-
-        function fanStartX(index) {
-            var a = fanAngle(index) * Math.PI / 180
-            return originX + Math.cos(a) * fanStartRadius
-        }
-
-        function fanStartY(index) {
-            var a = fanAngle(index) * Math.PI / 180
-            return originY + Math.sin(a) * fanStartRadius
-        }
-
-        function fanBladeLength() {
-            return fanEndRadius - fanStartRadius
-        }
+    function collapse() {
+        root.pinned = false;
+        root.hoverLatch = false;
     }
 
-    /*
-     * Very light translucent backing. This is not the blur yet.
-     * It gives the sector something to sit on without obscuring the desktop.
-     */
-    Rectangle {
-        visible: state.expanded
+    Item {
+        anchors.fill: parent
 
-        x: 0
-        y: 0
-
-        width: state.sectorSize + 30
-        height: state.sectorSize + 30
-
-        color: Qt.alpha("white", 0.055)
-
-        border.width: 1
-        border.color: Qt.alpha("white", 0.10)
-
-        radius: 24
-
-        opacity: state.expanded ? 1 : 0
-
-        Behavior on opacity {
-            NumberAnimation {
-                duration: S.Motion.morph
-                easing.type: S.Motion.easeMorph
-                easing.bezierCurve: S.Motion.morphCurve
-            }
-        }
-    }
-
-    /*
-     * Guide rays.
-     */
-    Repeater {
-        model: state.visibleCount
-
-        delegate: Rectangle {
-            required property real modelData
-
-            x: state.originX
-            y: state.originY - 0.5
-
-            width: state.rayLength
-            height: 1
-
-            transformOrigin: Item.Left
-            rotation: state.fanAngle(modelData)
-
-            visible: state.expanded
-            opacity: 0.20
-
-            color: "white"
-
-            Behavior on opacity {
-                NumberAnimation {
-                    duration: S.Motion.morph
+        HoverHandler {
+            id: windowHover
+            onHoveredChanged: {
+                if (hovered) {
+                    graceTimer.stop();
+                    if (root.bootSettled)
+                        intentTimer.restart();
+                } else {
+                    intentTimer.stop();
+                    graceTimer.restart();
                 }
             }
         }
-    }
 
-    /*
-     * Concentric circular guide lines.
-     *
-     * The circles are intentionally incomplete visually because only their
-     * upper-right quarter is relevant to the launcher.
-     */
-    Repeater {
-        model: [150, 250, 350, 450, 520]
-
-        delegate: Shape {
-            required property real modelData
-
-            x: state.originX - modelData
-            y: state.originY - modelData
-
-            width: modelData * 2
-            height: modelData * 2
-
-            visible: state.expanded
-            opacity: 0.15
-
-            antialiasing: true
-
-            ShapePath {
-                strokeColor: "white"
-                strokeWidth: 1
-                fillColor: "transparent"
-
-                PathAngleArc {
-                    centerX: modelData
-                    centerY: modelData
-                    radiusX: modelData
-                    radiusY: modelData
-                    startAngle: 0
-                    sweepAngle: 90
-                }
-            }
-        }
-    }
-
-    /*
-     * Origin bead.
-     */
-    Rectangle {
-        id: origin
-
-        x: state.originX - width / 2
-        y: state.originY - height / 2
-
-        width: state.expanded ? 42 : 38
-        height: width
-
-        radius: width / 2
-
-        color: Qt.alpha("white", state.expanded ? 0.24 : 0.17)
-
-        border.width: 1
-        border.color: Qt.alpha("white", 0.42)
-
-        Behavior on width {
-            SpringAnimation {
-                spring: 3.5
-                damping: 0.35
-            }
+        // Brushing past the corner must not open it; resting on the bead does.
+        Timer {
+            id: intentTimer
+            interval: 120
+            onTriggered: if (windowHover.hovered) root.hoverLatch = true
         }
 
-        Behavior on height {
-            SpringAnimation {
-                spring: 3.5
-                damping: 0.35
-            }
+        Timer {
+            id: graceTimer
+            interval: 300
+            onTriggered: if (!windowHover.hovered) root.hoverLatch = false
         }
 
-        Text {
-            anchors.centerIn: parent
-
-            text: "✦"
-
-            color: Qt.alpha("white", 0.92)
-
-            font.pixelSize: state.expanded ? 18 : 17
-            font.weight: Font.DemiBold
-        }
-
-        MouseArea {
+        BladeFan {
+            id: fan
             anchors.fill: parent
-
-            cursorShape: Qt.PointingHandCursor
-
-            onClicked: state.expanded = !state.expanded
-        }
-    }
-
-    /*
-     * Application blades.
-     *
-     * Each blade is placed on its own branch angle and radius rather than
-     * simply following a single ray. This creates the fan/protractor effect.
-     */
-    Repeater {
-        model: state.visibleCount
-
-        delegate: Item {
-            id: bladeItem
-
-            required property int index
-
-            property real targetAngle:
-               state.fanAngle(index)
-
-property real branchLength:
-                state.fanBladeLength()
-
-            property real hoverScale:
-                hover.hovered ? 1.045 : 1.0
-
-            width: branchLength
-            height: 56
-            z: 100 + bladeItem.index
-            visible: state.expanded
-            opacity: state.expanded ? 1 : 0
-
-           /*
-            * Shared pivot: the cards behave like a spread deck
-            * held from one corner rather than separate spokes.
-            */
-           x: state.fanStartX(index)
-           y: state.fanStartY(index) - bladeItem.height / 2
-
-            transformOrigin: Item.Left
-
-            rotation: targetAngle
-
-            transform: Scale {
-                origin.x: 0
-                origin.y: bladeItem.height / 2
-
-                xScale: bladeItem.hoverScale
-                yScale: bladeItem.hoverScale
-            }
-
-            Behavior on opacity {
-                NumberAnimation {
-                    duration: S.Motion.fast
-                }
-            }
-
-            Behavior on hoverScale {
-                SpringAnimation {
-                    spring: 4.0
-                    damping: 0.32
-                }
-            }
-
-            /*
-             * The actual blade is a rounded translucent capsule.
-             */
-            Rectangle {
-                id: blade
-
-                anchors.fill: parent
-
-                radius: height / 2
-
-                color: hover.hovered
-                    ? Qt.alpha("white", 0.78)
-                    : Qt.alpha("white", 0.47)
-
-                border.width: hover.hovered ? 2 : 1
-                border.color: hover.hovered
-                    ? Qt.alpha("white", 0.90)
-                    : Qt.alpha("white", 0.32)
-
-                RowLayout {
-                    anchors.fill: parent
-
-                    anchors.leftMargin: 14
-                    anchors.rightMargin: 13
-
-                    spacing: 8
-
-                    /*
-                     * Small branch marker.
-                     */
-                    Text {
-                        text: "◆"
-
-                        color: Qt.alpha("black", 0.42)
-
-                        font.pixelSize: 7
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-
-                        text: bladeModel.appAt(bladeItem.index)?.name ?? ""
-
-                        color: Qt.alpha("black", 0.88)
-
-                        font.family: S.Theme.font
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-
-                        elide: Text.ElideRight
-                    }
-
-                    Text {
-                       text: bladeModel.isLaunching(bladeItem.index)
-                           ? "◌"
-                           : S.AppLauncher.isRunning(
-                                 bladeModel.appAt(bladeItem.index)?.id ?? ""
-                             )
-                               ? "●"
-                               : ""
-
-                       color: Qt.alpha("black", 0.46)
-
-                       font.pixelSize: 7
-                   }
-                }
-            }
-
-            
-
-            HoverHandler {
-                id: hover
-
-                cursorShape: Qt.PointingHandCursor
-            }
-
-            MouseArea {
-                anchors.fill: parent
-
-                cursorShape: Qt.PointingHandCursor
-
-                onPressed: {
-                    console.warn(
-                        "BladeLayer DEBUG PRESSED index=",
-                        bladeItem.index,
-                        "name=",
-                        bladeModel.appAt(bladeItem.index)?.name ?? "(null)"
-                    )
-                }
-
-                onClicked: {
-                    console.warn(
-                        "BladeLayer DEBUG CLICKED index=",
-                        bladeItem.index
-                    )
-
-                    bladeModel.launch(bladeItem.index)
-                    state.expanded = false
-                }
-            }
+            model: bladeModel
+            s: root.s
+            open: root.open
+            onToggleRequested: root.pinned = !root.pinned
+            onLaunched: root.collapse()
         }
     }
 }
