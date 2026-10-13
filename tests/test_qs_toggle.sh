@@ -31,7 +31,7 @@ new_env() {
     done
     unset RICELIN_BOOMBOX_QML RICELIN_PERSONA_DIR
     # Match the fixture command line using the same ERE pattern as pgrep.
-    printf '#!/bin/sh\necho "pgrep $*" >>"$LOG"\npattern=""\nwhile [ "$#" -gt 0 ]; do\n  if [ "$1" = "--" ]; then shift; pattern="${1:-}"; break; fi\n  shift\ndone\n[ -n "$pattern" ] && [ -n "${FAKE_CMDLINE:-}" ] || exit 1\nprintf "%s\\n" "$FAKE_CMDLINE" | grep -E -- "$pattern" >/dev/null\n' >"$fake/bin/pgrep"
+    printf '#!/bin/sh\necho "pgrep $*" >>"$LOG"\npattern=""\nwhile [ "$#" -gt 0 ]; do\n  if [ "$1" = "--" ]; then shift; pattern="${1:-}"; break; fi\n  shift\ndone\n[ -n "$pattern" ] && [ -n "${FAKE_CMDLINE:-}" ] || exit 1\nprintf "%%s\\n" "$FAKE_CMDLINE" | grep -E -- "$pattern" >/dev/null\n' >"$fake/bin/pgrep"
     chmod +x "$fake/bin/pgrep"
     unset FAKE_CMDLINE
     stub pkill
@@ -124,7 +124,7 @@ await "--start launches a stopped instance" "^quickshell -c $fake/cfg"
 new_env; stub quickshell
 mkdir -p "$fake/cfg"; export FAKE_CMDLINE="/usr/bin/quickshell -c $fake/cfg"
 run --stop config "$fake/cfg"; status 0 $? "--stop on a running instance succeeds"
-expect "and kills it" '^pkill -f'
+expect "and kills it" '^pkill -u [0-9][0-9]* -f'
 
 new_env; stub quickshell
 mkdir -p "$fake/cfg"
