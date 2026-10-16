@@ -27,7 +27,7 @@ The pill becomes media and now playing, a calendar, the wallpaper picker, clipbo
 - Font: JetBrains Mono Nerd
 - Colors: matugen, palette pulled from the wallpaper
 
-matugen pulls a palette from each wallpaper and recolors the pill, terminal, window borders and fastfetch. The shell itself runs a warm vermilion theme I tuned by hand.
+matugen pulls a palette from each wallpaper and recolors the pill, terminal, window borders, fastfetch and GTK apps. The shell itself runs a warm vermilion theme I tuned by hand.
 
 <div align="center">
 

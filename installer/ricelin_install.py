@@ -18,6 +18,7 @@ Quick-profile defaults, so it pairs with --dry-run for a non-interactive check.
 """
 import argparse
 import getpass
+import json
 import os
 import shlex
 import shutil
@@ -422,6 +423,22 @@ def seed_wallpapers(dry):
         return True, ""
     except OSError as exc:
         return False, f"{exc}: seed wallpapers"
+
+
+def seed_app_theme(dry):
+    """Fresh boxes start with GTK apps on the palette; the first palette run at login applies it."""
+    flags = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "ricelin" / "flags.json"
+    if dry:
+        print(f"  would turn on the app theme in {flags}")
+        return True, ""
+    try:
+        data = json.loads(flags.read_text()) if flags.is_file() else {}
+        data["appTheme"] = True
+        flags.parent.mkdir(parents=True, exist_ok=True)
+        flags.write_text(json.dumps(data, indent=2) + "\n")
+        return True, ""
+    except (OSError, ValueError) as exc:
+        return False, f"{exc}: app theme flag"
 
 
 def bridge_wallpaper_binary(dry):
@@ -869,6 +886,10 @@ def run(args):
         ok, detail = seed_wallpapers(dry)
         record(ok, detail, "Seed wallpapers",
                "Copy any image into ~/Ricelin/wallpapers yourself.")
+        if not _is_update(info):
+            ok, detail = seed_app_theme(dry)
+            record(ok, detail, "Turn on the app theme",
+                   "Turn on App theme in Settings > Appearance.")
 
         # m. themes.
         if choices["sddm"]:
@@ -980,6 +1001,9 @@ def run_uninstall(args):
                   "terminal so it can confirm first."])
         return 1
 
+    wallcolors = Path(deploy.CONFIG_ROOT) / "hypr" / "scripts" / "wallcolors.py"
+    if wallcolors.is_file():
+        _run(["python3", str(wallcolors), "--apps", "off"], dry)
     for a in deploy.uninstall(config_root=deploy.CONFIG_ROOT, apply=True):
         if a["action"] == "remove":
             tail = f" (restored {a['restored']})" if a["restored"] else ""

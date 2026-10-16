@@ -141,6 +141,16 @@
     { "id": "papirus-icon-theme", "group": "core", "required": true, "desc": "Icon theme", "aur": false,
       "names": { "arch": "papirus-icon-theme", "debian": "papirus-icon-theme", "fedora": "papirus-icon-theme", "suse": "papirus-icon-theme", "gentoo": "x11-themes/papirus-icon-theme" }, "fallback": null },
 
+    { "id": "adw-gtk-theme", "group": "core", "required": false, "desc": "GTK3 base theme the app colors are painted on", "aur": false,
+      "names": { "arch": "adw-gtk-theme", "debian": null, "fedora": "adw-gtk3-theme", "suse": null, "gentoo": null },
+      "note": "without it GTK3 apps keep their own theme while GTK4 and libadwaita apps still follow the palette",
+      "fallback": null },
+
+    { "id": "xdg-desktop-portal-gtk", "group": "core", "required": true, "desc": "Tells apps whether the theme is light or dark, and the file picker", "aur": false,
+      "names": { "arch": "xdg-desktop-portal-gtk", "debian": "xdg-desktop-portal-gtk", "fedora": "xdg-desktop-portal-gtk", "suse": "xdg-desktop-portal-gtk", "gentoo": "sys-apps/xdg-desktop-portal-gtk" },
+      "note": "the hyprland portal has no settings interface, so libadwaita and Flatpak apps read the color scheme through this one",
+      "fallback": null },
+
     { "id": "bibata-cursor-theme", "group": "core", "required": true, "desc": "The cursor theme", "aur": true,
       "names": { "arch": "bibata-cursor-theme-bin", "debian": null, "fedora": null, "suse": null, "gentoo": null },
       "note": "debian has no reliable bibata package, so debian is left null and routes through the github fallback (the Bibata release tarball) like fedora and suse",

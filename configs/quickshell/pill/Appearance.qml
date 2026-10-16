@@ -8,9 +8,9 @@ import "Singletons"
 /**
  * 相 APPEARANCE sub-surface: the clock format and seconds, the Japanese-glyph
  * toggle that gates every surface header, the palette mode (static flame, dynamic
- * per-wallpaper, or a manually chosen hue), the UI scale and a reduce-motion
- * switch. Reached from the settings index and morphs back to it on an empty click
- * or the back chevron.
+ * per-wallpaper, or a manually chosen hue), whether GTK apps follow that palette,
+ * the UI scale and a reduce-motion switch. Reached from the settings index and
+ * morphs back to it on an empty click or the back chevron.
  *
  * Manual palette mode reveals a rainbow hue strip and a dark/light choice; moving
  * either rebuilds the rice colour set from that hue through wallcolors.py --hue
@@ -47,6 +47,24 @@ SettingsSurface {
             applyManual();
         else if (v === "dynamic")
             dynamicProc.running = true;
+        else if (Flags.appTheme)
+            syncApps();
+    }
+
+    property bool appsDirty: false
+
+    function setAppTheme(v) {
+        if (Flags.appTheme === v)
+            return;
+        Flags.appTheme = v;
+        syncApps();
+    }
+
+    function syncApps() {
+        if (appsProc.running)
+            appsDirty = true;
+        else
+            appsProc.running = true;
     }
 
     Timer {
@@ -57,7 +75,21 @@ SettingsSurface {
     }
 
     Process {
+        id: appsProc
+        environment: ({ RICELIN_PALETTE: Flags.paletteMode })
+        command: ["sh", "-c", "python3 \"$HOME/.config/hypr/scripts/wallcolors.py\" --apps \"$1\"",
+            "sh", Flags.appTheme ? "on" : "off"]
+        onExited: {
+            if (root.appsDirty) {
+                root.appsDirty = false;
+                running = true;
+            }
+        }
+    }
+
+    Process {
         id: paletteProc
+        environment: ({ RICELIN_PALETTE: Flags.paletteMode })
         command: ["sh", "-c",
             "python3 \"$HOME/.config/hypr/scripts/wallcolors.py\" --hue \"$1\" \"$2\" \"$3\" && hyprctl reload >/dev/null 2>&1; busctl --user call com.mitchellh.ghostty /com/mitchellh/ghostty org.gtk.Actions Activate \"sava{sv}\" reload-config 0 0 >/dev/null 2>&1 || true",
             "sh", root.hueArg, root.modeArg, root.satArg]
@@ -65,6 +97,7 @@ SettingsSurface {
 
     Process {
         id: dynamicProc
+        environment: ({ RICELIN_PALETTE: Flags.paletteMode })
         command: ["sh", "-c",
             "f=\"${XDG_STATE_HOME:-$HOME/.local/state}/ricelin-wallpaper\"; pic=$(cat \"$f\" 2>/dev/null); case \"$pic\" in *.[Mm][Pp]4|*.[Ww][Ee][Bb][Mm]|*.[Mm][Kk][Vv]|*.[Mm][Oo][Vv]) pic=\"${XDG_STATE_HOME:-$HOME/.local/state}/ricelin-wallpaper-still.png\";; esac; [ -f \"$pic\" ] && python3 \"$HOME/.config/hypr/scripts/wallcolors.py\" \"$pic\" >/dev/null 2>&1; hyprctl reload >/dev/null 2>&1; busctl --user call com.mitchellh.ghostty /com/mitchellh/ghostty org.gtk.Actions Activate \"sava{sv}\" reload-config 0 0 >/dev/null 2>&1 || true"]
     }
@@ -87,6 +120,7 @@ SettingsSurface {
         { item: glyphRow, kind: "toggle", get: function () { return Flags.showGlyphs; }, set: function (v) { Flags.showGlyphs = v; } },
         { item: vizRow, kind: "toggle", get: function () { return Flags.musicViz; }, set: function (v) { Flags.musicViz = v; } },
         { item: paletteRow, kind: "seg", vals: ["static", "dynamic", "manual"], get: function () { return Flags.paletteMode; }, set: function (v) { root.applyMode(v); } },
+        { item: appRow, kind: "toggle", get: function () { return Flags.appTheme; }, set: function (v) { root.setAppTheme(v); } },
         { item: randomRow, kind: "seg", vals: ["all", "cursor"], get: function () { return Flags.randomScope; }, set: function (v) { Flags.randomScope = v; } },
         { item: scaleRow, kind: "seg", vals: [0.9, 1.0, 1.1, 1.25], get: function () { return Flags.uiScale; }, set: function (v) { Flags.uiScale = v; } },
         { item: motionRow, kind: "toggle", get: function () { return Flags.reduceMotion; }, set: function (v) { Flags.reduceMotion = v; } },
@@ -368,6 +402,19 @@ SettingsSurface {
                         Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
                     }
                 }
+            }
+        }
+
+        SettingsRow {
+            id: appRow
+            surface: root
+            name: "App theme"
+            icon: "app-window"
+
+            LinkToggle {
+                s: root.s
+                on: Flags.appTheme
+                onToggled: root.setAppTheme(!Flags.appTheme)
             }
         }
 
