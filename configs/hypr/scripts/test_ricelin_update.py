@@ -54,6 +54,7 @@ def main():
     write(origin / binds, "bind one\nspacer\nspacer\nbind two\nspacer\nspacer\nbind three\n")
     write(origin / monitors, "monitor A\nspacer\nspacer\nmonitor B\nspacer\nspacer\ntail\n")
     write(origin / pill, "code v1\n")
+    write(origin / "configs/hypr/scripts/tool.sh", "#!/bin/sh\necho tool\n")
     git(origin, "add", "-A")
     git(origin, "commit", "-q", "-m", "init")
 
@@ -80,6 +81,8 @@ def main():
     assert first["applied"] is True
     assert (config / "quickshell/pill/Look.qml").read_text() == "code v3\n", "code must overwrite"
     assert ru.manifest_path().read_text(), "manifest written"
+    assert os.access(config / "hypr/scripts/tool.sh", os.X_OK), "synced scripts stay executable"
+    assert (config / "quickshell/pill/Look.qml").stat().st_mode & 0o777 == 0o644, "synced code files are 0644"
     print("first-run baseline + code overwrite: ok")
 
     """

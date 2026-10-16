@@ -89,10 +89,12 @@ def atomic_write_bytes(path, data):
     A crash mid-write leaves either the old file or the new one, never a half file.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
+    mode = 0o755 if data.startswith(b"#!") else (path.stat().st_mode & 0o777 if path.exists() else 0o644)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=path.name)
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
+        os.chmod(tmp, mode)
         os.replace(tmp, path)
     except BaseException:
         if os.path.exists(tmp):
