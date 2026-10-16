@@ -20,6 +20,11 @@ tmp="$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/launch-guard.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 [ -n "$wd" ] && cd "$wd" 2>/dev/null || :
 
+case "$1" in
+	"$HOME"/Applications/*.[Aa]pp[Ii]mage)
+		[ -e "$1" ] || { healed="$("$(dirname "$0")/appimage-install.sh" heal "$1" 2>/dev/null)" && set -- "$healed" "${@:2}"; } ;;
+esac
+
 SECONDS=0
 "$@" 2>&1 >/dev/null | { head -c "$cap" >"$tmp"; cat >/dev/null; }
 rc=${PIPESTATUS[0]}
