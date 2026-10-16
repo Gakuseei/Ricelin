@@ -42,6 +42,7 @@ ShellRoot {
         refresh();
         Devices.restore();
         void GameMode.active;
+        void Sound.eq;
     }
 
     /**
@@ -154,6 +155,10 @@ ShellRoot {
     IpcHandler {
         target: "pill"
         function mixer(mon: string): void { root.toggleSurface(mon, "mixer"); }
+        function sound(mon: string): void { root.toggleSurface(mon, "sound"); }
+        function eq(): void { Sound.setEq(!Sound.eq); }
+        function eqMode(name: string): void { Sound.pick(name); }
+        function micFilter(): void { Sound.setDenoise(!Sound.denoise); }
         function calendar(mon: string): void { root.toggleSurface(mon, "calendar"); }
         function launcher(mon: string): void { root.toggleSurface(mon, "launcher"); }
         function power(mon: string): void { root.toggleSurface(mon, "power"); }

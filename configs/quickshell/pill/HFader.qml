@@ -34,6 +34,7 @@ Item {
     }
 
     readonly property real clamped: Math.max(0, Math.min(1, value))
+    property string readout: Math.round(clamped * 100) + "%"
 
     Rectangle {
         id: track
@@ -93,7 +94,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         width: 32 * root.s
         horizontalAlignment: Text.AlignRight
-        text: Math.round(root.clamped * 100) + "%"
+        text: root.readout
         color: root.focused ? Theme.cream : Theme.subtle
         font.family: Theme.font
         font.pixelSize: 10 * root.s

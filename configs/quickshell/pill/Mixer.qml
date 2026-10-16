@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Effects
 import Quickshell.Io
 import Quickshell.Services.Pipewire
 import "Singletons"
@@ -31,7 +30,7 @@ PillSurface {
         var all = Pipewire.nodes.values;
         for (var i = 0; i < all.length; i++) {
             var n = all[i];
-            if (n && n.isSink && !n.isStream && n.audio)
+            if (n && n.isSink && !n.isStream && n.audio && n.name !== "ricelin_eq")
                 out.push(n);
         }
         out.sort((a, b) => root.deviceLabel(a).localeCompare(root.deviceLabel(b)));
@@ -49,7 +48,7 @@ PillSurface {
         var all = Pipewire.nodes.values;
         for (var i = 0; i < all.length; i++) {
             var n = all[i];
-            if (n && !n.isSink && !n.isStream && n.audio && !/monitor/i.test(n.name || ""))
+            if (n && !n.isSink && !n.isStream && n.audio && !/monitor/i.test(n.name || "") && n.name !== "ricelin_mic")
                 out.push(n);
         }
         out.sort((a, b) => root.deviceLabel(a).localeCompare(root.deviceLabel(b)));
@@ -359,122 +358,32 @@ PillSurface {
         color: Theme.hair
     }
 
-    /**
-     * Device dropdown overlay. Both the output and input pickers reuse this: the
-     * `kind` ("out"/"in") keys it to root.openPicker, `model` is the node list,
-     * `current` is the active default, and `onPick` writes the matching
-     * preferredDefault. It floats above the faders right-aligned under the header
-     * so the mixer height stays fixed while a list is open.
-     */
-    component DeviceMenu: Item {
-        id: menu
-        property string kind: ""
-        property var model: []
-        property var current
-        signal pick(var node)
-
-        readonly property bool open: root.openPicker === kind
-        z: 7
-        visible: open
+    DeviceMenu {
+        s: root.s
+        open: root.openPicker === "out"
         anchors.top: divider.bottom
         anchors.topMargin: 6 * root.s
         anchors.right: parent.right
-        width: 300 * root.s
-        height: panel.height
-
-        /**
-         * Shadow caster kept apart from the option text. A layer over the labels
-         * would rasterise the glyphs and soften them, so the halo lives on this
-         * textless backing rect and the panel above stays unlayered and crisp.
-         */
-        Rectangle {
-            anchors.fill: panel
-            visible: menu.open
-            radius: panel.radius
-            color: Theme.cardBot
-            layer.enabled: true
-            layer.effect: MultiEffect {
-                shadowEnabled: true
-                shadowColor: Theme.shadow
-                shadowBlur: 0.6
-                shadowVerticalOffset: 4 * root.s
-            }
-        }
-
-        Rectangle {
-            id: panel
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: Math.min(menu.model.length * 24 * root.s + 4 * root.s, 150 * root.s)
-            clip: true
-            radius: 9 * root.s
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Theme.cardTop }
-                GradientStop { position: 1.0; color: Theme.cardBot }
-            }
-            border.width: 1
-            border.color: Theme.frameBorder
-
-            ListView {
-                anchors.fill: parent
-                anchors.margins: 2 * root.s
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                model: menu.model
-
-                delegate: Rectangle {
-                    id: devRow
-                    required property var modelData
-                    readonly property bool current: menu.current === modelData
-
-                    width: ListView.view.width
-                    height: 24 * root.s
-                    radius: 7 * root.s
-                    color: devRowHover.hovered ? Theme.frameBg
-                        : (devRow.current ? Qt.alpha(Theme.onGlow, 0.16) : "transparent")
-
-                    HoverHandler { id: devRowHover }
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 9 * root.s
-                        anchors.right: parent.right
-                        anchors.rightMargin: 9 * root.s
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.deviceLabel(devRow.modelData)
-                        elide: Text.ElideRight
-                        color: devRow.current ? Theme.cream : Theme.subtle
-                        font.family: Theme.font
-                        font.pixelSize: 10.5 * root.s
-                        font.weight: devRow.current ? Font.Bold : Font.Medium
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            menu.pick(devRow.modelData);
-                            root.openPicker = "";
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    DeviceMenu {
-        kind: "out"
         model: root.outputSinks
         current: root.sink
-        onPick: (node) => Pipewire.preferredDefaultAudioSink = node
+        onPick: (node) => {
+            Pipewire.preferredDefaultAudioSink = node;
+            root.openPicker = "";
+        }
     }
 
     DeviceMenu {
-        kind: "in"
+        s: root.s
+        open: root.openPicker === "in"
+        anchors.top: divider.bottom
+        anchors.topMargin: 6 * root.s
+        anchors.right: parent.right
         model: root.inputSources
         current: root.source
-        onPick: (node) => Pipewire.preferredDefaultAudioSource = node
+        onPick: (node) => {
+            Pipewire.preferredDefaultAudioSource = node;
+            root.openPicker = "";
+        }
     }
 
     Row {
@@ -580,9 +489,9 @@ PillSurface {
             subLabel: "Volume"
             subPersistent: false
             focused: root.focusIndex === root.faderCount - 2
-            value: root.sink && root.sink.audio ? root.sink.audio.volume : 0
+            value: root.sink && root.sink.audio ? root.sink.audio.volume / Sound.limit : 0
             valueLabel: Math.round((root.sink && root.sink.audio ? root.sink.audio.volume : 0) * 100) + "%"
-            onMoved: (v) => { if (root.sink && root.sink.audio) root.sink.audio.volume = v; }
+            onMoved: (v) => { if (root.sink && root.sink.audio) root.sink.audio.volume = v * Sound.limit; }
         }
         VFader {
             id: micFader

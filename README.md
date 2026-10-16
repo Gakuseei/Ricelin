@@ -16,7 +16,7 @@ Everything you see is hand-written Quickshell. One pill bar that morphs into wha
 
 ![The pill surfaces](assets/shell.png)
 
-The pill becomes media and now playing, a calendar, the wallpaper picker, clipboard history, an audio and brightness mixer, and network and bluetooth controls. There is also an app launcher, a lock screen, and [rishot](https://github.com/Gakuseei/rishot), my own screenshot and annotation tool, which lives in its own repo so you can read all of it there.
+The pill becomes media and now playing, a calendar, the wallpaper picker, clipboard history, an audio and brightness mixer, a sound page with an EQ, AutoEQ headphone profiles, per-app volume and a mic noise filter, and network and bluetooth controls. There is also an app launcher, a lock screen, and [rishot](https://github.com/Gakuseei/rishot), my own screenshot and annotation tool, which lives in its own repo so you can read all of it there.
 
 ## Stack
 
@@ -99,3 +99,5 @@ If Ricelin made your setup nicer, you can [buy me a coffee on Ko-fi](https://ko-
 ## Credits
 
 The lock screen, the SDDM background and the wallpapers are not mine. See [CREDITS](configs/sddm/themes/torii/CREDITS.md).
+
+The sound page started as a proposal by [@Seza007](https://github.com/Seza007) in [#31](https://github.com/Gakuseei/Ricelin/issues/31). AutoEQ profiles come from [AutoEq](https://github.com/jaakkopasanen/AutoEq).

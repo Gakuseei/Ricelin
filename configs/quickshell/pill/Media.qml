@@ -17,6 +17,8 @@ import "Singletons"
 PillSurface {
     id: root
 
+    signal requestSurface(string name)
+
     readonly property var player: Players.active
     readonly property bool hasPlayer: player !== null
     readonly property bool playing: Players.playing
@@ -248,6 +250,27 @@ PillSurface {
                 GradientStop { position: 0.7; color: Qt.alpha(root.washMid, 0.8) }
                 GradientStop { position: 1.0; color: root.washMid }
             }
+        }
+    }
+
+    Text {
+        anchors.top: parent.top
+        anchors.topMargin: 7 * root.s
+        anchors.right: parent.right
+        anchors.rightMargin: root.edgePad
+        text: "Sound ›"
+        color: soundLinkArea.containsMouse ? Theme.cream : Theme.dim
+        font.family: Theme.font
+        font.pixelSize: 9.5 * root.s
+        font.weight: Font.DemiBold
+
+        MouseArea {
+            id: soundLinkArea
+            anchors.fill: parent
+            anchors.margins: -5 * root.s
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.requestSurface("sound")
         }
     }
 
