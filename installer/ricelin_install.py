@@ -222,7 +222,7 @@ def _wizard(args, info, manifest):
     brave = True if args.brave else False
     if not args.brave:
         bidx = tui.select_one("Brave browser", [
-            ("Install Brave", "Brave browser with the matching Ricelin theme", True),
+            ("Install Brave", "Brave browser that follows your wallpaper colors", True),
             ("Skip", "Leave Brave out for now", False),
         ], default=1)
         brave = bidx == 0
@@ -365,7 +365,7 @@ def _summary_lines(info, choices, plan, args, do_pkgs):
     if choices["grub"]:
         lines.append("Install the GRUB theme.")
     if choices["brave"]:
-        lines.append("Install Brave with the matching Ricelin theme.")
+        lines.append("Install Brave and set it to follow your wallpaper colors.")
     if choices["fish"]:
         lines.append("Set fish as your login shell.")
     if _is_update(info):
@@ -503,28 +503,30 @@ def link_ricelin_cli(dry):
     return True, "", True
 
 
-def deploy_brave_theme(source, dry):
-    """
-    Copy the bundled Brave theme into ~/.config/ricelin so the user can point
-    Brave at it. Chromium signs its own preferences, so the theme can never be
-    applied reliably from outside; it just has to sit on disk, ready to load from
-    brave://settings. Returns (ok, detail) so the caller folds it into record().
-    """
-    dest_show = "~/.config/ricelin/brave-theme"
+def seed_brave_gtk(dry):
+    """Seed GTK colors into a Brave profile that has never run; an existing profile is left alone since Brave owns it."""
+    native = Path.home() / ".config" / "BraveSoftware" / "Brave-Browser"
+    flat = Path.home() / ".var" / "app" / "com.brave.Browser" / "config" / "BraveSoftware" / "Brave-Browser"
+    if shutil.which("brave"):
+        base = native
+    elif any((root / "app" / "com.brave.Browser").exists()
+             for root in (Path("/var/lib/flatpak"), Path.home() / ".local" / "share" / "flatpak")):
+        base = flat
+    else:
+        return True, "", True
     if dry:
-        print(f"  would deploy: brave-theme -> {dest_show}")
-        return True, ""
-    src = os.path.join(source, "brave-theme")
-    if not os.path.isdir(src):
-        return False, f"brave theme not found at {src}"
-    dest = os.path.expanduser(dest_show)
+        print(f"  would point Brave at GTK colors in {base}")
+        return True, "", True
+    if base.exists():
+        return True, "", False
     try:
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        shutil.copytree(src, dest, dirs_exist_ok=True)
+        (base / "Default").mkdir(parents=True)
+        (base / "Default" / "Preferences").write_text(
+            json.dumps({"extensions": {"theme": {"system_theme": 1}}}) + "\n")
     except OSError as exc:
-        return False, f"{exc}: copy brave-theme"
-    print(f"  deployed: brave-theme -> {dest_show}")
-    return True, ""
+        return False, f"{exc}: seed Brave preferences", False
+    print(f"  pointed Brave at GTK colors in {base}")
+    return True, "", True
 
 
 def _seed_update_baseline(source, config_root, dry):
@@ -593,9 +595,6 @@ def _report(plan, failures, notes, info, choices, args, do_pkgs, dry):
         steps.append(("install Hyprland", "packages were skipped, the rice needs it"))
     steps.append(("open the launcher", "Super+Space; keybinds live in Settings"))
     steps.append(("pick a wallpaper", "Super+C to swap or grab more"))
-    if choices["brave"]:
-        steps.append(("brave theme",
-                      "brave://settings/appearance, load ~/.config/ricelin/brave-theme"))
 
     attention = []
     for step, _detail, hint in failures:
@@ -911,8 +910,7 @@ def run(args):
 
         # n. optional Brave: install it through the same resolve/fallback path the
         #    core packages use (arch -> AUR brave-bin, off arch -> Flathub), then
-        #    drop the theme files in place. The theme is never auto-applied, since
-        #    Chromium signs its prefs; the user loads it from brave://settings.
+        #    point a never-run profile at the GTK theme so it follows the app theme.
         if choices["brave"]:
             if do_pkgs:
                 family = info["family"]
@@ -931,24 +929,27 @@ def run(args):
                         else:
                             ok, detail = _shell(step["shell"], dry)
                         record(ok, detail, "Install Brave",
-                               "Install Brave by hand, then load its theme.")
+                               "Install Brave by hand.")
                 elif pkg.is_installed(target, family):
                     notes.append("Brave is already installed.")
                 elif distro.is_aur(brave_pkg, family):
                     ok, detail = _run(
                         _aur_install_argv([target], family, choices["aur_choice"]), dry)
                     record(ok, detail, "Install Brave",
-                           "Install Brave by hand, then load its theme.")
+                           "Install Brave by hand.")
                 else:
                     argv = pkg.privileged(pkg.install_argv([target], family), family)
                     ok, detail = _run(argv, dry, env=pkg.INSTALL_ENV)
                     record(ok, detail, "Install Brave",
-                           "Install Brave by hand, then load its theme.")
+                           "Install Brave by hand.")
             else:
-                notes.append("Skipped the Brave install, only deployed its theme.")
-            ok, detail = deploy_brave_theme(args.source, dry)
-            record(ok, detail, "Deploy Brave theme",
-                   "Copy configs/brave-theme to ~/.config/ricelin/brave-theme yourself.")
+                notes.append("Skipped the Brave install.")
+            ok, detail, seeded = seed_brave_gtk(dry)
+            record(ok, detail, "Set Brave to GTK colors",
+                   "In brave://settings/appearance click Use GTK.")
+            if ok and not seeded:
+                notes.append("Brave already has a profile, so switch it yourself: "
+                             "brave://settings/appearance, Use GTK, colors Same as Linux.")
     finally:
         if keepalive_stop:
             keepalive_stop()
@@ -1040,7 +1041,7 @@ def main():
     parser.add_argument("--sddm", action="store_true",
                         help="Preselect the torii SDDM login theme")
     parser.add_argument("--brave", action="store_true",
-                        help="Preselect Brave plus its Ricelin theme")
+                        help="Preselect Brave, set to follow the app theme")
     parser.add_argument("--no-deps", action="store_true",
                         help="Skip the package step, only deploy the configs")
     parser.add_argument("--reinstall", action="store_true",

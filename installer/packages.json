@@ -188,7 +188,7 @@
     { "id": "rnote", "group": "full", "required": false, "desc": "Handwritten notes and sketches", "aur": false,
       "names": { "arch": "rnote", "debian": null, "fedora": null, "suse": "rnote", "gentoo": null }, "fallback": "flatpak", "flatpak_id": "com.github.flxzt.rnote" },
 
-    { "id": "brave", "group": "extra", "required": false, "desc": "Brave browser with the matching Ricelin theme", "aur": true,
+    { "id": "brave", "group": "extra", "required": false, "desc": "Brave browser that follows your wallpaper colors", "aur": true,
       "names": { "arch": "brave-bin", "debian": null, "fedora": null, "suse": null, "gentoo": null },
       "note": "extra group is never pulled by the core or full profiles; only installed when the Brave toggle is on. arch brave-bin is AUR; off arch use the Flathub build com.brave.Browser",
       "fallback": "flatpak", "flatpak_id": "com.brave.Browser" }
