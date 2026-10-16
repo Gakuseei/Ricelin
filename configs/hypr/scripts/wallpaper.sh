@@ -209,7 +209,8 @@ palette_update() {
     if [ "$pmode" = "manual" ]; then
         mh=$(jq -r '.manualHue // 30' "$flags_file" 2>/dev/null || echo 30)
         md=$(jq -r 'if .manualDark == false then "light" else "dark" end' "$flags_file" 2>/dev/null || echo dark)
-        python3 "$(dirname "$0")/wallcolors.py" --hue "$mh" "$md" >>"$WLOG" 2>&1 || true
+        ms=$(jq -r '.manualSat // 0.5' "$flags_file" 2>/dev/null || echo 0.5)
+        python3 "$(dirname "$0")/wallcolors.py" --hue "$mh" "$md" "$ms" >>"$WLOG" 2>&1 || true
     else
         python3 "$(dirname "$0")/wallcolors.py" "$show" >>"$WLOG" 2>&1 || true
     fi
