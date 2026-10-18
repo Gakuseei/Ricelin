@@ -1,8 +1,8 @@
 verb=$1
 out=$2
 
-old_file="/tmp/ricelin-display-$out.old"
-pending_file="/tmp/ricelin-display-$out.pending"
+old_file="${XDG_RUNTIME_DIR:-/tmp}/ricelin-display-$out.old"
+pending_file="${XDG_RUNTIME_DIR:-/tmp}/ricelin-display-$out.pending"
 
 snapshot_old() {
     spec=$(hyprctl monitors -j | jq -r --arg o "$out" '

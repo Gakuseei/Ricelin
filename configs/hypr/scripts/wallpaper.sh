@@ -171,7 +171,9 @@ sync_videos() {
         desired="*"$'\t'"$(printf '%s' "$desired" | head -n1 | cut -f2)"$'\n'
     fi
     desired=$(printf '%s' "$desired" | sort)
-    actual=$(pgrep -ax mpvpaper 2>/dev/null | awk '{ print $(NF-1) "\t" $NF }' | sort || true)
+    actual=$(for pid in $(pgrep -x mpvpaper 2>/dev/null); do
+        mapfile -d '' -t a 2>/dev/null < "/proc/$pid/cmdline" && [ "${#a[@]}" -ge 2 ] && printf '%s\t%s\n' "${a[-2]}" "${a[-1]}"
+    done | sort || true)
     [ "$desired" = "$actual" ] && return 0
     if pgrep -x mpvpaper >/dev/null 2>&1; then
         pkill -x mpvpaper 2>/dev/null || true
