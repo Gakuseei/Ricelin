@@ -68,12 +68,6 @@ ShellRoot {
             + "Ricelin 0 '' 'Ricelin updated' \"$b\" '[]' '{}' 5000 >/dev/null 2>&1"]
     }
 
-    Binding {
-        target: Notifs
-        property: "dnd"
-        value: Flags.dnd
-    }
-
     PanelWindow {
         id: inhibitWin
         visible: Flags.keepAwake
@@ -167,8 +161,6 @@ ShellRoot {
         function settings(mon: string): void { root.toggleSurface(mon, "settings"); }
         function keybinds(mon: string): void { root.toggleSurface(mon, "keybinds"); }
         function recorder(mon: string): void { root.toggleSurface(mon, "recorder"); }
-        function screenrec(mon: string): void { root.toggleSurface(mon, "recorder"); }
-        function record(mon: string): void { root.toggleSurface(mon, "recorder"); }
 
         /**
          * Quick-record keybind (SUPER+D): one button cycles the whole flow with no
@@ -192,7 +184,6 @@ ShellRoot {
         }
         function gameMode(mon: string): void { Flags.gameMode = !Flags.gameMode; }
         function sysmon(mon: string): void { root.toggleSurface(mon, "sysmon"); }
-        function system(mon: string): void { root.toggleSurface(mon, "sysmon"); }
         function clipboard(mon: string): void { root.toggleSurface(mon, "clipboard"); }
         function wallpaper(mon: string): void { root.toggleSurface(mon, "wallpaper"); }
         function media(mon: string): void {
@@ -291,6 +282,10 @@ ShellRoot {
                 pill.pinned = false;
             }
 
+            /** Rest, hover, toasts and OSDs fit a top band; the layer only spans the screen while a surface or tall morph needs it. */
+            readonly property real bandH: Math.ceil(topGap + 200 * s + slot.pad)
+            readonly property bool tall: modal || topGap + Math.max(pill.height, pill.targetH) + slot.pad > bandH
+
             screen: modelData
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
@@ -298,7 +293,8 @@ ShellRoot {
             WlrLayershell.keyboardFocus: ((surfaceOpen || pill.quickChoosing) && !pill.authPending) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             WlrLayershell.namespace: "pill"
 
-            anchors { top: true; left: true; right: true; bottom: true }
+            anchors { top: true; left: true; right: true }
+            implicitHeight: tall ? modelData.height : bandH
 
             mask: modal ? fullRegion : (pillHidden ? hiddenRegion : pillRegion)
             Region { id: hiddenRegion }

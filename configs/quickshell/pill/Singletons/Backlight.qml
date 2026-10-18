@@ -3,36 +3,56 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-/**
- * One shared poller for the internal laptop backlight. Every pill carries an
- * Osd, so watching /sys here keeps it a single loop instead of one per monitor.
- * `changed` fires on a new reading after the initial populate, so login doesn't
- * flash the OSD; the loop exits at once on machines without a backlight.
- */
+/** One in-process backlight reader for every Osd; sysfs has no inotify, so a 1s timer rereads it. */
 Singleton {
     id: root
 
-    property bool present: false
     property real brightness: 0
     property int lastPct: -1
+    property string dev: ""
+    property int max: 0
+    property string lastRaw: ""
 
     signal changed()
 
     Process {
-        command: ["sh", "-c", "dev=$(ls /sys/class/backlight 2>/dev/null | head -n1); [ -n \"$dev\" ] || exit 0; max=$(cat /sys/class/backlight/$dev/max_brightness); last=\"\"; while true; do val=$(cat /sys/class/backlight/$dev/brightness); if [ \"$val\" != \"$last\" ]; then echo \"$(( val * 100 / max ))\"; last=\"$val\"; fi; sleep 1; done"]
         running: true
-        stdout: SplitParser {
-            onRead: (line) => {
-                var pct = parseInt(line.trim(), 10);
-                if (isNaN(pct))
-                    return;
-                var seen = root.lastPct >= 0;
-                root.present = true;
-                root.brightness = Math.max(0, Math.min(100, pct)) / 100.0;
-                root.lastPct = pct;
-                if (seen)
-                    root.changed();
+        command: ["sh", "-c", "for d in /sys/class/backlight/*; do [ -r \"$d/brightness\" ] && { echo \"$d\"; cat \"$d/max_brightness\"; exit 0; }; done; exit 0"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var l = text.trim().split("\n");
+                var m = l.length > 1 ? parseInt(l[1], 10) : 0;
+                if (m > 0) {
+                    root.max = m;
+                    root.dev = l[0];
+                }
             }
         }
+    }
+
+    FileView {
+        id: level
+        path: root.dev ? root.dev + "/brightness" : ""
+        printErrors: false
+        onLoaded: {
+            var raw = text().trim();
+            var val = parseInt(raw, 10);
+            if (isNaN(val) || raw === root.lastRaw)
+                return;
+            root.lastRaw = raw;
+            var pct = Math.floor(val * 100 / root.max);
+            var seen = root.lastPct >= 0;
+            root.brightness = Math.max(0, Math.min(100, pct)) / 100.0;
+            root.lastPct = pct;
+            if (seen)
+                root.changed();
+        }
+    }
+
+    Timer {
+        running: root.dev !== ""
+        interval: 1000
+        repeat: true
+        onTriggered: level.reload()
     }
 }

@@ -211,7 +211,7 @@ Item {
      * fires mid-evaluation (that read-then-write would be a binding loop). The
      * write is idempotent and the Loader loads synchronously, so a first open
      * reads the real implicitHeight in the same evaluation and the morph target
-     * is exact. Nothing ever deactivates a loaded surface.
+     * is exact. unloadIdle drops it again after the pill closes.
      */
     function surfaceItem(ld) {
         ld.active = true;
@@ -522,10 +522,27 @@ Item {
     }
 
     onSurfaceOpenChanged: if (surfaceOpen) {
+        unloadIdle.stop();
         pinned = false;
         if (quickHere && ScreenRec.quickChoosing) {
             ScreenRec.quickChoosing = false;
             ScreenRec.quickScreenChoosing = false;
+        }
+    } else {
+        unloadIdle.restart();
+    }
+
+    /** Closed surfaces unload after two idle minutes; the preloaded trio and a busy surface stay. */
+    Timer {
+        id: unloadIdle
+        interval: 120000
+        onTriggered: {
+            const cold = [ldSound, ldCalendar, ldLauncher, ldClip, ldWall, ldPower, ldWifi, ldBt, ldBattery,
+                          ldSettings, ldKeybinds, ldWorkspaces, ldStash, ldSpaceapps, ldRecorder, ldSysmon,
+                          ldAppearance, ldUpdates, ldDisplay, ldInput, ldLook, ldIdlelock, ldAnimation, ldFontpicker];
+            for (const ld of cold)
+                if (ld.active && !(ld.item && ld.item.busy === true))
+                    ld.active = false;
         }
     }
 
@@ -1174,6 +1191,7 @@ Item {
                 Image {
                     anchors.fill: parent
                     source: Players.artUrl
+                    sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2))
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                     visible: status === Image.Ready
@@ -1900,7 +1918,7 @@ Item {
     /**
      * Morphing surfaces, one latch-once Loader each (see surfaceItem). Eager,
      * they dominated startup and per-monitor RAM; now a surface is built
-     * synchronously on its first open and kept. Each loader fills the pill so
+     * synchronously on its first open. Each loader fills the pill so
      * the PillSurface inside anchors exactly as it did as a direct child.
      *
      * The hot trio preloads shortly after startup: the mixer needs its Pipewire
@@ -2083,7 +2101,6 @@ Item {
             open: pill.keybindsOpen
             morphCloseness: pill.morphCloseness
             onRequestClose: pill.requestClose()
-            onRequestSurface: (name) => pill.requestSurface(name)
         }
     }
 
@@ -2109,7 +2126,6 @@ Item {
             open: pill.stashOpen
             morphCloseness: pill.morphCloseness
             onRequestClose: pill.requestClose()
-            onRequestSurface: (name) => pill.requestSurface(name)
         }
     }
 
@@ -2122,7 +2138,6 @@ Item {
             open: pill.spaceappsOpen
             morphCloseness: pill.morphCloseness
             onRequestClose: pill.requestClose()
-            onRequestSurface: (name) => pill.requestSurface(name)
         }
     }
 
