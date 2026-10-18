@@ -215,7 +215,7 @@ PillSurface {
         conflictId = "";
     }
 
-    onFormOpenChanged: if (formOpen) Qt.callLater(nameField.forceActiveFocus)
+    onFormOpenChanged: if (formOpen) Qt.callLater(nameField.input.forceActiveFocus)
 
     /**
      * Inline rename + glyph editor shared by every space row, built-in and
@@ -307,45 +307,11 @@ PillSurface {
         anchors.right: parent.right
         spacing: 0
 
-        Item {
-            width: parent.width
-            height: 22 * root.s
-
-            Row {
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 8 * root.s
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: Flags.showGlyphs
-                    text: "場"
-                    color: Theme.cream
-                    font.family: Theme.fontJp
-                    font.weight: Font.Medium
-                    font.pixelSize: 16 * root.s
-                }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "WORKSPACES"
-                    color: Theme.subtle
-                    font.family: Theme.font
-                    font.pixelSize: 10 * root.s
-                    font.weight: Font.DemiBold
-                    font.capitalization: Font.AllUppercase
-                    font.letterSpacing: 1.6 * root.s
-                }
-            }
-
-            GlyphIcon {
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                width: 16 * root.s
-                height: 16 * root.s
-                name: "chevron-left"
-                color: Theme.iconDim
-                stroke: 2.2
-            }
+        SettingsHeader {
+            s: root.s
+            glyph: "場"
+            title: "WORKSPACES"
+            showBack: true
         }
 
         Item { width: 1; height: 8 * root.s }
@@ -779,73 +745,10 @@ PillSurface {
 
             Item { width: 1; height: 6 * root.s }
 
-            Item {
-                width: parent.width
-                height: 40 * root.s
-
-                Canvas {
-                    id: dash
-                    anchors.fill: parent
-                    anchors.topMargin: 4 * root.s
-                    anchors.bottomMargin: 4 * root.s
-                    property color stroke: Qt.alpha(Theme.vermLit, addArea.containsMouse ? 0.7 : 0.36)
-                    onStrokeChanged: requestPaint()
-                    onWidthChanged: requestPaint()
-                    onHeightChanged: requestPaint()
-                    onPaint: {
-                        var ctx = getContext("2d");
-                        ctx.reset();
-                        var r = 9 * root.s;
-                        var w = width;
-                        var h = height;
-                        var p = 0.5;
-                        ctx.lineWidth = 1;
-                        ctx.strokeStyle = stroke;
-                        ctx.setLineDash([4 * root.s, 4 * root.s]);
-                        ctx.beginPath();
-                        ctx.moveTo(p + r, p);
-                        ctx.lineTo(w - p - r, p);
-                        ctx.arcTo(w - p, p, w - p, p + r, r);
-                        ctx.lineTo(w - p, h - p - r);
-                        ctx.arcTo(w - p, h - p, w - p - r, h - p, r);
-                        ctx.lineTo(p + r, h - p);
-                        ctx.arcTo(p, h - p, p, h - p - r, r);
-                        ctx.lineTo(p, p + r);
-                        ctx.arcTo(p, p, p + r, p, r);
-                        ctx.stroke();
-                    }
-                }
-
-                Row {
-                    anchors.centerIn: parent
-                    spacing: 6 * root.s
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "+"
-                        color: Theme.vermLit
-                        font.family: Theme.font
-                        font.pixelSize: 14 * root.s
-                        font.weight: Font.Bold
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "Add Workspace"
-                        color: Theme.vermLit
-                        font.family: Theme.font
-                        font.pixelSize: 11 * root.s
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 0.5 * root.s
-                    }
-                }
-
-                MouseArea {
-                    id: addArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.openForm()
-                }
+            AddBar {
+                s: root.s
+                text: "Add Workspace"
+                onClicked: root.openForm()
             }
         }
 
@@ -857,203 +760,44 @@ PillSurface {
             visible: root.formOpen
             spacing: 10 * root.s
 
-            Item {
-                width: parent.width
-                height: 22 * root.s
-
-                Row {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 7 * root.s
-
-                    Item {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 16 * root.s
-                        height: 16 * root.s
-
-                        GlyphIcon {
-                            anchors.fill: parent
-                            name: "chevron-left"
-                            color: formBackArea.containsMouse ? Theme.cream : Theme.iconDim
-                            stroke: 1.8
-                        }
-
-                        MouseArea {
-                            id: formBackArea
-                            anchors.fill: parent
-                            anchors.margins: -6 * root.s
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.closeForm()
-                        }
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "NEW WORKSPACE"
-                        color: Theme.subtle
-                        font.family: Theme.font
-                        font.pixelSize: 9.5 * root.s
-                        font.weight: Font.DemiBold
-                        font.capitalization: Font.AllUppercase
-                        font.letterSpacing: 1.4 * root.s
-                    }
-                }
+            BackHeader {
+                s: root.s
+                title: "NEW WORKSPACE"
+                onBack: root.closeForm()
             }
 
-            Item {
-                width: parent.width
-                height: 40 * root.s
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    text: "NAME"
-                    color: Theme.faint
-                    font.family: Theme.font
-                    font.pixelSize: 8.5 * root.s
-                    font.weight: Font.Medium
-                    font.capitalization: Font.AllUppercase
-                    font.letterSpacing: 1 * root.s
-                }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    height: 26 * root.s
-                    radius: 8 * root.s
-                    color: Theme.frameBg
-                    border.width: 1
-                    border.color: nameField.activeFocus ? Qt.alpha(Theme.vermLit, 0.45) : Theme.hairSoft
-
-                    TextField {
-                        id: nameField
-                        anchors.left: parent.left
-                        anchors.leftMargin: 11 * root.s
-                        anchors.right: parent.right
-                        anchors.rightMargin: 11 * root.s
-                        anchors.verticalCenter: parent.verticalCenter
-                        background: null
-                        padding: 0
-                        color: Theme.cream
-                        font.family: Theme.font
-                        font.pixelSize: 11.5 * root.s
-                        placeholderText: "Discord"
-                        placeholderTextColor: Theme.faint
-                        selectByMouse: true
-                        selectionColor: Theme.verm
-                        text: root.formName
-                        onTextEdited: root.formName = text
-                        Keys.onPressed: (e) => {
-                            if (e.key === Qt.Key_Escape) { root.closeForm(); e.accepted = true; }
-                            else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { root.create(); e.accepted = true; }
-                        }
-                    }
-                }
+            FormField {
+                id: nameField
+                s: root.s
+                label: "NAME"
+                placeholder: "Discord"
+                text: root.formName
+                onEdited: root.formName = nameField.text
+                onCancelled: root.closeForm()
+                onSubmitted: root.create()
             }
 
-            Item {
-                width: parent.width
-                height: 40 * root.s
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    text: "DESCRIPTION"
-                    color: Theme.faint
-                    font.family: Theme.font
-                    font.pixelSize: 8.5 * root.s
-                    font.weight: Font.Medium
-                    font.capitalization: Font.AllUppercase
-                    font.letterSpacing: 1 * root.s
-                }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    height: 26 * root.s
-                    radius: 8 * root.s
-                    color: Theme.frameBg
-                    border.width: 1
-                    border.color: descField.activeFocus ? Qt.alpha(Theme.vermLit, 0.45) : Theme.hairSoft
-
-                    TextField {
-                        id: descField
-                        anchors.left: parent.left
-                        anchors.leftMargin: 11 * root.s
-                        anchors.right: parent.right
-                        anchors.rightMargin: 11 * root.s
-                        anchors.verticalCenter: parent.verticalCenter
-                        background: null
-                        padding: 0
-                        color: Theme.cream
-                        font.family: Theme.font
-                        font.pixelSize: 11.5 * root.s
-                        placeholderText: "Chat (optional)"
-                        placeholderTextColor: Theme.faint
-                        selectByMouse: true
-                        selectionColor: Theme.verm
-                        text: root.formDesc
-                        onTextEdited: root.formDesc = text
-                        Keys.onPressed: (e) => {
-                            if (e.key === Qt.Key_Escape) { root.closeForm(); e.accepted = true; }
-                            else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { root.create(); e.accepted = true; }
-                        }
-                    }
-                }
+            FormField {
+                id: descField
+                s: root.s
+                label: "DESCRIPTION"
+                placeholder: "Chat (optional)"
+                text: root.formDesc
+                onEdited: root.formDesc = descField.text
+                onCancelled: root.closeForm()
+                onSubmitted: root.create()
             }
 
-            Item {
-                width: parent.width
-                height: 40 * root.s
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    text: "KEYBIND"
-                    color: Theme.faint
-                    font.family: Theme.font
-                    font.pixelSize: 8.5 * root.s
-                    font.weight: Font.Medium
-                    font.capitalization: Font.AllUppercase
-                    font.letterSpacing: 1 * root.s
-                }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    height: 26 * root.s
-                    radius: 8 * root.s
-                    color: root.listening ? Qt.alpha(Theme.vermLit, 0.12) : Theme.frameBg
-                    border.width: 1
-                    border.color: root.listening ? Qt.alpha(Theme.vermLit, 0.55) : Theme.hairSoft
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 11 * root.s
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.listening ? "press a letter…  esc cancels"
-                            : (root.formKey.length ? "Super + " + root.formKey : "tap to set a key")
-                        color: root.listening ? Theme.flameGlow
-                            : (root.formKey.length ? Theme.cream : Theme.faint)
-                        font.family: Theme.font
-                        font.pixelSize: 11.5 * root.s
-                        font.weight: root.formKey.length ? Font.DemiBold : Font.Medium
-                        elide: Text.ElideRight
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            root.conflict = "";
-                            root.listening = true;
-                        }
-                    }
+            FormField {
+                s: root.s
+                label: "KEYBIND"
+                capture: true
+                listening: root.listening
+                value: root.formKey.length ? "Super + " + root.formKey : ""
+                hint: "press a letter…  esc cancels"
+                onTapped: {
+                    root.conflict = "";
+                    root.listening = true;
                 }
             }
 

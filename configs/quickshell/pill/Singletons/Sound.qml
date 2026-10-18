@@ -22,7 +22,6 @@ Singleton {
     readonly property string micConf: Quickshell.env("HOME") + "/.config/hypr/sound/mic.conf"
     readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/ricelin"
 
-    property bool loaded: false
     property bool eq: false
     property bool denoise: false
     property bool denoiseAvailable: false
@@ -518,7 +517,6 @@ Singleton {
             if (s.devices && typeof s.devices === "object")
                 root.devices = s.devices;
         } catch (e) {}
-        root.loaded = true;
         ladspaProbe.running = true;
     }
 

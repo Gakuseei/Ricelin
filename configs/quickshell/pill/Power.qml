@@ -110,37 +110,15 @@ PillSurface {
         holdProgress = 0;
     }
 
-    Item {
+    SettingsHeader {
         id: header
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 22 * root.s
-
-        Row {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 8 * root.s
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: Flags.showGlyphs
-                text: "電"
-                color: Theme.cream
-                font.family: Theme.fontJp
-                font.weight: Font.Medium
-                font.pixelSize: 16 * root.s
-            }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "POWER"
-                color: Theme.subtle
-                font.family: Theme.font
-                font.pixelSize: 10 * root.s
-                font.weight: Font.DemiBold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: 1.6 * root.s
-            }
-        }
+        s: root.s
+        glyph: "電"
+        title: "POWER"
+        showIcon: false
     }
 
     Row {

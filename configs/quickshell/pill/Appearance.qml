@@ -20,7 +20,6 @@ import "Singletons"
 SettingsSurface {
     id: root
 
-    backSurface: "settings"
     implicitHeight: content.implicitHeight
 
     property string hueArg: String(Math.round(Flags.manualHue))

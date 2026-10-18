@@ -576,47 +576,24 @@ PillSurface {
         values: root.netsSorted
     }
 
-    Item {
+    SettingsHeader {
         id: header
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
         height: 24 * root.s
-
-        Row {
-            anchors.left: parent.left
+        s: root.s
+        glyph: "波"
+        title: "WIFI"
+        showIcon: false
+        titleContent: Text {
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 8 * root.s
-
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: Flags.showGlyphs
-                text: "波"
-                color: Theme.cream
-                font.family: Theme.fontJp
-                font.weight: Font.Medium
-                font.pixelSize: 16 * root.s
-            }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "WIFI"
-                color: Theme.subtle
-                font.family: Theme.font
-                font.pixelSize: 10 * root.s
-                font.weight: Font.DemiBold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: 1.6 * root.s
-            }
-
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "· " + root.statusText
-                color: root.activeNet ? Theme.vermLit : Theme.faint
-                font.family: Theme.font
-                font.pixelSize: 9.5 * root.s
-                font.weight: Font.Medium
-                elide: Text.ElideRight
-            }
+            text: "· " + root.statusText
+            color: root.activeNet ? Theme.vermLit : Theme.faint
+            font.family: Theme.font
+            font.pixelSize: 9.5 * root.s
+            font.weight: Font.Medium
+            elide: Text.ElideRight
         }
 
         Row {
@@ -852,102 +829,32 @@ PillSurface {
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 6 * root.s
 
-                                Rectangle {
-                                    id: primaryBtn
+                                ChipButton {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    width: primaryLabel.implicitWidth + 20 * root.s
-                                    height: 22 * root.s
-                                    radius: 7 * root.s
-                                    color: primaryArea.containsMouse ? Theme.tileBg : "transparent"
-                                    border.width: 1
-                                    border.color: primaryArea.containsMouse ? Theme.vermDim : Theme.border
-
-                                    Text {
-                                        id: primaryLabel
-                                        anchors.centerIn: parent
-                                        text: netItem.isActive ? "Disconnect" : "Connect"
-                                        color: Theme.cream
-                                        font.family: Theme.font
-                                        font.pixelSize: 10 * root.s
-                                        font.weight: Font.DemiBold
-                                        font.letterSpacing: 0.3 * root.s
-                                    }
-
-                                    MouseArea {
-                                        id: primaryArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: netItem.isActive
-                                            ? root.disconnectNetwork(netItem.modelData)
-                                            : root.connectKnown(netItem.modelData)
-                                    }
+                                    s: root.s
+                                    text: netItem.isActive ? "Disconnect" : "Connect"
+                                    onClicked: netItem.isActive
+                                        ? root.disconnectNetwork(netItem.modelData)
+                                        : root.connectKnown(netItem.modelData)
                                 }
 
-                                Rectangle {
+                                ChipButton {
                                     id: revealBtn
                                     anchors.verticalCenter: parent.verticalCenter
                                     visible: netItem.known
                                     readonly property bool shown: root.revealedSsid === netItem.ssid
-                                    width: revealLabel.implicitWidth + 20 * root.s
-                                    height: 22 * root.s
-                                    radius: 7 * root.s
-                                    color: revealArea.containsMouse ? Theme.tileBg : "transparent"
-                                    border.width: 1
-                                    border.color: revealBtn.shown
-                                        ? Theme.vermDim
-                                        : (revealArea.containsMouse ? Theme.vermDim : Theme.border)
-
-                                    Text {
-                                        id: revealLabel
-                                        anchors.centerIn: parent
-                                        text: revealBtn.shown ? "Hide" : "Show"
-                                        color: Theme.cream
-                                        font.family: Theme.font
-                                        font.pixelSize: 10 * root.s
-                                        font.weight: Font.DemiBold
-                                        font.letterSpacing: 0.3 * root.s
-                                    }
-
-                                    MouseArea {
-                                        id: revealArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.revealPassword(netItem.ssid)
-                                    }
+                                    s: root.s
+                                    text: revealBtn.shown ? "Hide" : "Show"
+                                    lit: revealBtn.shown
+                                    onClicked: root.revealPassword(netItem.ssid)
                                 }
 
-                                Rectangle {
-                                    id: forgetBtn
+                                ChipButton {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    width: forgetLabel.implicitWidth + 20 * root.s
-                                    height: 22 * root.s
-                                    radius: 7 * root.s
-                                    color: forgetArea.containsMouse
-                                        ? Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.2)
-                                        : Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.12)
-                                    border.width: 1
-                                    border.color: Qt.rgba(Theme.vermLit.r, Theme.vermLit.g, Theme.vermLit.b, 0.45)
-
-                                    Text {
-                                        id: forgetLabel
-                                        anchors.centerIn: parent
-                                        text: "Forget"
-                                        color: Theme.vermLit
-                                        font.family: Theme.font
-                                        font.pixelSize: 10 * root.s
-                                        font.weight: Font.DemiBold
-                                        font.letterSpacing: 0.3 * root.s
-                                    }
-
-                                    MouseArea {
-                                        id: forgetArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.forgetNetwork(netItem.ssid)
-                                    }
+                                    s: root.s
+                                    text: "Forget"
+                                    danger: true
+                                    onClicked: root.forgetNetwork(netItem.ssid)
                                 }
                             }
                         }

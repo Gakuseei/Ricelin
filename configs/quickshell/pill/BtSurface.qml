@@ -213,38 +213,16 @@ PillSurface {
         }
     }
 
-    Item {
+    SettingsHeader {
         id: header
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
         height: 24 * root.s
-
-        Row {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 8 * root.s
-
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: Flags.showGlyphs
-                text: "歯"
-                color: Theme.cream
-                font.family: Theme.fontJp
-                font.weight: Font.Medium
-                font.pixelSize: 16 * root.s
-            }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "BLUETOOTH"
-                color: Theme.subtle
-                font.family: Theme.font
-                font.pixelSize: 10 * root.s
-                font.weight: Font.DemiBold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: 1.6 * root.s
-            }
-        }
+        s: root.s
+        glyph: "歯"
+        title: "BLUETOOTH"
+        showIcon: false
 
         Row {
             anchors.right: parent.right
@@ -346,66 +324,21 @@ PillSurface {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6 * root.s
 
-            Rectangle {
+            ChipButton {
                 anchors.verticalCenter: parent.verticalCenter
-                width: primaryLabel.implicitWidth + 20 * root.s
-                height: 22 * root.s
-                radius: 7 * root.s
-                color: primaryArea.containsMouse ? Theme.tileBg : "transparent"
-                border.width: 1
-                border.color: primaryArea.containsMouse ? Theme.vermDim : Theme.border
-
-                Text {
-                    id: primaryLabel
-                    anchors.centerIn: parent
-                    text: confirm.connected ? "Disconnect" : "Connect"
-                    color: Theme.cream
-                    font.family: Theme.font
-                    font.pixelSize: 10 * root.s
-                    font.weight: Font.DemiBold
-                    font.letterSpacing: 0.3 * root.s
-                }
-
-                MouseArea {
-                    id: primaryArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: confirm.connected
-                        ? root.disconnectDevice(confirm.dev)
-                        : root.connectDevice(confirm.dev)
-                }
+                s: root.s
+                text: confirm.connected ? "Disconnect" : "Connect"
+                onClicked: confirm.connected
+                    ? root.disconnectDevice(confirm.dev)
+                    : root.connectDevice(confirm.dev)
             }
 
-            Rectangle {
+            ChipButton {
                 anchors.verticalCenter: parent.verticalCenter
-                width: forgetLabel.implicitWidth + 20 * root.s
-                height: 22 * root.s
-                radius: 7 * root.s
-                color: forgetArea.containsMouse
-                    ? Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.2)
-                    : Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.12)
-                border.width: 1
-                border.color: Qt.rgba(Theme.vermLit.r, Theme.vermLit.g, Theme.vermLit.b, 0.45)
-
-                Text {
-                    id: forgetLabel
-                    anchors.centerIn: parent
-                    text: "Forget"
-                    color: Theme.vermLit
-                    font.family: Theme.font
-                    font.pixelSize: 10 * root.s
-                    font.weight: Font.DemiBold
-                    font.letterSpacing: 0.3 * root.s
-                }
-
-                MouseArea {
-                    id: forgetArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.forgetDevice(confirm.dev)
-                }
+                s: root.s
+                text: "Forget"
+                danger: true
+                onClicked: root.forgetDevice(confirm.dev)
             }
         }
     }

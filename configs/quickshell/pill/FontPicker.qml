@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls
 import "Singletons"
 
 /**
@@ -16,7 +15,6 @@ import "Singletons"
 SettingsSurface {
     id: root
 
-    backSurface: "appearance"
     implicitHeight: content.implicitHeight
     rows: []
 
@@ -92,7 +90,7 @@ SettingsSurface {
     onActiveChanged: {
         if (active) {
             focusIndex = 0;
-            Qt.callLater(searchField.forceActiveFocus);
+            Qt.callLater(searchField.input.forceActiveFocus);
         } else {
             query = "";
             searchField.text = "";
@@ -115,68 +113,28 @@ SettingsSurface {
 
         Item { width: 1; height: 10 * root.s }
 
-        Item {
+        SearchField {
+            id: searchField
             width: parent.width
             height: 28 * root.s
-
-            Text {
-                id: searchGlyph
-                anchors.left: parent.left
-                anchors.leftMargin: 4 * root.s
-                anchors.verticalCenter: parent.verticalCenter
-                visible: Flags.showGlyphs
-                width: Flags.showGlyphs ? implicitWidth : 0
-                text: "探"
-                color: Theme.dim
-                font.family: Theme.fontJp
-                font.weight: Font.Medium
-                font.pixelSize: 15 * root.s
+            s: root.s
+            kanji: "探"
+            placeholder: "search fonts"
+            kanjiSize: 15
+            fontSize: 13
+            gap: 9
+            lead: 4
+            trail: 4
+            lineGap: 3
+            restOpacity: 0.18
+            showCursor: true
+            catchEscape: false
+            onTextChanged: {
+                root.query = text;
+                root.focusIndex = 0;
             }
-
-            TextField {
-                id: searchField
-                anchors.left: searchGlyph.right
-                anchors.leftMargin: Flags.showGlyphs ? 9 * root.s : 4 * root.s
-                anchors.right: parent.right
-                anchors.rightMargin: 4 * root.s
-                anchors.verticalCenter: parent.verticalCenter
-                background: null
-                padding: 0
-                color: Theme.cream
-                font.family: Theme.font
-                font.pixelSize: 13 * root.s
-                placeholderText: "search fonts"
-                placeholderTextColor: Theme.faint
-                selectByMouse: true
-                selectionColor: Theme.verm
-                onTextChanged: {
-                    root.query = text;
-                    root.focusIndex = 0;
-                }
-                Keys.onPressed: (e) => {
-                    if (e.key === Qt.Key_Down) {
-                        root.move(1);
-                        e.accepted = true;
-                    } else if (e.key === Qt.Key_Up) {
-                        root.move(-1);
-                        e.accepted = true;
-                    } else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
-                        root.activate();
-                        e.accepted = true;
-                    }
-                }
-            }
-
-            Rectangle {
-                anchors.left: searchField.left
-                anchors.right: searchField.right
-                anchors.top: searchField.bottom
-                anchors.topMargin: 3 * root.s
-                height: 1
-                color: Theme.faint
-                opacity: searchField.activeFocus ? 0.7 : 0.18
-                Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-            }
+            onMoved: (d) => root.move(d)
+            onAccepted: root.activate()
         }
 
         Item { width: 1; height: 8 * root.s }

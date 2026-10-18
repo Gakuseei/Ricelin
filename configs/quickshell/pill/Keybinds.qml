@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import "lib/binds.js" as Binds
@@ -35,8 +34,6 @@ PillSurface {
     mBottom: 14
 
     implicitHeight: content.implicitHeight
-
-    signal requestSurface(string name)
 
     readonly property string bindsPath: Quickshell.env("HOME") + "/.config/hypr/modules/binds.lua"
 
@@ -170,7 +167,7 @@ PillSurface {
         root.formCombo = combo;
         root.conflict = "";
         root.listening = false;
-        Qt.callLater(nameField.forceActiveFocus);
+        Qt.callLater(nameField.input.forceActiveFocus);
     }
 
     /**
@@ -254,7 +251,7 @@ PillSurface {
         }
     }
 
-    onFormOpenChanged: if (formOpen) Qt.callLater(nameField.forceActiveFocus)
+    onFormOpenChanged: if (formOpen) Qt.callLater(nameField.input.forceActiveFocus)
 
     readonly property Item focusRowItem: list.focusRowItem
 
@@ -325,110 +322,36 @@ PillSurface {
         anchors.right: parent.right
         spacing: 0
 
-        Item {
-            width: parent.width
-            height: 22 * root.s
-
-            Row {
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 8 * root.s
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: Flags.showGlyphs
-                    text: "鍵"
-                    color: Theme.cream
-                    font.family: Theme.fontJp
-                    font.weight: Font.Medium
-                    font.pixelSize: 16 * root.s
-                }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "KEYBINDS"
-                    color: Theme.subtle
-                    font.family: Theme.font
-                    font.pixelSize: 10 * root.s
-                    font.weight: Font.DemiBold
-                    font.capitalization: Font.AllUppercase
-                    font.letterSpacing: 1.6 * root.s
-                }
-            }
-
-            GlyphIcon {
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                width: 16 * root.s
-                height: 16 * root.s
-                name: "chevron-left"
-                color: Theme.iconDim
-                stroke: 2.2
-            }
+        SettingsHeader {
+            s: root.s
+            glyph: "鍵"
+            title: "KEYBINDS"
+            showBack: true
         }
 
         Item { width: 1; height: 8 * root.s }
 
-        Item {
+        SearchField {
             width: parent.width
             height: 28 * root.s
             visible: !root.formOpen
-
-            Text {
-                id: searchGlyph
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                visible: Flags.showGlyphs
-                width: Flags.showGlyphs ? implicitWidth : 0
-                text: "探"
-                color: Theme.dim
-                font.family: Theme.fontJp
-                font.weight: Font.Medium
-                font.pixelSize: 15 * root.s
+            s: root.s
+            kanji: "探"
+            placeholder: "search binds"
+            kanjiSize: 15
+            fontSize: 13
+            gap: 9
+            trail: 0
+            lineGap: 3
+            restOpacity: 0.18
+            showCursor: true
+            catchEscape: false
+            onTextChanged: {
+                root.query = text;
+                root.focusIndex = 0;
             }
-
-            TextField {
-                id: searchField
-                anchors.left: searchGlyph.right
-                anchors.leftMargin: Flags.showGlyphs ? 9 * root.s : 0
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                background: null
-                padding: 0
-                color: Theme.cream
-                font.family: Theme.font
-                font.pixelSize: 13 * root.s
-                placeholderText: "search binds"
-                placeholderTextColor: Theme.faint
-                selectByMouse: true
-                selectionColor: Theme.verm
-                onTextChanged: {
-                    root.query = text;
-                    root.focusIndex = 0;
-                }
-                Keys.onPressed: (e) => {
-                    if (e.key === Qt.Key_Down) {
-                        root.move(1);
-                        e.accepted = true;
-                    } else if (e.key === Qt.Key_Up) {
-                        root.move(-1);
-                        e.accepted = true;
-                    } else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
-                        root.activate();
-                        e.accepted = true;
-                    }
-                }
-            }
-
-            Rectangle {
-                anchors.left: searchField.left
-                anchors.right: searchField.right
-                anchors.top: searchField.bottom
-                anchors.topMargin: 3 * root.s
-                height: 1
-                color: Theme.faint
-                opacity: searchField.activeFocus ? 0.7 : 0.18
-                Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-            }
+            onMoved: (d) => root.move(d)
+            onAccepted: root.activate()
         }
 
         Item { width: 1; height: 8 * root.s }
@@ -594,231 +517,52 @@ PillSurface {
             visible: root.formOpen
             spacing: 10 * root.s
 
-            Item {
-                width: parent.width
-                height: 22 * root.s
+            BackHeader {
+                s: root.s
+                title: root.formAdd ? "NEW BIND" : "EDIT BIND"
+                onBack: root.closeForm()
+            }
 
-                Row {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 7 * root.s
-
-                    Item {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 16 * root.s
-                        height: 16 * root.s
-
-                        GlyphIcon {
-                            anchors.fill: parent
-                            name: "chevron-left"
-                            color: formBackArea.containsMouse ? Theme.cream : Theme.iconDim
-                            stroke: 1.8
-                        }
-
-                        MouseArea {
-                            id: formBackArea
-                            anchors.fill: parent
-                            anchors.margins: -6 * root.s
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.closeForm()
-                        }
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.formAdd ? "NEW BIND" : "EDIT BIND"
-                        color: Theme.subtle
-                        font.family: Theme.font
-                        font.pixelSize: 9.5 * root.s
-                        font.weight: Font.DemiBold
-                        font.capitalization: Font.AllUppercase
-                        font.letterSpacing: 1.4 * root.s
-                    }
+            FormField {
+                s: root.s
+                label: "KEY"
+                capture: true
+                listening: root.listening
+                value: root.formCombo
+                hint: "press keys…  esc cancels"
+                onTapped: {
+                    root.conflict = "";
+                    root.listening = true;
                 }
             }
 
-            Item {
-                width: parent.width
-                height: 40 * root.s
-
-                Text {
-                    id: keyLabel
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    text: "KEY"
-                    color: Theme.faint
-                    font.family: Theme.font
-                    font.pixelSize: 8.5 * root.s
-                    font.weight: Font.Medium
-                    font.capitalization: Font.AllUppercase
-                    font.letterSpacing: 1 * root.s
-                }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    height: 26 * root.s
-                    radius: 8 * root.s
-                    color: root.listening ? Qt.alpha(Theme.vermLit, 0.12) : Theme.frameBg
-                    border.width: 1
-                    border.color: root.listening ? Qt.alpha(Theme.vermLit, 0.55) : Theme.hairSoft
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 11 * root.s
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.listening ? "press keys…  esc cancels"
-                            : (root.formCombo.length ? root.formCombo : "tap to set a key")
-                        color: root.listening ? Theme.flameGlow
-                            : (root.formCombo.length ? Theme.cream : Theme.faint)
-                        font.family: Theme.font
-                        font.pixelSize: 11.5 * root.s
-                        font.weight: root.formCombo.length ? Font.DemiBold : Font.Medium
-                        elide: Text.ElideRight
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            root.conflict = "";
-                            root.listening = true;
-                        }
-                    }
-                }
+            FormField {
+                id: nameField
+                s: root.s
+                label: "NAME"
+                placeholder: "label (optional)"
+                text: root.formName
+                onEdited: root.formName = nameField.text
+                onCancelled: root.closeForm()
+                onSubmitted: root.save()
             }
 
-            Item {
-                width: parent.width
-                height: 40 * root.s
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    text: "NAME"
-                    color: Theme.faint
-                    font.family: Theme.font
-                    font.pixelSize: 8.5 * root.s
-                    font.weight: Font.Medium
-                    font.capitalization: Font.AllUppercase
-                    font.letterSpacing: 1 * root.s
+            /** A non-exec bind edits its raw lua dispatch in the same box at a smaller size. */
+            FormField {
+                id: cmdField
+                s: root.s
+                label: root.formCmdEditable ? "COMMAND" : "ACTION"
+                fontSize: root.formCmdEditable ? 11.5 : 10.5
+                placeholder: root.formCmdEditable ? "shell command" : "lua dispatch"
+                text: root.formCmdEditable ? root.formCmd : root.formAction
+                onEdited: {
+                    if (root.formCmdEditable)
+                        root.formCmd = cmdField.text;
+                    else
+                        root.formAction = cmdField.text;
                 }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    height: 26 * root.s
-                    radius: 8 * root.s
-                    color: Theme.frameBg
-                    border.width: 1
-                    border.color: nameField.activeFocus ? Qt.alpha(Theme.vermLit, 0.45) : Theme.hairSoft
-
-                    TextField {
-                        id: nameField
-                        anchors.left: parent.left
-                        anchors.leftMargin: 11 * root.s
-                        anchors.right: parent.right
-                        anchors.rightMargin: 11 * root.s
-                        anchors.verticalCenter: parent.verticalCenter
-                        background: null
-                        padding: 0
-                        color: Theme.cream
-                        font.family: Theme.font
-                        font.pixelSize: 11.5 * root.s
-                        placeholderText: "label (optional)"
-                        placeholderTextColor: Theme.faint
-                        selectByMouse: true
-                        selectionColor: Theme.verm
-                        text: root.formName
-                        onTextEdited: root.formName = text
-                        Keys.onPressed: (e) => {
-                            if (e.key === Qt.Key_Escape) { root.closeForm(); e.accepted = true; }
-                            else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { root.save(); e.accepted = true; }
-                        }
-                    }
-                }
-            }
-
-            Item {
-                width: parent.width
-                height: 40 * root.s
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    text: root.formCmdEditable ? "COMMAND" : "ACTION"
-                    color: Theme.faint
-                    font.family: Theme.font
-                    font.pixelSize: 8.5 * root.s
-                    font.weight: Font.Medium
-                    font.capitalization: Font.AllUppercase
-                    font.letterSpacing: 1 * root.s
-                }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    height: 26 * root.s
-                    radius: 8 * root.s
-                    color: Theme.frameBg
-                    border.width: 1
-                    border.color: (cmdField.activeFocus || actionField.activeFocus) ? Qt.alpha(Theme.vermLit, 0.45) : Theme.hairSoft
-
-                    TextField {
-                        id: cmdField
-                        visible: root.formCmdEditable
-                        anchors.left: parent.left
-                        anchors.leftMargin: 11 * root.s
-                        anchors.right: parent.right
-                        anchors.rightMargin: 11 * root.s
-                        anchors.verticalCenter: parent.verticalCenter
-                        background: null
-                        padding: 0
-                        color: Theme.cream
-                        font.family: Theme.font
-                        font.pixelSize: 11.5 * root.s
-                        placeholderText: "shell command"
-                        placeholderTextColor: Theme.faint
-                        selectByMouse: true
-                        selectionColor: Theme.verm
-                        text: root.formCmd
-                        onTextEdited: root.formCmd = text
-                        Keys.onPressed: (e) => {
-                            if (e.key === Qt.Key_Escape) { root.closeForm(); e.accepted = true; }
-                            else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { root.save(); e.accepted = true; }
-                        }
-                    }
-
-                    TextField {
-                        id: actionField
-                        visible: !root.formCmdEditable
-                        anchors.left: parent.left
-                        anchors.leftMargin: 11 * root.s
-                        anchors.right: parent.right
-                        anchors.rightMargin: 11 * root.s
-                        anchors.verticalCenter: parent.verticalCenter
-                        background: null
-                        padding: 0
-                        color: Theme.cream
-                        font.family: Theme.font
-                        font.pixelSize: 10.5 * root.s
-                        placeholderText: "lua dispatch"
-                        placeholderTextColor: Theme.faint
-                        selectByMouse: true
-                        selectionColor: Theme.verm
-                        text: root.formAction
-                        onTextEdited: root.formAction = text
-                        Keys.onPressed: (e) => {
-                            if (e.key === Qt.Key_Escape) { root.closeForm(); e.accepted = true; }
-                            else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { root.save(); e.accepted = true; }
-                        }
-                    }
-                }
+                onCancelled: root.closeForm()
+                onSubmitted: root.save()
             }
 
             Text {

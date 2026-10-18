@@ -19,7 +19,6 @@ import "Singletons"
 SettingsSurface {
     id: root
 
-    backSurface: "settings"
     implicitHeight: content.implicitHeight
 
     /**
@@ -322,16 +321,7 @@ SettingsSurface {
         command: []
     }
 
-    component GroupLabel: Text {
-        topPadding: 16 * root.s
-        bottomPadding: 6 * root.s
-        color: Theme.faint
-        font.family: Theme.font
-        font.pixelSize: 8.5 * root.s
-        font.weight: Font.Bold
-        font.capitalization: Font.AllUppercase
-        font.letterSpacing: 1.2 * root.s
-    }
+    component GroupLabel: SettingsLabel { s: root.s }
 
     /**
      * Collapsible settings group: a tappable header (the group label plus a
@@ -386,84 +376,7 @@ SettingsSurface {
         }
     }
 
-    /**
-     * One settings line. At rest it is a label + control row; hovering or
-     * keyboard-focusing the row folds its grey caption open below the label so a
-     * long tab stays compact by default. `collapsed` drops the whole row to zero
-     * height with the same height animation, used by the blur and shadow rows that
-     * depend on a toggle. The row feeds the surface registry: hover moves the soul
-     * seam and a click anywhere on the line drives its control via activateRow.
-     */
-    component FieldRow: Item {
-        id: frow
-        property string label: ""
-        property string caption: ""
-        property bool collapsed: false
-        default property alias control: ctrl.data
-
-        readonly property bool focused: root.focusRowItem === frow
-        readonly property bool expanded: !frow.collapsed && (fhover.hovered || frow.focused)
-        readonly property real rowH: 30 * root.s
-        readonly property real capH: 14 * root.s
-
-        width: parent ? parent.width : 0
-        height: frow.collapsed ? 0 : (frow.rowH + (frow.expanded ? frow.capH : 0))
-        clip: true
-        Behavior on height { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
-
-        HoverHandler {
-            id: fhover
-            onHoveredChanged: if (!frow.collapsed) root.reportRowHover(frow, hovered)
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            anchors.topMargin: 3 * root.s
-            anchors.bottomMargin: 3 * root.s
-            radius: 9 * root.s
-            color: (fhover.hovered || frow.focused) ? Theme.frameBg : "transparent"
-            Behavior on color { ColorAnimation { duration: Motion.fast } }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.activateRow(frow)
-        }
-
-        Column {
-            anchors.left: parent.left
-            anchors.leftMargin: 9 * root.s
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 2 * root.s
-
-            Text {
-                text: frow.label
-                color: Theme.cream
-                font.family: Theme.font
-                font.pixelSize: 12.5 * root.s
-                font.weight: Font.Medium
-            }
-
-            Text {
-                visible: frow.expanded && frow.caption.length > 0
-                text: frow.caption
-                color: Theme.faint
-                font.family: Theme.font
-                font.pixelSize: 9 * root.s
-                font.weight: Font.Medium
-            }
-        }
-
-        Item {
-            id: ctrl
-            anchors.right: parent.right
-            anchors.rightMargin: 9 * root.s
-            anchors.verticalCenter: parent.verticalCenter
-            width: childrenRect.width
-            height: childrenRect.height
-        }
-    }
+    component FieldRow: SettingsField { surface: root }
 
     Column {
         id: content

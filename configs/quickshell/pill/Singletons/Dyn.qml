@@ -15,14 +15,12 @@ Singleton {
     id: root
 
     readonly property string surface: adapter.surface
-    readonly property string surfaceContainer: adapter.surface_container
     readonly property string surfaceContainerLow: adapter.surface_container_low
     readonly property string surfaceContainerHigh: adapter.surface_container_high
     readonly property string surfaceContainerHighest: adapter.surface_container_highest
     readonly property string primary: adapter.primary
     readonly property string primaryContainer: adapter.primary_container
     readonly property string onPrimaryContainer: adapter.on_primary_container
-    readonly property string outline: adapter.outline
     readonly property string outlineVariant: adapter.outline_variant
     readonly property string cream: adapter.cream
     readonly property string bright: adapter.bright
@@ -44,14 +42,12 @@ Singleton {
         JsonAdapter {
             id: adapter
             property string surface: "#18120b"
-            property string surface_container: "#251f17"
             property string surface_container_low: "#211b13"
             property string surface_container_high: "#302921"
             property string surface_container_highest: "#3b342b"
             property string primary: "#f5bd6f"
             property string primary_container: "#633f00"
             property string on_primary_container: "#ffddb3"
-            property string outline: "#9c8f80"
             property string outline_variant: "#4f4539"
             property string cream: "#e6d6cb"
             property string bright: "#fff6f0"

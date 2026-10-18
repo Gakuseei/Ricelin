@@ -549,39 +549,18 @@ PillSurface {
         anchors.right: parent.right
         spacing: 0
 
-        Item {
-            width: parent.width
+        SettingsHeader {
             height: 24 * root.s
-
-            Row {
-                anchors.left: parent.left
+            s: root.s
+            glyph: "音"
+            title: "SOUND"
+            showIcon: false
+            titleContent: SettingsSeg {
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 8 * root.s
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: Flags.showGlyphs
-                    text: "音"
-                    color: Theme.cream
-                    font.family: Theme.fontJp
-                    font.weight: Font.Medium
-                    font.pixelSize: 16 * root.s
-                }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "SOUND"
-                    color: Theme.subtle
-                    font.family: Theme.font
-                    font.pixelSize: 10 * root.s
-                    font.weight: Font.DemiBold
-                    font.letterSpacing: 1.6 * root.s
-                }
-                SettingsSeg {
-                    anchors.verticalCenter: parent.verticalCenter
-                    s: root.s
-                    options: [{ label: "EQ", value: "eq" }, { label: "Apps", value: "apps" }, { label: "Mic", value: "mic" }]
-                    value: root.tab
-                    onPicked: (v) => { root.tab = v; root.editing = false; root.routeStream = null; root.pickerOpen = false; root.boostOpen = false; root.aeqOpen = false; }
-                }
+                s: root.s
+                options: [{ label: "EQ", value: "eq" }, { label: "Apps", value: "apps" }, { label: "Mic", value: "mic" }]
+                value: root.tab
+                onPicked: (v) => { root.tab = v; root.editing = false; root.routeStream = null; root.pickerOpen = false; root.boostOpen = false; root.aeqOpen = false; }
             }
 
             Row {

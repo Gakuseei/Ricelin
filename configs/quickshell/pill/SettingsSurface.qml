@@ -6,8 +6,8 @@ import QtQuick
  * Shared base for the morphing settings surfaces: the category index and each
  * sub-surface. Carries the keyboard-navigable row registry and the glowing
  * row-soul seam, and morphs back to the parent index when empty space is clicked
- * on a sub-surface. The deriving surface sets `rows`, optionally `backSurface`,
- * and lays out its own content column (header, section labels, SettingsRow lines).
+ * on a sub-surface. The deriving surface sets `rows` and lays out its own
+ * content column (header, section labels, SettingsRow lines).
  *
  * Each `rows` entry pairs a row item with its control kind and the backing getter
  * and setter: `seg` cycles a segmented choice (wrapping), `toggle` flips a
@@ -24,7 +24,6 @@ PillSurface {
     mRight: 19
     mBottom: 14
 
-    property string backSurface: ""
     signal requestSurface(string name)
 
     property Item focusRowItem: null

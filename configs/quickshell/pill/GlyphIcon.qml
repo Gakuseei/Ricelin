@@ -16,7 +16,6 @@ Item {
     property string name: ""
     property color color: Theme.iconDim
     property real stroke: 1.8
-    property real fillProgress: 1
 
     readonly property real u: Math.min(width, height) / 24
 
@@ -49,7 +48,6 @@ Item {
         "mic": { d: "M9 9V6a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0 M5 11a7 7 0 0 0 14 0 M12 18v3", fill: false },
         "mic-off": { d: "M9 9V6a3 3 0 0 1 6 0v3 M15 12v0a3 3 0 0 1-5.6 1.5 M5 11a7 7 0 0 0 11 5.5 M12 19v3 M3 3l18 18", fill: false },
         "lock": { d: "M6 10h12a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H6a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 6 10z M8.5 10V7a3.5 3.5 0 0 1 7 0v3", fill: false },
-        "lock-round": { d: "M8 8.5H16A3 3 0 0 1 19 11.5V15.5A3 3 0 0 1 16 18.5H8A3 3 0 0 1 5 15.5V11.5A3 3 0 0 1 8 8.5Z M8.4 8.5V5.7A3.6 3.6 0 0 1 15.6 5.7V8.5", fill: false },
         "lock-outline": { d: "M6.4 9.5H17.6A2.4 2.4 0 0 1 20 11.9V17.6A2.4 2.4 0 0 1 17.6 20H6.4A2.4 2.4 0 0 1 4 17.6V11.9A2.4 2.4 0 0 1 6.4 9.5Z M7.5 9.5V6A4.5 4.5 0 0 1 16.5 6V9.5", fill: false },
         "logout": { d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9", fill: false },
         "suspend": { d: "M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z", fill: false },
@@ -62,10 +60,6 @@ Item {
         "pause": { d: "M8 5h3v14H8z M13 5h3v14h-3z", fill: true },
         "next": { d: "M6 5l9 7-9 7z M16 5h2v14h-2z", fill: true },
         "prev": { d: "M18 5l-9 7 9 7z M6 5h2v14H6z", fill: true },
-        "play-s": { d: "M8 5.5l10.5 6.5L8 18.5z", fill: false },
-        "pause-s": { d: "M9 5.5v13 M15 5.5v13", fill: false },
-        "next-s": { d: "M7 5.5l9 6.5-9 6.5z M17 5.5v13", fill: false },
-        "prev-s": { d: "M17 5.5l-9 6.5 9 6.5z M7 5.5v13", fill: false },
         "dnd": { d: "M6 16V11a6 6 0 0 1 9.3-5M18 11v5M4 16h16M10.5 20a1.8 1.8 0 0 0 3 0M3 3l18 18", fill: false },
         "awake": { d: "M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z", fill: false },
         "chevron-left": { d: "M14 6l-6 6 6 6", fill: false },
@@ -76,7 +70,6 @@ Item {
         "trash": { d: "M3 6h18 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M10 11v6 M14 11v6", fill: false },
         "return": { d: "M20 6v6a3 3 0 0 1-3 3H5 M9 11l-4 4 4 4", fill: false },
         "wifi": { d: "M4 9.5C9 4.8 15 4.8 20 9.5 M7 13c3-2.8 7-2.8 10 0 M11 16.8a1.4 1.4 0 1 0 2 0a1.4 1.4 0 1 0-2 0", fill: false },
-        "ethernet": { d: "M5 5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 5 5z M8 19h8 M12 16v3 M8 8.5v3.5 M12 8.5v3.5 M16 8.5v3.5", fill: false },
         "bluetooth": { d: "M12 2.8v18.4 M12 2.8l5.2 4.6-10.4 9 M12 21.2l5.2-4.6-10.4-9", fill: false },
         "inbox": { d: "M6 16v-5a6 6 0 0 1 12 0v5 M4 16h16 M10.5 20a1.8 1.8 0 0 0 3 0", fill: false },
         "bolt": { d: "M13 2 4 13.5h6.5L11 22l9-11.5h-6.5z", fill: false },

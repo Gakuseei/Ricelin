@@ -6,7 +6,9 @@ import "Singletons"
  * uppercase title on the left, with a cog at the index or a back chevron on a
  * sub-surface at the right. The header strip is the back target, but the click is
  * handled at the pill level (a press anywhere on the top strip steps the surface
- * back), so this is a pure visual.
+ * back), so this is a pure visual. Other surfaces reuse it with `showIcon` off,
+ * their own right-side controls as children and `titleContent` items after the
+ * title.
  */
 Item {
     id: head
@@ -15,11 +17,14 @@ Item {
     property string glyph: ""
     property string title: ""
     property bool showBack: false
+    property bool showIcon: true
+    property alias titleContent: titleRow.data
 
     width: parent ? parent.width : 0
     height: 22 * head.s
 
     Row {
+        id: titleRow
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
         spacing: 8 * head.s
@@ -48,6 +53,7 @@ Item {
     GlyphIcon {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
+        visible: head.showIcon
         width: 16 * head.s
         height: 16 * head.s
         name: head.showBack ? "chevron-left" : "cog"

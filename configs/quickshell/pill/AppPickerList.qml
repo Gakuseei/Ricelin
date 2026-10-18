@@ -136,121 +136,22 @@ Column {
     onResultsChanged: if (selectedIndex >= results.length) selectedIndex = 0;
     onAddOpenChanged: if (addOpen) Qt.callLater(search.input.forceActiveFocus)
 
-    Item {
-        width: parent.width
+    AddBar {
         height: visible ? 40 * picker.s : 0
         visible: !picker.addOpen
-
-        Canvas {
-            id: dash
-            anchors.fill: parent
-            anchors.topMargin: 4 * picker.s
-            anchors.bottomMargin: 4 * picker.s
-            property color stroke: Qt.alpha(Theme.vermLit, addArea.containsMouse ? 0.7 : 0.36)
-            onStrokeChanged: requestPaint()
-            onWidthChanged: requestPaint()
-            onHeightChanged: requestPaint()
-            onPaint: {
-                var ctx = getContext("2d");
-                ctx.reset();
-                var r = 9 * picker.s;
-                var w = width;
-                var h = height;
-                var p = 0.5;
-                ctx.lineWidth = 1;
-                ctx.strokeStyle = stroke;
-                ctx.setLineDash([4 * picker.s, 4 * picker.s]);
-                ctx.beginPath();
-                ctx.moveTo(p + r, p);
-                ctx.lineTo(w - p - r, p);
-                ctx.arcTo(w - p, p, w - p, p + r, r);
-                ctx.lineTo(w - p, h - p - r);
-                ctx.arcTo(w - p, h - p, w - p - r, h - p, r);
-                ctx.lineTo(p + r, h - p);
-                ctx.arcTo(p, h - p, p, h - p - r, r);
-                ctx.lineTo(p, p + r);
-                ctx.arcTo(p, p, p + r, p, r);
-                ctx.stroke();
-            }
-        }
-
-        Row {
-            anchors.centerIn: parent
-            spacing: 6 * picker.s
-
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "+"
-                color: Theme.vermLit
-                font.family: Theme.font
-                font.pixelSize: 14 * picker.s
-                font.weight: Font.Bold
-            }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Add app"
-                color: Theme.vermLit
-                font.family: Theme.font
-                font.pixelSize: 11 * picker.s
-                font.weight: Font.DemiBold
-                font.letterSpacing: 0.5 * picker.s
-            }
-        }
-
-        MouseArea {
-            id: addArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: picker.openAdd()
-        }
+        s: picker.s
+        text: "Add app"
+        onClicked: picker.openAdd()
     }
 
     /** ── add view ── */
 
-    Item {
-        width: parent.width
+    BackHeader {
         height: visible ? 22 * picker.s : 0
         visible: picker.addOpen
-
-        Row {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 7 * picker.s
-
-            Item {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 16 * picker.s
-                height: 16 * picker.s
-
-                GlyphIcon {
-                    anchors.fill: parent
-                    name: "chevron-left"
-                    color: addBackArea.containsMouse ? Theme.cream : Theme.iconDim
-                    stroke: 1.8
-                }
-
-                MouseArea {
-                    id: addBackArea
-                    anchors.fill: parent
-                    anchors.margins: -6 * picker.s
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: picker.closeAdd()
-                }
-            }
-
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "ADD APP"
-                color: Theme.subtle
-                font.family: Theme.font
-                font.pixelSize: 9.5 * picker.s
-                font.weight: Font.DemiBold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: 1.4 * picker.s
-            }
-        }
+        s: picker.s
+        title: "ADD APP"
+        onBack: picker.closeAdd()
     }
 
     Item { width: 1; height: visible ? 4 * picker.s : 0; visible: picker.addOpen }

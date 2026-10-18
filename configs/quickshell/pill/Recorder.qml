@@ -299,7 +299,6 @@ PillSurface {
         property bool on: false
         property int faderIndex: -1
         property real level: 0.5
-        signal toggled()
         signal faderMoved(real v)
 
         width: parent ? parent.width : 0

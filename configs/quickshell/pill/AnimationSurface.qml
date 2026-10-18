@@ -26,7 +26,6 @@ import "Singletons"
 SettingsSurface {
     id: root
 
-    backSurface: "settings"
     implicitHeight: content.implicitHeight
 
     /**
@@ -134,17 +133,7 @@ SettingsSurface {
     Process { id: reloadProc; command: ["setsid", "-f", "sh", "-c", "sleep 0.3; hyprctl reload"] }
     Timer { id: reloadTimer; interval: 250; repeat: false; onTriggered: reloadProc.running = true }
 
-    component GroupLabel: Text {
-        topPadding: 16 * root.s
-        bottomPadding: 6 * root.s
-        leftPadding: 12 * root.s
-        color: Theme.faint
-        font.family: Theme.font
-        font.pixelSize: 8.5 * root.s
-        font.weight: Font.Bold
-        font.capitalization: Font.AllUppercase
-        font.letterSpacing: 1.2 * root.s
-    }
+    component GroupLabel: SettingsLabel { s: root.s; leftPadding: 12 * root.s }
 
     Column {
         id: content
