@@ -24,7 +24,6 @@ import "Singletons"
 SettingsSurface {
     id: root
 
-    backSurface: "settings"
     implicitHeight: content.implicitHeight
     rows: []
 
@@ -318,13 +317,13 @@ SettingsSurface {
 
     /**
      * Relaunch the pill on its own. setsid detaches the relaunch so it outlives the
-     * instance it kills, and the guard skips a second spawn if the watchdog already
-     * brought it back. Settings persist through flags.json, so it returns as it was.
+     * instance it kills, and it only spawns one itself when no watchdog will bring
+     * it back. Settings persist through flags.json, so it returns as it was.
      */
     Process {
         id: restartProc
         command: ["setsid", "sh", "-c",
-            "qs -c pill kill; sleep 0.4; qs -c pill ipc show >/dev/null 2>&1 || qs -c pill -d"]
+            "qs -c pill kill; sleep 0.4; pgrep -f 'watchdog[.]sh pill' >/dev/null || qs -c pill -d"]
     }
 
     /**

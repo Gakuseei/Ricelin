@@ -4,7 +4,7 @@
 #
 # Thin wrapper over the two quickshell surfaces (the pill and the lock), their
 # watchdogs and the update engine. The watchdog is what keeps a surface alive: it
-# respawns `qs -c <name> -d` whenever the instance dies. So `stop` has to take the
+# respawns `qs -c <name>` whenever the instance dies. So `stop` has to take the
 # watchdog down too or the surface just comes back, while `restart` leaves the
 # watchdog running and only cycles the instance.
 #
@@ -121,15 +121,9 @@ cmd_stop() {
 
 cmd_restart() {
     for s in $(targets "$1" pill); do
-        had_wd=no
-        wd_up "$s" && had_wd=yes
         qs -c "$s" kill >/dev/null 2>&1
         sleep 0.4
-        if [ "$had_wd" = yes ]; then
-            is_up "$s" || qs -c "$s" -d >/dev/null 2>&1
-        else
-            start_wd "$s"
-        fi
+        wd_up "$s" || start_wd "$s"
         act restarted "$s"
     done
 }
