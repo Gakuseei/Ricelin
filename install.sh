@@ -76,7 +76,7 @@ ensure_deps() {
 	# package list, so the git+python3 bootstrap fails before the real installer
 	# is reached. Best-effort (|| true) so one stale repo never blocks the install.
 	case "$1" in
-	arch) run_root pacman -Sy --needed --noconfirm git python ;;
+	arch) run_root pacman -Syu --needed --noconfirm git python ;;
 	debian) run_root apt-get update || true; run_root apt-get install -y git python3 ;;
 	fedora) run_root dnf makecache || true; run_root dnf install -y git python3 ;;
 	suse) run_root zypper --non-interactive refresh || true; run_root zypper --non-interactive install git python3 ;;

@@ -16,7 +16,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -45,6 +44,8 @@ DEPLOY_SET = [
 # comes later; these three are tied to Erik's disks and machine, so the deploy
 # set leaves them out on purpose.
 GRUB_EXCLUDED = ["grub/install-torii.sh", "grub/probe-sda4.sh", "grub/10_ricelin"]
+
+COPY_IGNORE = ("test_*.py", "__pycache__", "*.pyc", "hypridle.conf")
 
 # User-owned config files a re-run must never reset: the same protected set the
 # update engine three-way merges (hand-mirrored from ricelin-update.py, which
@@ -146,8 +147,7 @@ def _copy(src, dest):
     src, dest = Path(src), Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     if src.is_dir():
-        shutil.copytree(src, dest, ignore=shutil.ignore_patterns(
-            "test_*.py", "__pycache__", "*.pyc", "hypridle.conf"))
+        shutil.copytree(src, dest, ignore=shutil.ignore_patterns(*COPY_IGNORE))
     else:
         shutil.copy2(src, dest)
 
@@ -169,13 +169,16 @@ def _prune_empty(start, stop):
         d = d.parent
 
 
-def _has_nvidia():
-    """Grep the PCI bus for an nvidia GPU, the same probe install.sh uses."""
-    try:
-        out = subprocess.run(["lspci"], capture_output=True, text=True).stdout
-    except OSError:
-        return False
-    return "nvidia" in out.lower()
+def _has_nvidia(sys_root="/sys"):
+    """True when the boot display GPU is nvidia, so a hybrid laptop on its iGPU keeps the dGPU asleep."""
+    for dev in Path(sys_root, "bus", "pci", "devices").glob("*"):
+        try:
+            if ((dev / "boot_vga").read_text().strip() == "1"
+                    and (dev / "vendor").read_text().strip() == "0x10de"):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def detect_existing(config_root=CONFIG_ROOT):
@@ -279,21 +282,13 @@ def deploy(src=CONFIGS, config_root=CONFIG_ROOT, apply=False):
 
 def _strip_fish(text):
     """
-    Make config.fish portable: drop the CachyOS source line and the personal
-    grok installer block, keep everything else so the torii greeting stays.
-    Returns the cleaned text and a list of what was removed.
+    Make config.fish portable: drop the CachyOS source line, keep everything
+    else so the torii greeting stays. Returns the cleaned text and a list of what
+    was removed.
     """
-    out, removed, in_grok = [], [], False
+    out, removed = [], []
     for line in text.splitlines():
         s = line.strip()
-        if s.startswith("# >>> grok") or s.startswith(">>> grok"):
-            in_grok = True
-            removed.append("grok block")
-            continue
-        if in_grok:
-            if s.startswith("# <<< grok") or s.startswith("<<< grok"):
-                in_grok = False
-            continue
         if s.startswith("source /usr/share/cachyos-fish-config"):
             removed.append("cachyos source")
             continue
@@ -378,14 +373,10 @@ def neutralize(config_root=CONFIG_ROOT, apply=False, src=CONFIGS):
       monitors.lua -> keep the user's layout as monitors.lua.example, write the
                       single auto monitor (output="", preferred, auto, scale 1)
       env.lua      -> rewrite the base env, keep the nvidia vars only on nvidia
-      ghostty      -> rewrite /home/erik to the real home
-      ghosttype    -> rewrite /home/erik in the GhostType AppImage bind path so it
-                      points at the user's home, not Erik's
       hypridle     -> rewrite /home/erik in the lock_cmd / on-timeout script paths
                       (the conf does not expand env vars, so a literal home is wrong
                       for any other user and idle-lock never fires)
-      fish         -> strip the cachyos source line and the grok block, keep the
-                      torii greeting
+      fish         -> strip the cachyos source line, keep the torii greeting
       fastfetch    -> render config.jsonc from the palette so the splash shows
       grub         -> never deployed, recorded here for the record
     """
@@ -411,26 +402,6 @@ def neutralize(config_root=CONFIG_ROOT, apply=False, src=CONFIGS):
                         "wrote": "base env" + (" + nvidia" if nvidia else ", nvidia dropped")})
         if apply:
             env.write_text(ENV_BASE + (ENV_NVIDIA if nvidia else ""))
-
-    ghc = config_root / "ghostty" / "config"
-    if ghc.is_file():
-        home = str(Path.home())
-        text = ghc.read_text()
-        count = text.count("/home/erik")
-        actions.append({"step": "ghostty", "path": str(ghc),
-                        "replaced": count, "home": home})
-        if apply and count:
-            ghc.write_text(text.replace("/home/erik", home))
-
-    ght = config_root / "hypr" / "ghosttype.lua"
-    if ght.is_file():
-        home = str(Path.home())
-        text = ght.read_text()
-        count = text.count("/home/erik")
-        actions.append({"step": "ghosttype", "path": str(ght),
-                        "replaced": count, "home": home})
-        if apply and count:
-            ght.write_text(text.replace("/home/erik", home))
 
     # The live hypridle.conf is untracked (Settings owns it, and tracking it made
     # git pulls revert a user's auto-lock choice), so a fresh deploy seeds it from
@@ -569,7 +540,7 @@ def _selftest():
         # shows; the rewrite step appears once the file exists.
         plan = neutralize(config_root=root, apply=False)
         steps = {a["step"] for a in plan}
-        check({"monitors", "env", "ghostty", "hypridle-seed", "fish", "fastfetch", "grub-excluded"} <= steps,
+        check({"monitors", "env", "hypridle-seed", "fish", "fastfetch", "grub-excluded"} <= steps,
               "neutralize plan has every step")
         check(not (root / "hypr" / "hypridle.conf").exists(),
               "neutralize dry-run did not seed hypridle.conf")
@@ -592,13 +563,9 @@ def _selftest():
         idletxt = (root / "hypr" / "hypridle.conf").read_text()
         check(str(Path.home()) + "/.config/hypr/scripts/lock.sh" in idletxt,
               "hypridle lock_cmd points at the real home")
-        ghttxt = (root / "hypr" / "ghosttype.lua").read_text()
-        check(str(Path.home()) + "/Applications/GhostType.AppImage" in ghttxt,
-              "ghosttype.lua AppImage path points at the real home")
         fishtxt = (root / "fish" / "config.fish").read_text()
-        check("cachyos-fish-config" not in fishtxt and "grok" not in fishtxt
-              and "torii-greeting" in fishtxt,
-              "fish stripped of cachyos + grok, torii greeting kept")
+        check("cachyos-fish-config" not in fishtxt and "torii-greeting" in fishtxt,
+              "fish stripped of cachyos, torii greeting kept")
         ffjson = (root / "fastfetch" / "config.jsonc").read_text()
         check("__" not in ffjson and "system" in ffjson,
               "fastfetch config.jsonc rendered, no placeholders left")
@@ -630,6 +597,21 @@ def _selftest():
               and (d / "x.bak").read_text() == "pristine"
               and (d / "x.bak.1").read_text() == "foreign",
               "backup keeps the pristine .bak, parks the foreign config in .bak.1")
+
+    # 8b. nvidia probe: only the boot_vga device counts, an idle dGPU does not
+    with tempfile.TemporaryDirectory() as tmp5:
+        def gpu(slot, vendor, boot):
+            dev = Path(tmp5, "bus", "pci", "devices", slot)
+            dev.mkdir(parents=True)
+            (dev / "vendor").write_text(vendor + "\n")
+            (dev / "boot_vga").write_text(boot + "\n")
+        check(not _has_nvidia(tmp5), "no pci devices -> no nvidia env")
+        gpu("0000:00:02.0", "0x8086", "1")
+        gpu("0000:01:00.0", "0x10de", "0")
+        check(not _has_nvidia(tmp5), "hybrid laptop booting on the iGPU -> no nvidia env")
+        shutil.rmtree(Path(tmp5, "bus"))
+        gpu("0000:01:00.0", "0x10de", "1")
+        check(_has_nvidia(tmp5), "nvidia boot_vga GPU -> nvidia env")
 
     # 9. data-loss guard (FIX): a foreign config plus a pre-existing .bak must
     # never be lost. deploy parks the foreign config in the next free .bak.N and
@@ -699,6 +681,9 @@ def _selftest():
     spec.loader.exec_module(engine)
     check(PRESERVED == engine.PROTECTED,
           "PRESERVED matches the update engine's PROTECTED list")
+    check([(s, d) for _, s, d in DEPLOY_SET] == engine.DEPLOY_SET
+          and COPY_IGNORE == engine.COPY_IGNORE,
+          "DEPLOY_SET and COPY_IGNORE match the update engine's mirror")
 
     print(f"\n:: all {passed} checks passed")
     return 0

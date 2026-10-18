@@ -183,12 +183,13 @@ def refresh_argv(family):
     """
     The package-list refresh command for this family, run once before any installs
     so a stale index never sinks the first install. pacman folds the refresh into
-    -Sy; the rpm and apt families have a dedicated metadata step; emerge syncs the
-    ebuild tree, which on a fresh box also pulls it the first time.
+    -Syu, since Arch has no safe partial upgrade; the rpm and apt families have a
+    dedicated metadata step; emerge syncs the ebuild tree, which on a fresh box
+    also pulls it the first time.
     """
     _require_family(family)
     if family == "arch":
-        return [distro.ROOT, "pacman", "-Sy"]
+        return [distro.ROOT, "pacman", "-Syu", "--noconfirm"]
     if family == "debian":
         return [distro.ROOT, "apt-get", "update"]
     if family == "fedora":
@@ -360,7 +361,7 @@ def _selftest():
     assert obs[1] == ["zypper", "--non-interactive", "--gpg-auto-import-keys", "refresh"]
     checks += 2
 
-    assert refresh_argv("arch") == ["sudo", "pacman", "-Sy"]
+    assert refresh_argv("arch") == ["sudo", "pacman", "-Syu", "--noconfirm"]
     assert refresh_argv("debian") == ["sudo", "apt-get", "update"]
     assert refresh_argv("fedora") == ["sudo", "dnf", "makecache"]
     assert refresh_argv("suse") == ["sudo", "zypper", "--non-interactive", "refresh"]
