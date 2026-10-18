@@ -180,9 +180,9 @@ Singleton {
         id: listProc
         command: ["cliphist", "list"]
         stdout: StdioCollector { id: collected }
-        onExited: {
-            if (listProc.exitCode !== 0) {
-                console.warn("cliphist list failed with exit code " + listProc.exitCode + ", retrying once");
+        onExited: (exitCode) => {
+            if (exitCode !== 0) {
+                console.warn("cliphist list failed with exit code " + exitCode + ", retrying once");
                 root.pending = false;
                 listRetry.restart();
                 return;

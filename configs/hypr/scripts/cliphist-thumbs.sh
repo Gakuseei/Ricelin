@@ -7,19 +7,24 @@ mkdir -p "$cache"
 chmod 700 "$cache"
 
 tab=$(printf '\t')
+nl='
+'
 snapshot=$(cliphist list) || exit 0
 
-ids=$(printf '%s\n' "$snapshot" | cut -f1)
+ids="$nl$(printf '%s\n' "$snapshot" | cut -f1)$nl"
 for f in "$cache"/*.png; do
     [ -e "$f" ] || continue
-    fid=$(basename "$f" .png)
-    printf '%s\n' "$ids" | grep -qxF "$fid" || rm -f "$f"
+    fid=${f##*/}
+    case "$ids" in
+        *"$nl${fid%.png}$nl"*) ;;
+        *) rm -f "$f" ;;
+    esac
 done
 
 printf '%s\n' "$snapshot" | while IFS= read -r line; do
     case "$line" in
         *"$tab[[ binary data"*png*" ]]"|*"$tab[[ binary data"*jpg*" ]]"|*"$tab[[ binary data"*jpeg*" ]]"|*"$tab[[ binary data"*gif*" ]]"|*"$tab[[ binary data"*bmp*" ]]"|*"$tab[[ binary data"*webp*" ]]")
-            id=$(printf '%s' "$line" | cut -f1)
+            id=${line%%"$tab"*}
             thumb="$cache/$id.png"
             if [ ! -s "$thumb" ]; then
                 raw="$cache/.raw.$id"
