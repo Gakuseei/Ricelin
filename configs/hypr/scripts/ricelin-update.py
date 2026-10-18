@@ -20,8 +20,10 @@ The maintainer and anyone who installed by symlinking the config into a git
 work-tree are detected as devmode and left alone, since they update with plain git.
 """
 import datetime
+import fnmatch
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -43,6 +45,18 @@ PROTECTED = [
     "hypr/hypridle.conf",
     "fish/config.fish",
 ]
+
+# Mirrors deploy.py's DEPLOY_SET as (source, dest) and its copy ignores; its selftest holds them equal.
+DEPLOY_SET = [
+    ("hypr", "hypr"),
+    ("quickshell", "quickshell"),
+    ("ghostty", "ghostty"),
+    ("fish", "fish"),
+    ("fastfetch", "fastfetch"),
+    ("kde/kdeglobals", "kdeglobals"),
+    ("systemd/user/hyprland-session.target", "systemd/user/hyprland-session.target"),
+]
+COPY_IGNORE = ("test_*.py", "__pycache__", "*.pyc", "hypridle.conf")
 
 
 def data_dir():
@@ -224,6 +238,16 @@ def tracked_config_files(clone, ref):
     return rels
 
 
+def deploy_dest(rel):
+    """Where the installer deploys configs/<rel> under ~/.config, or None when it never does."""
+    if any(fnmatch.fnmatch(part, pat) for part in Path(rel).parts for pat in COPY_IGNORE):
+        return None
+    for src, dest in DEPLOY_SET:
+        if rel == src or rel.startswith(src + "/"):
+            return dest + rel[len(src):]
+    return None
+
+
 def show_at(clone, sha, rel):
     """File content at a sha, or None when the path didn't exist there."""
     result = subprocess.run(
@@ -302,22 +326,24 @@ def reconcile_protected(clone, config_root, manifest, head, apply, take):
 
 def sync_code(clone, config_root, head, apply):
     """
-    Overwrite every tracked config file that isn't protected with the upstream
-    version. Returns True when at least one live file differed from upstream.
+    Overwrite every tracked config file the installer deploys and that isn't
+    protected with the upstream version. Returns True when at least one live file
+    differed from upstream.
 
-    ponytail: L1 known ceiling. A file deleted upstream is never removed from the
-    live config, so renamed or dropped code files linger as orphans. Left as is on
-    purpose, since it only ever leaves stale files and never deletes a user's data.
+    Known limit: a file deleted upstream is never removed from the live config, so
+    renamed or dropped code files linger as orphans. Left as is on purpose, since
+    it only ever leaves stale files and never deletes a user's data.
     """
     protected = set(PROTECTED)
     changed = False
     for rel in tracked_config_files(clone, head):
-        if rel in protected:
+        dest = deploy_dest(rel)
+        if rel in protected or dest is None:
             continue
         new = show_at(clone, head, rel)
         if new is None:
             continue
-        live_path = config_root / rel
+        live_path = config_root / dest
         current = live_path.read_bytes() if live_path.exists() else None
         if current == new:
             continue
@@ -325,6 +351,19 @@ def sync_code(clone, config_root, head, apply):
         if apply:
             atomic_write_bytes(live_path, new)
     return changed
+
+
+def migrate_hypridle(config_root):
+    """Rewrite the pre-Lua `hyprctl dispatch dpms on|off` a live hypridle.conf may still carry."""
+    path = config_root / "hypr" / "hypridle.conf"
+    if not path.is_file():
+        return
+    text = path.read_text()
+    fixed = re.sub(r"hyprctl dispatch dpms (on|off)[ \t]*$",
+                   lambda m: f"hyprctl dispatch \"hl.dsp.dpms({{ action = '{m[1]}' }})\"",
+                   text, flags=re.M)
+    if fixed != text:
+        atomic_write_bytes(path, fixed.encode("utf-8"))
 
 
 def baseline_modules(manifest, head):
@@ -603,6 +642,7 @@ def run(mode, remote, config_root, take, install_ids):
         rows = [{"name": module_name(rel), "path": rel, "state": "clean"}
                 for rel in PROTECTED]
         if apply:
+            migrate_hypridle(config_root)
             baseline_modules(manifest, head)
             manifest["syncedSha"] = head
             save_manifest(manifest)
@@ -621,6 +661,7 @@ def run(mode, remote, config_root, take, install_ids):
     code_changed = sync_code(clone, config_root, head, apply)
 
     if apply:
+        migrate_hypridle(config_root)
         manifest.setdefault("modules", {}).update(sha_updates)
         manifest["syncedSha"] = head
         save_manifest(manifest)

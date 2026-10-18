@@ -55,6 +55,11 @@ def main():
     write(origin / monitors, "monitor A\nspacer\nspacer\nmonitor B\nspacer\nspacer\ntail\n")
     write(origin / pill, "code v1\n")
     write(origin / "configs/hypr/scripts/tool.sh", "#!/bin/sh\necho tool\n")
+    write(origin / "configs/hypr/scripts/test_tool.py", "harness\n")
+    write(origin / "configs/kde/kdeglobals", "[General]\n")
+    write(origin / "configs/sddm/themes/torii/Main.qml", "greeter\n")
+    write(origin / "configs/grub/10_ricelin", "entry\n")
+    write(origin / "configs/brave-theme/manifest.json", "{}\n")
     git(origin, "add", "-A")
     git(origin, "commit", "-q", "-m", "init")
 
@@ -75,6 +80,8 @@ def main():
     write(config / "hypr/modules/binds.lua", "bind one\nspacer\nspacer\nbind two\nspacer\nspacer\nbind three\n")
     write(config / "hypr/modules/monitors.lua", "monitor A\nspacer\nspacer\nmonitor B\nspacer\nspacer\ntail\n")
     write(config / "quickshell/pill/Look.qml", "stale local code\n")
+    write(config / "hypr/hypridle.conf", "after_sleep_cmd = hyprctl dispatch dpms on\n"
+          "on-timeout = hyprctl dispatch dpms off\non-resume = hyprctl dispatch dpms on\n")
 
     first = ru.run("apply", str(origin), config, set(), set())
     assert first["status"] == "ok", first
@@ -84,6 +91,17 @@ def main():
     assert os.access(config / "hypr/scripts/tool.sh", os.X_OK), "synced scripts stay executable"
     assert (config / "quickshell/pill/Look.qml").stat().st_mode & 0o777 == 0o644, "synced code files are 0644"
     print("first-run baseline + code overwrite: ok")
+
+    assert (config / "kdeglobals").read_text() == "[General]\n", "kde/kdeglobals lands at kdeglobals"
+    for skipped in ("kde", "sddm", "grub", "brave-theme", "hypr/scripts/test_tool.py"):
+        assert not (config / skipped).exists(), f"{skipped} is outside the deploy set"
+    print("sync follows the installer deploy set: ok")
+
+    assert (config / "hypr/hypridle.conf").read_text() == (
+        "after_sleep_cmd = hyprctl dispatch \"hl.dsp.dpms({ action = 'on' })\"\n"
+        "on-timeout = hyprctl dispatch \"hl.dsp.dpms({ action = 'off' })\"\n"
+        "on-resume = hyprctl dispatch \"hl.dsp.dpms({ action = 'on' })\"\n")
+    print("hypridle dpms migration: ok")
 
     """
     Diverge the user locally without overlapping the upstream config-bump lines.
