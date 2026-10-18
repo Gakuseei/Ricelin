@@ -61,3 +61,7 @@ function rank(entries, query, usage) {
     });
     return scored.map(function (x) { return x.e; });
 }
+
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = { rank, score, subsequence };
+}
