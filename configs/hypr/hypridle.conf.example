@@ -1,7 +1,7 @@
 general {
     lock_cmd = /home/erik/.config/hypr/scripts/lock.sh
     before_sleep_cmd = loginctl lock-session
-    after_sleep_cmd = hyprctl dispatch dpms on
+    after_sleep_cmd = hyprctl dispatch "hl.dsp.dpms({ action = 'on' })"
 }
 
 listener {
@@ -11,6 +11,6 @@ listener {
 
 listener {
     timeout = 360
-    on-timeout = hyprctl dispatch dpms off
-    on-resume = hyprctl dispatch dpms on
+    on-timeout = hyprctl dispatch "hl.dsp.dpms({ action = 'off' })"
+    on-resume = hyprctl dispatch "hl.dsp.dpms({ action = 'on' })"
 }

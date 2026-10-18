@@ -18,7 +18,6 @@ import "Singletons"
 SettingsSurface {
     id: root
 
-    backSurface: "settings"
     implicitHeight: content.implicitHeight
 
     readonly property string confPath: Quickshell.env("HOME") + "/.config/hypr/hypridle.conf"
@@ -53,7 +52,7 @@ SettingsSurface {
         var out = "general {\n"
             + "    lock_cmd = " + root.lockScript + "\n"
             + "    before_sleep_cmd = loginctl lock-session\n"
-            + "    after_sleep_cmd = hyprctl dispatch dpms on\n"
+            + "    after_sleep_cmd = hyprctl dispatch \"hl.dsp.dpms({ action = 'on' })\"\n"
             + "}\n";
 
         if (Flags.idleLockMin > 0)
@@ -65,8 +64,8 @@ SettingsSurface {
         if (Flags.idleScreenOffMin > 0)
             out += "\nlistener {\n"
                 + "    timeout = " + (Flags.idleScreenOffMin * 60) + "\n"
-                + "    on-timeout = hyprctl dispatch dpms off\n"
-                + "    on-resume = hyprctl dispatch dpms on\n"
+                + "    on-timeout = hyprctl dispatch \"hl.dsp.dpms({ action = 'off' })\"\n"
+                + "    on-resume = hyprctl dispatch \"hl.dsp.dpms({ action = 'on' })\"\n"
                 + "}\n";
 
         if (Flags.idleSuspendMin > 0)
