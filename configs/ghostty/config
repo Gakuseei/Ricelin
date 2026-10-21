@@ -8,6 +8,7 @@ window-padding-balance = true
 window-decoration = none
 
 background-opacity = 0.85
+gtk-custom-css = ?blur.css
 
 cursor-style = block
 cursor-style-blink = false

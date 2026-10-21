@@ -1,0 +1,4 @@
+/** GTK 4.24 lets Hyprland blur only the region an app declares, Ghostty 1.3 declares none */
+window {
+  backdrop-filter: blur(30px);
+}
