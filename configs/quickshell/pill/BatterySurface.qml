@@ -4,30 +4,19 @@ import QtQuick
 import "Singletons"
 
 /**
- * 蓄 BATTERY surface: a typographic read-out for the laptop battery. The
- * percentage is the hero, set over a time-to-empty/full subline, with a thin
- * charge meter and an adaptive stat list (Rate / Health / Capacity) beneath a
- * hairline. Health drops when UPower can't report it and the time line drops
- * when no estimate exists; on AC-full the subline reads "Plugged in". Charging
- * warms the percentage, subline and meter to the flame tones. Exposes
- * `implicitHeight` from its content and docks Ame as a seam at the charge head.
+ * 蓄 BATTERY surface: the percentage as hero, a time line, a charge meter and the stats UPower can report.
  */
 PillSurface {
     id: root
 
-    mTop: 16
-    mLeft: 19
-    mRight: 19
-    mBottom: 16
+    mTop: Theme.inset.top
+    mLeft: Theme.inset.side
+    mRight: Theme.inset.side
+    mBottom: Theme.inset.bottom
 
     implicitHeight: content.implicitHeight
 
-    /**
-     * Where the seam docks: the head of the charge meter, mirroring the
-     * seek-stroke head on the media card. Sits clear of the hero number and
-     * tracks the charge level. mapToItem isn't reactive, so the void reads
-     * force re-eval across the morph and on charge changes.
-     */
+    /** Seam dock at the head of the charge meter; the voids re-run mapToItem as size and charge change. */
     readonly property point chargeHead: {
         void root.width;
         void root.height;
@@ -46,30 +35,29 @@ PillSurface {
         anchors.right: parent.right
         spacing: 0
 
-        SettingsHeader {
+        SurfaceHeader {
             s: root.s
             glyph: "蓄"
             title: "BATTERY"
-            showIcon: false
 
             Text {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 text: Battery.stateLabel
-                color: Battery.charging ? Theme.flameGlow : Theme.dim
+                color: Battery.charging ? Theme.flameGlow : Theme.textFaint
                 font.family: Theme.font
-                font.pixelSize: 9.5 * root.s
+                font.pixelSize: Theme.fs.label * root.s
                 font.weight: Font.Bold
                 font.capitalization: Font.AllUppercase
-                font.letterSpacing: 1.1 * root.s
+                font.letterSpacing: Theme.labelTracking * root.s
             }
         }
 
         Column {
             width: parent.width
-            topPadding: 16 * root.s
-            bottomPadding: 14 * root.s
-            spacing: 9 * root.s
+            topPadding: Theme.sp.l * root.s
+            bottomPadding: Theme.sp.m * root.s
+            spacing: Theme.sp.s * root.s
 
             Text {
                 id: pctText
@@ -92,7 +80,7 @@ PillSurface {
                 text: body
                 color: Battery.charging ? Theme.flameCore : Theme.subtle
                 font.family: Theme.font
-                font.pixelSize: 11 * root.s
+                font.pixelSize: Theme.fs.meta * root.s
                 font.weight: Font.DemiBold
             }
         }
@@ -120,8 +108,8 @@ PillSurface {
 
         Column {
             width: parent.width
-            topPadding: 16 * root.s
-            spacing: 10 * root.s
+            topPadding: Theme.sp.l * root.s
+            spacing: Theme.sp.s * root.s
 
             component StatRow: Item {
                 id: stat
@@ -135,12 +123,12 @@ PillSurface {
                     anchors.left: parent.left
                     anchors.baseline: vText.baseline
                     text: stat.label
-                    color: Theme.faint
+                    color: Theme.textFaint
                     font.family: Theme.font
-                    font.pixelSize: 10 * root.s
-                    font.weight: Font.Medium
+                    font.pixelSize: Theme.fs.label * root.s
+                    font.weight: Font.Bold
                     font.capitalization: Font.AllUppercase
-                    font.letterSpacing: 0.8 * root.s
+                    font.letterSpacing: Theme.labelTracking * root.s
                 }
 
                 Text {
@@ -149,7 +137,7 @@ PillSurface {
                     text: stat.value
                     color: stat.warm ? Theme.flameGlow : Theme.cream
                     font.family: Theme.font
-                    font.pixelSize: 12.5 * root.s
+                    font.pixelSize: Theme.fs.body * root.s
                     font.weight: Font.DemiBold
                     font.features: { "tnum": 1 }
                 }

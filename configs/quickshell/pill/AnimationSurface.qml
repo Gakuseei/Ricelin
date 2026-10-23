@@ -8,20 +8,7 @@ import "lib/setAnim.js" as SetAnim
 import "Singletons"
 
 /**
- * 動 ANIMATION sub-surface: toggles Hyprland animations, sets one master speed
- * across every leaf, and shapes the main motion curve by dragging its two bezier
- * control points. animations.lua is read once per pill session (first seed);
- * after that the in-memory properties are the single source of truth, so
- * reopening the tab never re-reads — that would race the writer FileView on the
- * same path and revert a freshly written value. Each change rewrites the file
- * immediately and debounces the hyprctl reload through a Timer, so a fast speed
- * scrub still lands its final value with exactly one reload. The speed scrub and
- * the curve carry a revert baseline snapshotted on that first seed, restored by
- * an undo glyph; it survives leaving and reopening the tab so a curve change
- * stays revertable while you go watch it play. The editor's handle positions are
- * the source of truth — the curve point properties derive from them — so
- * dragging a handle never fights a binding. Reached from the settings index;
- * morphs back on the back chevron.
+ * 動 ANIMATION: on/off, one master speed and the main bezier; animations.lua is read once per session, then the in-memory values win.
  */
 SettingsSurface {
     id: root
@@ -29,15 +16,14 @@ SettingsSurface {
     implicitHeight: content.implicitHeight
 
     /**
-     * Keyboard row registry: the enabled toggle always, the speed scrub only
-     * while animations are on (its row is folded away otherwise). The curve
-     * editor and preset strip stay mouse-only — a 2D handle drag has no single
-     * bump axis.
+     * The curve handles stay mouse-only: a 2D drag has no single bump axis.
      */
     rows: {
         var r = [{ item: enabledRow, kind: "toggle", get: function () { return root.animOn; }, set: function (v) { root.animOn = v; root.writeEnabled(v); } }];
-        if (root.animOn)
+        if (root.animOn) {
             r.push({ item: speedRow, kind: "scrub", bump: function (d) { speedScrub.bump(d); } });
+            r.push({ item: presetRow, kind: "seg", vals: root.presets.map(function (p) { return p.label; }), get: function () { return root.currentPreset; }, set: function (v) { root.applyPreset(v); } });
+        }
         return r;
     }
 
@@ -50,7 +36,9 @@ SettingsSurface {
     property bool loaded: false
     property var base: ({})
 
-    /** Bezier control points, read 0..1 (y may overshoot); derived from the handles. */
+    /**
+     * Bezier control points, read 0..1 (y may overshoot); derived from the handles.
+     */
     property real cx1: 0.23
     property real cy1: 1.0
     property real cx2: 0.32
@@ -61,6 +49,30 @@ SettingsSurface {
         { label: "Snappy", x1: 0.15, y1: 0.0, x2: 0.1, y2: 1.0 },
         { label: "Linear", x1: 0.33, y1: 0.33, x2: 0.66, y2: 0.66 }
     ]
+
+    /**
+     * Label of the preset the live curve matches, or "" for a hand-shaped one.
+     */
+    readonly property string currentPreset: {
+        for (var i = 0; i < presets.length; i++) {
+            var p = presets[i];
+            if (Math.abs(p.x1 - cx1) < 0.005 && Math.abs(p.y1 - cy1) < 0.005 && Math.abs(p.x2 - cx2) < 0.005 && Math.abs(p.y2 - cy2) < 0.005)
+                return p.label;
+        }
+        return "";
+    }
+
+    function applyPreset(label) {
+        for (var i = 0; i < root.presets.length; i++) {
+            if (root.presets[i].label === label) {
+                var p = root.presets[i];
+                root.cx1 = p.x1; root.cy1 = p.y1; root.cx2 = p.x2; root.cy2 = p.y2;
+                editor.syncHandles();
+                root.writeCurve();
+                return;
+            }
+        }
+    }
 
     onActiveChanged: {
         if (active) {
@@ -75,11 +87,7 @@ SettingsSurface {
     }
 
     /**
-     * Reads the controls from animations.lua once per pill session. After this
-     * the in-memory properties are the source of truth, so reopening the tab
-     * never re-reads (which would race the writer FileView on the same path and
-     * revert a freshly written value). Also snapshots the revert baseline and
-     * marks the session loaded.
+     * One read per session: re-reading on open would race the writer and revert a fresh value.
      */
     function seed() {
         root.animText = animFile.text();
@@ -106,7 +114,6 @@ SettingsSurface {
             return;
         root.animText = r.text;
         animWriter.setText(r.text);
-        reloadTimer.restart();
     }
 
     function writeSpeed(v) {
@@ -115,7 +122,6 @@ SettingsSurface {
             return;
         root.animText = r.text;
         animWriter.setText(r.text);
-        reloadTimer.restart();
     }
 
     function writeCurve() {
@@ -125,15 +131,12 @@ SettingsSurface {
             return;
         root.animText = r.text;
         animWriter.setText(r.text);
-        reloadTimer.restart();
     }
 
     FileView { id: animFile; path: root.animPath; blockLoading: true; printErrors: false }
-    FileView { id: animWriter; path: root.animPath; atomicWrites: true; printErrors: false }
-    Process { id: reloadProc; command: ["setsid", "-f", "sh", "-c", "sleep 0.3; hyprctl reload"] }
-    Timer { id: reloadTimer; interval: 250; repeat: false; onTriggered: reloadProc.running = true }
+    FileView { id: animWriter; path: root.animPath; atomicWrites: true; printErrors: false; onSaved: HyprReload.request() }
 
-    component GroupLabel: SettingsLabel { s: root.s; leftPadding: 12 * root.s }
+    component GroupLabel: SettingsLabel { s: root.s; leftPadding: Theme.sp.m * root.s }
 
     Column {
         id: content
@@ -145,11 +148,11 @@ SettingsSurface {
         height: root.height + root.mBottom * root.s
         clip: true
 
-        SettingsHeader {
+        SurfaceHeader {
             s: root.s
             glyph: "動"
             title: "ANIMATION"
-            showBack: true
+            canBack: true
         }
 
         GroupLabel { text: "Motion" }
@@ -158,8 +161,7 @@ SettingsSurface {
             id: enabledRow
             surface: root
             name: "Enabled"
-            sub: "Animate windows, workspaces and fades"
-            captionOnFocus: true
+            sub: "Windows, workspaces and fades"
             icon: "sparkles"
             last: !root.animOn
             LinkToggle {
@@ -176,8 +178,7 @@ SettingsSurface {
             id: speedRow
             surface: root
             name: "Speed"
-            sub: "Higher is faster, applied to every animation"
-            captionOnFocus: true
+            sub: "Higher is faster, for every animation"
             icon: "bolt"
             visible: root.animOn
             last: true
@@ -200,16 +201,13 @@ SettingsSurface {
         }
 
         /**
-         * Bezier editor. The square maps unit curve-space (0,0 bottom-left to
-         * 1,1 top-right) to pixels with y inverted; the two handles are the
-         * source of truth and the cx/cy properties read back from them. An undo
-         * glyph appears whenever the live points drift from the on-open snapshot.
+         * Bezier editor in unit curve space, y inverted; the handles are the source of truth for cx/cy.
          */
         Item {
             id: editor
             visible: root.animOn
             width: parent.width
-            height: visible ? square.height + 18 * root.s : 0
+            height: root.animOn ? square.height + Theme.sp.l * root.s : 0
 
             readonly property real es: 150 * root.s
             readonly property real r: 7 * root.s
@@ -249,7 +247,7 @@ SettingsSurface {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: 10 * root.s
+                    radius: Theme.r.m * root.s
                     color: Theme.frameBg
                     border.width: 1
                     border.color: Theme.hairSoft
@@ -315,6 +313,10 @@ SettingsSurface {
                     color: h1drag.active ? Theme.bright : Theme.cream
                     border.width: 2
                     border.color: Theme.onGlow
+                    scale: h1drag.active && !Motion.calm ? 1.2 : (h1hover.hovered ? 1.1 : 1)
+                    Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
+
+                    HoverHandler { id: h1hover; cursorShape: Qt.SizeAllCursor }
 
                     DragHandler {
                         id: h1drag
@@ -337,6 +339,10 @@ SettingsSurface {
                     color: h2drag.active ? Theme.bright : Theme.cream
                     border.width: 2
                     border.color: Theme.onGlow
+                    scale: h2drag.active && !Motion.calm ? 1.2 : (h2hover.hovered ? 1.1 : 1)
+                    Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
+
+                    HoverHandler { id: h2hover; cursorShape: Qt.SizeAllCursor }
 
                     DragHandler {
                         id: h2drag
@@ -354,9 +360,9 @@ SettingsSurface {
 
             GlyphIcon {
                 anchors.right: parent.right
-                anchors.rightMargin: 12 * root.s
+                anchors.rightMargin: Theme.sp.m * root.s
                 anchors.top: parent.top
-                anchors.topMargin: 4 * root.s
+                anchors.topMargin: Theme.sp.xs * root.s
                 visible: editor.dirty
                 width: 15 * root.s
                 height: 15 * root.s
@@ -367,7 +373,7 @@ SettingsSurface {
                 MouseArea {
                     id: revertArea
                     anchors.fill: parent
-                    anchors.margins: -5 * root.s
+                    anchors.margins: -Theme.sp.xs * root.s
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
@@ -381,31 +387,18 @@ SettingsSurface {
         }
 
         SettingsRow {
+            id: presetRow
             surface: root
             name: "Preset"
-            sub: "Drop in a ready-made curve"
-            captionOnFocus: true
             icon: "waves"
             visible: root.animOn
             last: true
             SettingsSeg {
                 s: root.s
                 options: root.presets.map(function (p) { return { label: p.label, value: p.label }; })
-                value: ""
-                onPicked: (v) => {
-                    for (var i = 0; i < root.presets.length; i++) {
-                        if (root.presets[i].label === v) {
-                            var p = root.presets[i];
-                            root.cx1 = p.x1; root.cy1 = p.y1; root.cx2 = p.x2; root.cy2 = p.y2;
-                            editor.syncHandles();
-                            root.writeCurve();
-                            break;
-                        }
-                    }
-                }
+                value: root.currentPreset
+                onPicked: (v) => root.applyPreset(v)
             }
         }
-
-        Item { width: 1; height: 10 * root.s }
     }
 }

@@ -6,22 +6,13 @@ import Quickshell.Bluetooth
 import Quickshell.Services.UPower
 
 /**
- * Battery state for peripherals: every UPower device that is not the laptop
- * battery or line power (controller over Bluetooth, mouse over a Lightspeed
- * dongle, headset). BlueZ only publishes Battery1 with Experimental on, so the
- * Bluetooth surface reads percentages from here instead. A device whose
- * nativePath carries a MAC is keyed by it so a Bluetooth row can look up its
- * own battery; the rest are USB-dongle peripherals the surface lists on their
- * own. `connectedCount` tracks connected Bluetooth devices reactively through
- * an Instantiator, since a plain binding on the device list misses per-device
- * connected flips. A peripheral at or below 20% raises one notify-send, reset
- * once it climbs back or disappears.
+ * Peripheral batteries from UPower keyed by MAC for the Bluetooth rows, USB-dongle ones listed apart, one low-charge notification each.
  */
 Singleton {
     id: root
 
     readonly property int lowAt: 20
-    readonly property var devices: (typeof UPower !== "undefined" && UPower && UPower.devices) ? UPower.devices.values : []
+    readonly property var devices: UPower.devices.values
 
     readonly property var list: devices.filter(function(d) {
         return d && d.ready && d.isPresent && !d.isLaptopBattery
@@ -84,9 +75,8 @@ Singleton {
             if (p <= lowAt && !charging(d)) {
                 if (!notified[key]) {
                     notified[key] = true;
-                    notifyProc.command = ["notify-send", "-a", "Ricelin", "-i", "battery-caution",
-                        (d.model || "Device") + " at " + p + "%", "Charge it soon"];
-                    notifyProc.running = true;
+                    Quickshell.execDetached(["notify-send", "-a", "Ricelin", "-i", "battery-caution",
+                        (d.model || "Device") + " at " + p + "%", "Charge it soon"]);
                 }
             } else {
                 delete notified[key];
@@ -99,7 +89,7 @@ Singleton {
 
     function recount() {
         var n = 0;
-        var devs = (typeof Bluetooth !== "undefined" && Bluetooth && Bluetooth.devices) ? Bluetooth.devices.values : [];
+        var devs = Bluetooth.devices.values;
         for (var i = 0; i < devs.length; i++)
             if (devs[i] && devs[i].connected) n++;
         connectedCount = n;
@@ -116,7 +106,7 @@ Singleton {
     }
 
     Instantiator {
-        model: (typeof Bluetooth !== "undefined" && Bluetooth) ? Bluetooth.devices : null
+        model: Bluetooth.devices
         onObjectAdded: root.recount()
         onObjectRemoved: root.recount()
         delegate: Connections {
@@ -124,9 +114,5 @@ Singleton {
             target: modelData
             function onConnectedChanged() { root.recount() }
         }
-    }
-
-    Process {
-        id: notifyProc
     }
 }

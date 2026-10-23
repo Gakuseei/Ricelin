@@ -7,14 +7,7 @@ import "lib/setDeco.js" as SetDeco
 import "Singletons"
 
 /**
- * 飾 LOOK sub-surface: edits the window-decoration knobs that live in
- * decoration.lua and writes each change straight back to its source so the choice
- * survives a restart. Window gaps, rounding and border size, the two opacity
- * fields and the blur block all rewrite the Lua and reload Hyprland so the change
- * lands at once. Blur fields are rewritten scoped to the `blur` block, since
- * `enabled` is shared with the sibling `shadow` block. The border colours are
- * sourced from the palette pipeline and never touched here. Reached from the
- * settings index; morphs back on the back chevron.
+ * 飾 LOOK: window decoration knobs in decoration.lua, written back on each change; blur and shadow fields are scoped to their own block.
  */
 SettingsSurface {
     id: root
@@ -22,12 +15,14 @@ SettingsSurface {
     implicitHeight: content.implicitHeight
 
     /**
-     * Row registry, rebound whenever a group folds or a dependent toggle flips so
-     * keyboard navigation never lands on a hidden line. Scrub rows expose a bump
-     * that steps their ScrubValue one increment.
+     * Rebuilt when a group folds or a dependent toggle flips, so arrows never land on a hidden line.
      */
     rows: {
         var r = [];
+        function head(g) {
+            r.push({ item: g.header, kind: "toggle", get: function () { return g.open; }, set: function (v) { g.open = v; } });
+        }
+        head(winGrp);
         if (winGrp.open) {
             r.push({ item: gapsInRow, kind: "scrub", bump: function (d) { gapsInScrub.bump(d); } });
             r.push({ item: gapsOutRow, kind: "scrub", bump: function (d) { gapsOutScrub.bump(d); } });
@@ -37,6 +32,7 @@ SettingsSurface {
             r.push({ item: resizeRow, kind: "toggle", get: function () { return root.resizeOnBorder; }, set: function (v) { root.resizeOnBorder = v; root.writeDeco("resize_on_border", v ? "true" : "false"); } });
             r.push({ item: layoutRow, kind: "seg", vals: ["dwindle", "master"], get: function () { return root.layout; }, set: function (v) { root.layout = v; root.writeDeco("layout", "\"" + v + "\""); } });
         }
+        head(nightGrp);
         if (nightGrp.open) {
             r.push({ item: nlModeRow, kind: "seg", vals: ["off", "on", "scheduled"], get: function () { return Flags.nightLightMode; }, set: function (v) { NightLight.setMode(v); } });
             if (Flags.nightLightMode !== "off")
@@ -46,6 +42,7 @@ SettingsSurface {
                 r.push({ item: nlOffRow, kind: "scrub", bump: function (d) { nlOffScrub.bump(d); } });
             }
         }
+        head(shadowGrp);
         if (shadowGrp.open) {
             r.push({ item: shEnRow, kind: "toggle", get: function () { return root.shadowOn; }, set: function (v) { root.shadowOn = v; root.writeShadow("enabled", v ? "true" : "false"); } });
             if (root.shadowOn) {
@@ -53,6 +50,7 @@ SettingsSurface {
                 r.push({ item: shPowRow, kind: "scrub", bump: function (d) { shPowScrub.bump(d); } });
             }
         }
+        head(blurGrp);
         if (blurGrp.open) {
             r.push({ item: blEnRow, kind: "toggle", get: function () { return root.blurOn; }, set: function (v) { root.blurOn = v; root.writeBlur("enabled", v ? "true" : "false"); } });
             if (root.blurOn) {
@@ -62,10 +60,12 @@ SettingsSurface {
                 r.push({ item: blNoiseRow, kind: "scrub", bump: function (d) { blNoiseScrub.bump(d); } });
             }
         }
+        head(opGrp);
         if (opGrp.open) {
             r.push({ item: opActRow, kind: "scrub", bump: function (d) { opActScrub.bump(d); } });
             r.push({ item: opInactRow, kind: "scrub", bump: function (d) { opInactScrub.bump(d); } });
         }
+        head(pillGrp);
         if (pillGrp.open) {
             r.push({ item: pillGapRow, kind: "scrub", bump: function (d) { pillGapScrub.bump(d); } });
             r.push({ item: appGapRow, kind: "scrub", bump: function (d) { appGapScrub.bump(d); } });
@@ -75,7 +75,7 @@ SettingsSurface {
         return r;
     }
 
-    property string note: ""
+    readonly property string note: HyprReload.failed ? "Hyprland reload failed. The change is saved but not applied." : ""
 
     readonly property string decoPath: Quickshell.env("HOME") + "/.config/hypr/modules/decoration.lua"
     readonly property string pillBlurRule: 'hl.layer_rule({ name = "pill-blur", match = { namespace = "pill" }, blur = true, ignore_alpha = 0.5 })\n'
@@ -105,7 +105,9 @@ SettingsSurface {
 
     property string decoText: ""
 
-    /** Per-field values captured on each open; the ScrubValue undo glyphs revert to these. */
+    /**
+     * Per-field values captured on each open; the ScrubValue undo glyphs revert to these.
+     */
     property var base: ({})
 
     onActiveChanged: {
@@ -119,10 +121,7 @@ SettingsSurface {
     }
 
     /**
-     * Seeds every control from the live decoration.lua. Numbers fall back to the
-     * shipped defaults when a field is missing so a partially hand-edited config
-     * never leaves a control blank. Blur fields read from the `blur` block so a
-     * field name shared with the `shadow` block resolves correctly.
+     * Seeds every control from decoration.lua, falling back to shipped defaults for missing fields.
      */
     function seed() {
         root.decoText = decoFile.text();
@@ -188,7 +187,6 @@ SettingsSurface {
         };
     }
 
-    /** Minutes-since-midnight rendered as HH:MM for the schedule scrubs. */
     function fmtClock(v) {
         var h = Math.floor(v / 60);
         var m = v % 60;
@@ -201,27 +199,16 @@ SettingsSurface {
         { label: "Scheduled", value: "scheduled" }
     ]
 
-    /**
-     * Rewrites one top-level decoration.lua field to `literal` (already formatted
-     * by the caller) and reloads Hyprland so the change takes effect at once.
-     */
     function writeDeco(name, literal) {
         var res = SetDeco.setField(root.decoText, name, literal);
         if (!res.ok)
             return;
         root.decoText = res.text;
         decoWriter.setText(res.text);
-        reloadTimer.restart();
     }
 
     /**
-     * Same as writeDeco, but for the two opacity fields. A plain reload re-reads
-     * the file yet only animates windows on their next focus change, so a window
-     * that was inactive when the value changed keeps its stale alpha. Pushing the
-     * value through hl.config hits Hyprland's REFRESH_WINDOW_STATES path, which
-     * recomputes every existing window's active/inactive alpha at once. Sends both
-     * fields so lowering one then restoring the other never leaves a window stuck,
-     * and the push fires even when the value lands back on 1.0.
+     * Also pushes both opacities through hl.config, since a plain reload leaves unfocused windows on their stale alpha.
      */
     function writeOpacity(name, literal) {
         writeDeco(name, literal);
@@ -232,9 +219,7 @@ SettingsSurface {
     }
 
     /**
-     * Rewrites one field inside the `blur` block to `literal` and reloads
-     * Hyprland. Scoping to the block keeps `enabled` from hitting the sibling
-     * `shadow` block's `enabled` first.
+     * Scoped to the `blur` block so `enabled` never hits the sibling `shadow` block.
      */
     function writeBlur(name, literal) {
         var res = SetDeco.setBlockField(root.decoText, "blur", name, literal);
@@ -242,13 +227,10 @@ SettingsSurface {
             return;
         root.decoText = res.text;
         decoWriter.setText(res.text);
-        reloadTimer.restart();
     }
 
     /**
-     * Rewrites one field inside the `shadow` block to `literal` and reloads
-     * Hyprland. Scoped to the block so `enabled` lands on shadow, not the sibling
-     * `blur` block.
+     * Scoped to the `shadow` block so `enabled` never hits the sibling `blur` block.
      */
     function writeShadow(name, literal) {
         var res = SetDeco.setBlockField(root.decoText, "shadow", name, literal);
@@ -256,14 +238,10 @@ SettingsSurface {
             return;
         root.decoText = res.text;
         decoWriter.setText(res.text);
-        reloadTimer.restart();
     }
 
     /**
-     * Adds or removes the pill-blur layer_rule in decoration.lua and reloads
-     * Hyprland so the frosted-glass effect behind the pill turns on or off at
-     * once. The rule lives in the Lua source (the live config parser rejects a
-     * runtime `layerrule` keyword), so it has to be written, not pushed.
+     * The pill-blur layer_rule must be written to the Lua, since the live parser rejects a runtime `layerrule`.
      */
     function applyPillBlur(on) {
         var t = root.decoText;
@@ -279,7 +257,6 @@ SettingsSurface {
             return;
         root.decoText = res.text;
         decoWriter.setText(res.text);
-        reloadTimer.restart();
     }
 
     FileView {
@@ -294,26 +271,7 @@ SettingsSurface {
         path: root.decoPath
         atomicWrites: true
         printErrors: false
-    }
-
-    /**
-     * Reload is debounced so a scrub drag writes the file per step but reloads
-     * Hyprland once, and captured so a failed reload surfaces as the inline note
-     * instead of vanishing with a detached process.
-     */
-    Timer {
-        id: reloadTimer
-        interval: 250
-        repeat: false
-        onTriggered: reloadProc.running = true
-    }
-
-    Process {
-        id: reloadProc
-        command: ["sh", "-c", "sleep 0.3; hyprctl reload"]
-        onExited: function (exitCode) {
-            root.note = exitCode === 0 ? "" : "Hyprland reload failed. The change is saved but not applied.";
-        }
+        onSaved: HyprReload.request()
     }
 
     Process {
@@ -321,45 +279,69 @@ SettingsSurface {
         command: []
     }
 
-    component GroupLabel: SettingsLabel { s: root.s }
-
     /**
-     * Collapsible settings group: a tappable header (the group label plus a
-     * chevron) over a body of rows that animates between zero and its content
-     * height, so a long tab shows only the group headers until one is opened.
-     * `open` is the initial state; tapping the header toggles it.
+     * Folding group: its header is a registry row, so arrows reach it and Enter, Space or a click folds it.
      */
     component Group: Column {
         id: grp
         property string title: ""
         property bool open: false
+        readonly property alias header: head
         default property alias rows: body.data
 
         width: parent ? parent.width : 0
         spacing: 0
 
-        Item {
-            width: parent.width
-            height: gl.implicitHeight
+        Item { width: 1; height: Theme.sp.s * root.s }
 
-            GroupLabel { id: gl; text: grp.title }
+        Item {
+            id: head
+            readonly property bool lit: headHover.hovered || root.focusRowItem === head
+
+            width: parent.width
+            height: 28 * root.s
+
+            HoverHandler {
+                id: headHover
+                onHoveredChanged: root.reportRowHover(head, hovered)
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.r.m * root.s
+                color: headPress.pressed ? Theme.pressBg : (head.lit ? Theme.frameBg : "transparent")
+                Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
+            }
+
+            SettingsLabel {
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.sp.m * root.s
+                anchors.verticalCenter: parent.verticalCenter
+                s: root.s
+                topPadding: 0
+                bottomPadding: 0
+                text: grp.title
+                color: head.lit || grp.open ? Theme.subtle : Theme.textFaint
+            }
 
             GlyphIcon {
                 anchors.right: parent.right
-                anchors.verticalCenter: gl.verticalCenter
-                width: 15 * root.s
-                height: 15 * root.s
+                anchors.rightMargin: Theme.sp.m * root.s
+                anchors.verticalCenter: parent.verticalCenter
+                width: 14 * root.s
+                height: 14 * root.s
                 name: "chevron-down"
-                color: Theme.faint
+                color: head.lit ? Theme.cream : Theme.textFaint
                 stroke: 2.0
                 rotation: grp.open ? 0 : -90
-                Behavior on rotation { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
+                Behavior on rotation { enabled: !Motion.calm; NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
             }
 
             MouseArea {
+                id: headPress
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                onClicked: grp.open = !grp.open
+                onClicked: root.activateRow(head)
             }
         }
 
@@ -376,7 +358,7 @@ SettingsSurface {
         }
     }
 
-    component FieldRow: SettingsField { surface: root }
+    component FieldRow: SettingsRow { surface: root }
 
     Column {
         id: content
@@ -388,18 +370,16 @@ SettingsSurface {
         height: root.height + root.mBottom * root.s
         clip: true
 
-        SettingsHeader {
+        SurfaceHeader {
             s: root.s
             glyph: "飾"
             title: "LOOK"
-            showBack: true
+            canBack: true
         }
 
         Column {
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: 12 * root.s
-            anchors.rightMargin: 12 * root.s
             spacing: 0
 
             Group { id: winGrp; title: "Window"; open: true
@@ -827,18 +807,17 @@ SettingsSurface {
 
             Text {
                 width: parent.width
-                topPadding: 8 * root.s
+                topPadding: Theme.sp.s * root.s
+                leftPadding: Theme.sp.m * root.s
+                rightPadding: Theme.sp.m * root.s
                 visible: root.note.length > 0
                 text: root.note
-                color: Theme.subtle
+                color: Theme.danger
                 font.family: Theme.font
-                font.pixelSize: 10 * root.s
-                font.weight: Font.Medium
+                font.pixelSize: Theme.fs.meta * root.s
                 wrapMode: Text.WordWrap
                 lineHeight: 1.25
             }
-
-            Item { width: 1; height: 10 * root.s }
         }
     }
 }

@@ -4,22 +4,7 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * Live weather for the pill's hover glance, served by Open-Meteo with no API key.
- * Location resolves once and is cached so a restart never re-hits the network for
- * coordinates: by default the city, latitude and longitude come from a keyless IP
- * lookup (ip-api), but a non-empty `Flags.weatherCity` override geocodes that name
- * via Open-Meteo's geocoder instead. Once coordinates are known the forecast runs
- * immediately and then every 20 minutes, exposing the current conditions plus a
- * 24-hour hourly strip.
- *
- * Everything is async through `Process` + `curl`, mirroring how Sysmon and Devices
- * fetch, so startup never blocks on a slow or absent connection. Every JSON parse
- * is guarded: a partial body or network blip leaves the last good values in place
- * and `ready` simply stays false until the first clean fetch lands.
- *
- * Conditions render as on-brand kanji rather than icons — 晴 clear, 曇 cloud,
- * 雨 rain, 雪 snow, 霧 fog, 雷 thunder, 月 a clear night — keyed off the WMO weather
- * code via `glyphFor`, with `labelFor` giving the short english word.
+ * Live weather from Open-Meteo with no API key, located once via ip-api or `Flags.weatherCity` and cached, then refreshed every 20 minutes.
  */
 Singleton {
     id: root
@@ -40,9 +25,7 @@ Singleton {
     property bool located: false
 
     /**
-     * Maps a WMO weather code to its on-brand kanji. Clear skies show 月 at night
-     * so the glance reads day-versus-night at a glance; every other condition is
-     * the same glyph round the clock.
+     * Maps a WMO weather code to a glyph name, with clear skies switching to moon at night.
      */
     function glyphFor(code, day) {
         if (code === 0)
@@ -89,8 +72,7 @@ Singleton {
     }
 
     /**
-     * Loads cached coordinates synchronously (blockLoading) and fetches at once;
-     * an absent or malformed cache falls through to a fresh location lookup.
+     * Loads cached coordinates synchronously (blockLoading), and a missing or bad cache falls back to a fresh location lookup.
      */
     Component.onCompleted: {
         try {

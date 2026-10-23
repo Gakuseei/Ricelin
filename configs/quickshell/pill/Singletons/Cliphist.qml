@@ -4,20 +4,7 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * cliphist bridge: keeps a warm in-memory snapshot of the clipboard history so
- * the clipboard surface opens instantly without shelling out on demand. A
- * wl-paste watcher fires on every clipboard change; after a short debounce the
- * thumbnail script regenerates missing image previews (and prunes stale ones),
- * then `cliphist list` is re-read into `entries`. Thumbnails are written before
- * the list lands so image delegates never bind to a not-yet-existing file. A
- * change arriving while the pipeline runs sets `pending` and replays once the
- * list lands, so no clipboard event is ever silently dropped; the watcher
- * respawns through a cooldown timer if wl-paste dies.
- *
- * Entries are plain objects: { id, preview, isImage, meta, label, sizeLabel,
- * thumb } where meta is cliphist's raw binary descriptor ("245 KiB png
- * 1920x1080"), label/sizeLabel its display split ("png 1920×1080" / "245 KiB")
- * and thumb the absolute path of the cached preview png (empty for text).
+ * In-memory cliphist history snapshot, refreshed only at startup and when the clipboard surface opens, so a copy with the surface closed costs nothing.
  */
 Singleton {
     id: root
@@ -27,9 +14,7 @@ Singleton {
     property bool pending: false
 
     /**
-     * False until one `cliphist list` succeeded, so the surface can tell a
-     * genuinely empty history apart from a failed early-boot read (the list
-     * collides with a `cliphist store` write lock right after login).
+     * False until one `cliphist list` succeeded, to tell an empty history from a failed early-boot read that hit the store write lock.
      */
     property bool loaded: false
 
@@ -52,15 +37,12 @@ Singleton {
 
     function wipe() {
         entries = [];
+        lastList = "";
         wipeProc.running = true;
     }
 
     /**
-     * Deletes are queued through a tracked process and any refresh is held
-     * until the queue drains: a fire-and-forget delete racing an in-flight
-     * `cliphist list` used to resurrect the removed entry from the stale
-     * snapshot. The local prune stays optimistic so the row vanishes
-     * immediately.
+     * Deletes run through a tracked queue that holds refreshes back, since a delete racing an in-flight `cliphist list` resurrected the entry.
      */
     property var delQueue: []
 
@@ -73,6 +55,7 @@ Singleton {
             if (entries[i].id !== id)
                 kept.push(entries[i]);
         entries = kept;
+        lastList = "";
         delQueue.push(id);
         pumpDeletes();
     }
@@ -96,28 +79,6 @@ Singleton {
     }
 
     Process {
-        id: watchProc
-        command: ["wl-paste", "--watch", "echo", "x"]
-        running: true
-        stdout: SplitParser {
-            onRead: debounce.restart()
-        }
-        onExited: respawn.restart()
-    }
-
-    Timer {
-        id: respawn
-        interval: 2000
-        onTriggered: watchProc.running = true
-    }
-
-    Timer {
-        id: debounce
-        interval: 300
-        onTriggered: root.refresh()
-    }
-
-    Process {
         id: wipeProc
         command: ["cliphist", "wipe"]
         onExited: root.refresh()
@@ -130,9 +91,11 @@ Singleton {
     }
 
     /**
-     * A failed read (boot-time store lock, db hiccup) must not wipe the last
-     * good snapshot; one quiet retry heals the race without looping.
+     * A failed read (boot-time store lock) keeps the last good snapshot and gets one quiet retry instead of a loop.
      */
+    property bool retried: false
+    property string lastList: ""
+
     Timer {
         id: listRetry
         interval: 2000
@@ -182,12 +145,19 @@ Singleton {
         stdout: StdioCollector { id: collected }
         onExited: (exitCode) => {
             if (exitCode !== 0) {
-                console.warn("cliphist list failed with exit code " + exitCode + ", retrying once");
                 root.pending = false;
-                listRetry.restart();
+                if (!root.retried) {
+                    console.warn("cliphist list failed with exit code " + exitCode + ", retrying once");
+                    root.retried = true;
+                    listRetry.restart();
+                }
                 return;
             }
-            root.applyList(collected.text);
+            root.retried = false;
+            if (!root.loaded || collected.text !== root.lastList) {
+                root.lastList = collected.text;
+                root.applyList(collected.text);
+            }
             if (root.pending) {
                 root.pending = false;
                 Qt.callLater(root.refresh);

@@ -4,33 +4,20 @@ import QtQuick
 import "Singletons"
 
 /**
- * Clipboard surface: search field over the cliphist history, drawn as one of
- * the pill's surfaces. Entries come from the Cliphist singleton snapshot so the
- * list is populated as soon as the pill finishes morphing. Typing filters by
- * substring, Return copies the selected entry and closes, hovering a row
- * cross-fades a dismiss glyph that deletes it (Ctrl+X does the same for the
- * keyboard selection). Image entries render their cached thumbnail beside the
- * size label. Holding the 掃 glyph for the heat duration wipes the whole
- * history; progress sweeps along the header divider and drains on early
- * release.
+ * Clipboard: filterable cliphist history; Enter copies, hover or Ctrl+X deletes a row, holding 掃 wipes everything.
  */
 PillSurface {
     id: root
 
-    mTop: 15
-    mLeft: 17
-    mRight: 17
-    mBottom: 14
+    mTop: Theme.inset.top
+    mLeft: Theme.inset.side
+    mRight: Theme.inset.side
+    mBottom: Theme.inset.bottom
 
     property string query: ""
     property int selectedIndex: 0
 
-    /**
-     * Window-coordinate position of the last hover event that was allowed to
-     * move the selection. Rows sliding under a stationary cursor during
-     * keyboard scrolling produce hover events at an unchanged window position,
-     * which must not steal the keyboard selection.
-     */
+    /** Last pointer position that moved the selection, so rows sliding under a still cursor never steal it. */
     property point lastPointer: Qt.point(-1, -1)
 
     readonly property point caretPoint: {
@@ -60,6 +47,11 @@ PillSurface {
         }
         return out;
     }
+
+    /** Rows sit on one grid: a text row is one unit, an image row two, so the viewport always ends on a row edge. */
+    readonly property real rowGap: 2 * s
+    readonly property real unit: 28 * s
+    readonly property int unitsFit: Math.max(0, Math.floor((height - list.y + rowGap) / (unit + rowGap)))
 
     function focusField() { search.input.forceActiveFocus(); }
 
@@ -127,12 +119,12 @@ PillSurface {
 
             readonly property real hold: wipeHeat.hold
             readonly property bool holding: wipeHeat.holding
-            readonly property color tone: holding ? Theme.vermLit : (wipeArea.containsMouse ? Theme.cream : Theme.faint)
+            readonly property color tone: holding ? Theme.vermLit : (wipeArea.containsMouse ? Theme.cream : Theme.textFaint)
 
             Tooltip {
                 s: root.s
                 placement: "below"
-                title: "hold to wipe"
+                title: "Hold to clear history"
                 show: wipeArea.containsMouse || wipeBtn.holding
             }
 
@@ -143,7 +135,7 @@ PillSurface {
                 color: wipeBtn.tone
                 font.family: Theme.fontJp
                 font.pixelSize: 12 * root.s
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
             }
 
             GlyphIcon {
@@ -153,7 +145,7 @@ PillSurface {
                 height: 12 * root.s
                 name: "trash"
                 color: wipeBtn.tone
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
             }
 
             HeatHold {
@@ -197,13 +189,13 @@ PillSurface {
         }
     }
 
-    Text {
-        anchors.centerIn: list
-        visible: root.results.length === 0
-        text: root.query.length ? "No matches" : (Cliphist.loaded ? "History empty" : "")
-        color: Theme.faint
-        font.family: Theme.font
-        font.pixelSize: 10.5 * root.s
+    EmptyState {
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: list.y + Theme.sp.l * root.s
+        visible: root.results.length === 0 && (root.query.length > 0 || Cliphist.loaded)
+        s: root.s
+        glyph: "type"
+        text: root.query.length ? "No matches" : "Clipboard is empty"
     }
 
     ListView {
@@ -212,17 +204,18 @@ PillSurface {
         anchors.topMargin: 6 * root.s
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        spacing: 2 * root.s
+        height: root.unitsFit * root.unit + Math.max(0, root.unitsFit - 1) * root.rowGap
+        spacing: root.rowGap
         clip: true
         boundsBehavior: Flickable.StopAtBounds
+        snapMode: ListView.SnapToItem
         model: root.results.length
 
         delegate: Item {
             id: row
             required property int index
             width: list.width
-            height: (entry && entry.isImage ? 44 : 28) * root.s
+            height: entry && entry.isImage ? 2 * root.unit + root.rowGap : root.unit
 
             readonly property var entry: root.results[index]
             readonly property bool selected: index === root.selectedIndex
@@ -242,9 +235,9 @@ PillSurface {
 
             Rectangle {
                 anchors.fill: parent
-                radius: 9 * root.s
+                radius: Theme.r.m * root.s
                 visible: row.selected || rowHover.hovered
-                color: row.selected ? Theme.frameBg : Qt.rgba(0.94, 0.88, 0.84, 0.03)
+                color: rowArea.pressed ? Theme.hair : (row.selected ? Theme.frameBg : Qt.alpha(Theme.cream, 0.03))
                 border.width: row.selected ? 1 : 0
                 border.color: Theme.frameBorder
             }
@@ -261,16 +254,16 @@ PillSurface {
 
             Item {
                 anchors.fill: parent
-                anchors.leftMargin: 11 * root.s
-                anchors.rightMargin: 11 * root.s
+                anchors.leftMargin: Theme.sp.m * root.s
+                anchors.rightMargin: Theme.sp.m * root.s
 
                 Rectangle {
                     id: thumbTile
                     anchors.verticalCenter: parent.verticalCenter
                     visible: row.entry !== undefined && row.entry.isImage
-                    width: visible ? 52 * root.s : 0
-                    height: 32 * root.s
-                    radius: 6 * root.s
+                    width: visible ? 72 * root.s : 0
+                    height: 44 * root.s
+                    radius: Theme.r.s * root.s
                     color: Theme.tileBg
                     border.width: 1
                     border.color: Theme.border
@@ -292,15 +285,15 @@ PillSurface {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: thumbTile.visible ? thumbTile.right : parent.left
-                    anchors.leftMargin: thumbTile.visible ? 9 * root.s : 0
+                    anchors.leftMargin: thumbTile.visible ? Theme.sp.m * root.s : 0
                     anchors.right: sizeTag.left
                     anchors.rightMargin: 8 * root.s
                     text: row.entry === undefined ? "" : (row.entry.isImage ? row.entry.label : row.entry.preview)
                     color: row.entry !== undefined && row.entry.isImage
-                        ? (row.selected ? Theme.dim : Theme.faint)
+                        ? (row.selected ? Theme.subtle : Theme.textFaint)
                         : (row.selected ? Theme.cream : Theme.subtle)
                     font.family: Theme.font
-                    font.pixelSize: 11.5 * root.s
+                    font.pixelSize: Theme.fs.body * root.s
                     font.weight: row.selected ? Font.DemiBold : Font.Medium
                     elide: Text.ElideRight
                     maximumLineCount: 1
@@ -314,9 +307,9 @@ PillSurface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: row.entry !== undefined && row.entry.isImage ? row.entry.sizeLabel : ""
                     width: text.length ? implicitWidth : 0
-                    color: Theme.faint
+                    color: Theme.textFaint
                     font.family: Theme.font
-                    font.pixelSize: 10.5 * root.s
+                    font.pixelSize: Theme.fs.meta * root.s
                     font.features: { "tnum": 1 }
                 }
 
@@ -335,19 +328,23 @@ PillSurface {
                         text: "↵"
                         color: Theme.vermLit
                         font.family: Theme.font
-                        font.pixelSize: 12 * root.s
-                        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                        font.pixelSize: Theme.fs.body * root.s
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
                     }
 
-                    Text {
+                    GlyphIcon {
                         id: dismiss
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
+                        implicitWidth: 11 * root.s
+                        implicitHeight: 11 * root.s
+                        width: implicitWidth
+                        height: implicitHeight
                         opacity: rowHover.hovered ? 1 : 0
-                        text: "✕"
-                        color: dismissArea.containsMouse ? Theme.cream : Theme.dim
-                        font.pixelSize: 10 * root.s
-                        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                        name: "close"
+                        stroke: 2
+                        color: dismissArea.containsMouse ? Theme.vermLit : Theme.iconDim
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
 
                         MouseArea {
                             id: dismissArea

@@ -5,12 +5,7 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * Game mode: one flag that strips Hyprland's eye-candy and quiets the desktop for
- * gaming or deep focus. Entering snapshots the focus flags, forces do-not-disturb
- * and keep-awake on, pauses the visualizer, and runs the visual strip; leaving
- * restores each to what it was before. The strip itself lives in gamemode.sh so
- * the original decoration values survive a pill restart. `Flags.gameMode` is the
- * single source of truth, flipped by the mixer chip, the keybind, or IPC.
+ * Game mode that strips Hyprland eye-candy via gamemode.sh and quiets the desktop, with `Flags.gameMode` as the single source of truth.
  */
 Singleton {
     id: root

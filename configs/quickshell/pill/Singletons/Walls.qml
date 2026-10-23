@@ -4,25 +4,7 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * Wallpaper bridge: keeps a warm in-memory snapshot of the wallpaper folder so
- * the wallpaper strip opens instantly without shelling out on demand. A
- * refresh first runs the thumbnail script (generating missing 512px previews
- * and pruning ones whose source is gone), then re-lists the directory
- * newest-first and finally re-reads the state file wallpaper.sh maintains, so
- * `current` always names the wallpaper on screen. Thumbnails land before the
- * list so strip delegates never bind to a not-yet-existing file; a refresh
- * arriving while the pipeline runs sets `pending` and replays once the state
- * lands. Applying routes through wallpaper.sh so the picker shares the exact
- * transition, palette and state path with the random keybind.
- *
- * The folder resolves through one chain, first hit wins: an explicit
- * `wallpaperDir` in flags.json, then the dir wallpaper.sh resolved and wrote
- * to the ricelin-wallpaper-dir state file on its last run, then
- * ~/Ricelin/wallpapers for a first boot before wallpaper.sh init has run.
- *
- * Entries are plain objects: { path, name, mtime, thumb } where path is the
- * absolute source file, mtime its modification time in epoch seconds and
- * thumb the absolute path of the cached preview png.
+ * Warm snapshot of the wallpaper folder so the strip opens instantly, applying picks through wallpaper.sh to share its transition and state with the random keybind.
  */
 Singleton {
     id: root
@@ -60,10 +42,7 @@ Singleton {
             return;
         }
         /**
-         * Re-resolve the folder first when autodetect is in play: it only runs
-         * inside wallpaper.sh, so a shell restart used to leave the strip on
-         * the stale state file. An explicit folder skips that hop entirely and
-         * swaps straight away.
+         * Autodetect only runs inside wallpaper.sh, so re-resolve the folder first or a shell restart leaves the strip on a stale state file.
          */
         if (Flags.wallpaperDir.length > 0) {
             thumbProc.running = true;
@@ -79,10 +58,7 @@ Singleton {
     }
 
     /**
-     * wallpaper.sh blocks through the whole transition (awww wave, matugen,
-     * reload), easily 1-2s; a pick landing in that window used to be silently
-     * swallowed. Now the newest request is queued and replayed once the
-     * running transition exits, so rapid iteration converges on the last pick.
+     * wallpaper.sh blocks for the whole 1-2s transition, so the newest pick is queued and replayed instead of being swallowed.
      */
     property string queuedApply: ""
     property string queuedOutput: ""

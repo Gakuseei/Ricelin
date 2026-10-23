@@ -1,42 +1,36 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls as QQC
 import Quickshell
 import Quickshell.Io
-import Quickshell.Networking
 import "Singletons"
 
 /**
- * 波 WIFI surface: kanji header, wifi enable toggle and the live network list
- * sorted by signal strength. Security and known-profile ground truth come from
- * nmcli; clicking a secured unknown network expands an inline password row that
- * connects through `nmcli dev wifi connect`. Standalone root surface, so Escape
- * and the backdrop dismiss it like every other surface; the pill body provides
- * the material, this item draws no background.
+ * 波 WIFI surface: the network list by signal strength with inline connect, password and forget rows, plus the hotspot.
  */
 PillSurface {
     id: root
 
-    mTop: 13
-    mLeft: 16
-    mRight: 16
-    mBottom: 13
+    mTop: Theme.inset.top
+    mLeft: Theme.inset.side
+    mRight: Theme.inset.side
+    mBottom: Theme.inset.bottom
 
-    readonly property var devices: (typeof Networking !== "undefined" && Networking && Networking.devices) ? Networking.devices.values : []
-    readonly property var wifiDev: devices.find(function(d) { return d && d.type === DeviceType.Wifi }) || null
-    readonly property bool wifiOn: (typeof Networking !== "undefined" && Networking) ? Networking.wifiEnabled : false
-    readonly property var nets: (wifiDev && wifiDev.networks) ? wifiDev.networks.values : []
+    readonly property var wifiDev: Net.wifiDev
+    readonly property bool wifiOn: Net.wifiOn
+    readonly property var nets: Net.wifiNets
+    readonly property var activeNet: Net.wifiActive
     readonly property var netsSorted: nets.slice().sort(function(a, b) {
         return ((b ? b.signalStrength : 0) || 0) - ((a ? a.signalStrength : 0) || 0)
     })
-    readonly property var activeNet: nets.find(function(n) { return n && n.connected }) || null
     readonly property string statusText: !wifiOn ? "Off"
         : (activeNet ? (activeNet.name || "Connected") : "Not connected")
 
     property var securityMap: ({})
     property var knownProfiles: ({})
     property string expandedSsid: ""
+    property string kbSsid: ""
     property bool connecting: false
     property bool connectFailed: false
     property string connFailReason: ""
@@ -52,12 +46,7 @@ PillSurface {
         return p.join(" · ");
     }
 
-    /**
-     * SSID of the saved network whose stored password is currently shown, plus
-     * the revealed secret itself. Keying both to one SSID keeps the reveal local
-     * to the row the user asked about and lets `revealResolved` distinguish "not
-     * yet read" from "read but empty" so an open profile shows a clear message.
-     */
+    /** Saved password shown for one SSID; `revealResolved` tells "not read yet" from "read but empty". */
     property string revealedSsid: ""
     property string revealedPw: ""
     property bool revealResolved: false
@@ -71,17 +60,14 @@ PillSurface {
     property string hsEdit: ""
     property string hsDraft: ""
 
-    /**
-     * Draft of the password being typed for `expandedSsid`. Lives on the root so
-     * the field can restore itself from the draft if the keyed list model swaps
-     * the delegate's network object under it on a rescan.
-     */
+    /** Password draft on the root, so a rescan that swaps the delegate's network object keeps what was typed. */
     property string pwDraft: ""
     property string pendingPw: ""
     property string attemptSsid: ""
     property bool attemptWasKnown: false
 
     implicitHeight: hsBlock.y + hsBlock.height
+    holdsFocus: expandedSsid.length > 0 || hsEdit.length > 0
 
     function isSecured(ssid) {
         var sec = securityMap[ssid];
@@ -95,10 +81,7 @@ PillSurface {
             detailProc.running = true;
     }
 
-    /**
-     * Splits one `nmcli -t` line at its last unescaped colon and unescapes the
-     * leading field. Returns null for lines without a field separator.
-     */
+    /** Splits one `nmcli -t` line at its last unescaped colon and unescapes the leading field. */
     function splitTerse(line) {
         for (var k = line.length - 1; k >= 0; k--) {
             if (line[k] === ":" && (k === 0 || line[k - 1] !== "\\"))
@@ -107,16 +90,12 @@ PillSurface {
         return null;
     }
 
-    /**
-     * Click dispatch for a network row. A connected or saved network expands the
-     * inline confirm row (disconnect/connect plus forget) rather than acting at
-     * once; an open unknown network connects directly; an unknown secured network
-     * expands the password row. Tapping the open row again collapses it.
-     */
+    /** Saved or connected opens the confirm row, open connects at once, secured asks for a password; a second click closes. */
     function activateNetwork(net) {
         if (!net)
             return;
         var ssid = net.name || "";
+        kbSsid = ssid;
         if (expandedSsid === ssid && ssid.length) {
             expandedSsid = "";
             return;
@@ -139,11 +118,6 @@ PillSurface {
         expandedSsid = ssid;
     }
 
-    /**
-     * Connects a saved profile from its confirm row. Known profiles connect by
-     * name through the device so no password prompt is needed. The row shows a
-     * spinner until the active network lands or the safety timer gives up.
-     */
     function connectKnown(net) {
         if (!net)
             return;
@@ -166,11 +140,7 @@ PillSurface {
         refresh();
     }
 
-    /**
-     * Drops the saved connection profile for `ssid`. The SSID is passed as its
-     * own argv element so an odd character can neither break nor inject the
-     * command. The list refreshes once nmcli exits.
-     */
+    /** The SSID goes in as its own argv element, so no character in it can break or inject the command. */
     function forgetNetwork(ssid) {
         if (forgetProc.running || !ssid.length)
             return;
@@ -179,13 +149,7 @@ PillSurface {
         forgetProc.running = true;
     }
 
-    /**
-     * Reveals the stored password of a saved profile, or hides it again if the
-     * same row is already showing. NetworkManager lets the owning user read their
-     * own saved secret without root, so this runs unprivileged. The SSID is
-     * passed as its own argv element so an odd character can neither break nor
-     * inject the command.
-     */
+    /** NetworkManager lets the owner read a saved secret unprivileged; a second click on the same row hides it. */
     function revealPassword(ssid) {
         if (!ssid.length)
             return;
@@ -197,7 +161,7 @@ PillSurface {
         revealedPw = "";
         revealResolved = false;
         revealProc.command = ["nmcli", "-s", "-g", "802-11-wireless-security.psk", "connection", "show", "id", ssid];
-        revealProc.running = true;
+        revealProc.rerun();
     }
 
     function hidePassword() {
@@ -206,11 +170,7 @@ PillSurface {
         revealResolved = false;
     }
 
-    /**
-     * Connects via `nmcli --ask`, feeding the password through stdin so the
-     * secret never appears in the process command line (`/proc/<pid>/cmdline`
-     * is world-readable for the whole connection attempt).
-     */
+    /** The password goes in through stdin, since the command line is world-readable while nmcli runs. */
     function connectWithPassword(ssid, pw) {
         if (connProc.running || !pw.length)
             return;
@@ -224,11 +184,7 @@ PillSurface {
         connProc.running = true;
     }
 
-    /**
-     * Reload pulse: forces a fresh nmcli rescan and spins the control for up to
-     * 10s. The device scanner already runs while the surface is open, so the
-     * list never empties; this only refreshes results and drives the spinner.
-     */
+    /** Forces a fresh nmcli rescan for up to 10 s; the device scanner keeps running anyway while the surface is open. */
     function startScan() {
         if (!wifiOn)
             return;
@@ -242,6 +198,55 @@ PillSurface {
         scanTimer.stop();
     }
 
+    function back() {
+        if (hsEdit.length) {
+            hsEdit = "";
+            return true;
+        }
+        if (expandedSsid.length) {
+            expandedSsid = "";
+            return true;
+        }
+        return false;
+    }
+
+    function handleKey(e) {
+        if (e.key === Qt.Key_Up || e.key === Qt.Key_Down) {
+            var list = netsSorted;
+            if (!list.length)
+                return false;
+            var down = e.key === Qt.Key_Down;
+            var i = -1;
+            for (var k = 0; k < list.length; k++)
+                if (list[k] && (list[k].name || "") === kbSsid)
+                    i = k;
+            i = i < 0 ? (down ? 0 : list.length - 1) : Math.max(0, Math.min(list.length - 1, i + (down ? 1 : -1)));
+            kbSsid = list[i] ? (list[i].name || "") : "";
+            reveal(i);
+            return true;
+        }
+        if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) {
+            if (e.isAutoRepeat)
+                return true;
+            var net = netsSorted.find(function(n) { return n && (n.name || "") === root.kbSsid; });
+            if (!net)
+                return false;
+            activateNetwork(net);
+            return true;
+        }
+        return false;
+    }
+
+    function reveal(index) {
+        var it = netRep.itemAt(index);
+        if (!it)
+            return;
+        if (it.y < netFlick.contentY)
+            netFlick.contentY = it.y;
+        else if (it.y + it.height > netFlick.contentY + netFlick.height)
+            netFlick.contentY = it.y + it.height - netFlick.height;
+    }
+
     onActiveChanged: {
         if (active) {
             refresh();
@@ -250,6 +255,7 @@ PillSurface {
         } else {
             stopScan();
             expandedSsid = "";
+            kbSsid = "";
             connecting = false;
             connSpinTimer.stop();
             connectFailed = false;
@@ -262,7 +268,7 @@ PillSurface {
 
     onExpandedSsidChanged: if (revealedSsid !== expandedSsid) hidePassword()
 
-    /** The known-profile spinner ends when the attempted network reports connected; the detail line follows every active-network change. */
+    /** The known-profile spinner ends when the attempted network connects; the detail line follows every change. */
     onActiveNetChanged: {
         if (root.activeNet && root.attemptSsid.length && (root.activeNet.name || "") === root.attemptSsid) {
             root.connecting = false;
@@ -297,12 +303,7 @@ PillSurface {
         command: ["nmcli", "dev", "wifi", "rescan"]
     }
 
-    /**
-     * Brings the shared AP up with the current name and password, creating the
-     * persistent connection on first use and modifying it on later changes. Name
-     * and password are passed as positional arguments, never spliced into the
-     * shell string, so an odd character cannot break or inject the command.
-     */
+    /** Creates the hotspot profile on first use, updates it after, then brings it up; values go in as argv, never spliced. */
     function applyHotspot() {
         if (hsBusy || hsPw.length < 8)
             return;
@@ -331,13 +332,7 @@ PillSurface {
         hsReadProc.running = true;
     }
 
-    /**
-     * Commits an inline name or password edit, ignoring a password shorter than
-     * the 8-character WPA2 minimum. The connection profile is written either
-     * way, so an edit made while the hotspot is down survives a pill restart;
-     * a live hotspot is additionally re-applied so the change takes effect at
-     * once. The NM profile stays the single source of truth for both fields.
-     */
+    /** A password under the WPA2 minimum of 8 is ignored; the profile is saved either way and a live hotspot re-applies. */
     function commitHotspotEdit() {
         if (hsEdit === "name") {
             if (hsDraft.length)
@@ -353,12 +348,7 @@ PillSurface {
             saveHotspot();
     }
 
-    /**
-     * Persists name and password into the RicelinHotspot profile without
-     * bringing it up, creating the profile on first edit. A missing or short
-     * password is generated here, since a WPA profile with an empty psk would
-     * be broken; the field shows the generated value right away.
-     */
+    /** Writes name and password into the profile without bringing it up, generating a password when none is set. */
     function saveHotspot() {
         if (hsPw.length < 8)
             hsPw = generatePw();
@@ -373,10 +363,7 @@ PillSurface {
         hsSaveProc.running = true;
     }
 
-    /**
-     * Builds an eight-character WPA2 password from an unambiguous alphabet, used
-     * when the hotspot is switched on before a password has been set.
-     */
+    /** Eight characters from an alphabet without look-alikes. */
     function generatePw() {
         var cs = "abcdefghijkmnpqrstuvwxyz23456789";
         var s = "";
@@ -465,10 +452,7 @@ PillSurface {
         }
     }
 
-    /**
-     * Connected-network detail: band and bitrate of the ACTIVE nmcli row plus the
-     * interface IPv4, marker-prefixed so a missing half can't shift the parse.
-     */
+    /** Band and bitrate of the active row plus the interface IPv4, marker-prefixed so a missing half can't shift the parse. */
     Process {
         id: detailProc
         command: ["sh", "-c",
@@ -522,31 +506,19 @@ PillSurface {
         }
     }
 
-    /**
-     * A failed `nmcli dev wifi connect` still leaves a connection profile
-     * named after the SSID behind; without deleting it the network would be
-     * treated as known on the next click and silently fail forever.
-     */
+    /** A failed connect leaves a profile behind that would make the network look saved and fail forever. */
     Process {
         id: cleanupProc
         onExited: root.refresh()
     }
 
-    /**
-     * Drops a saved profile on Forget. The list refreshes on exit so the row
-     * loses its known/connected state and its lock falls back to dim.
-     */
     Process {
         id: forgetProc
         onExited: root.refresh()
     }
 
-    /**
-     * Reads one saved profile's PSK on demand. The result is held only as long as
-     * the row stays open; an empty result means the profile is open or stores no
-     * recoverable secret, surfaced by the row as a plain note.
-     */
-    Process {
+    /** Reads one saved PSK on demand; empty means the profile is open or keeps no recoverable secret. */
+    LatestProcess {
         id: revealProc
         stdout: StdioCollector {
             onStreamFinished: {
@@ -564,19 +536,40 @@ PillSurface {
         onTriggered: if (root.active) secProc.running = true
     }
 
-    /**
-     * Keys the network list by SSID so a rescan diffs into the existing rows
-     * rather than tearing every delegate down and rebuilding it. Delegates keep
-     * their identity across scans, so the inline confirm or password row stays
-     * open under the network the user tapped.
-     */
+    /** Keyed by SSID so a rescan diffs into the existing rows and an open confirm or password row stays put. */
     ScriptModel {
         id: netModel
         objectProp: "name"
         values: root.netsSorted
     }
 
-    SettingsHeader {
+    component Pulse: Rectangle {
+        id: pulse
+        property bool on: false
+        visible: on
+        width: 4 * root.s
+        height: 4 * root.s
+        radius: width / 2
+        color: Theme.flameGlow
+
+        SequentialAnimation on opacity {
+            running: pulse.on && !Motion.calm
+            loops: Animation.Infinite
+            NumberAnimation { from: 0.35; to: 1; duration: Motion.pulse; easing.type: Easing.InOutSine }
+            NumberAnimation { from: 1; to: 0.35; duration: Motion.pulse; easing.type: Easing.InOutSine }
+        }
+    }
+
+    component Caps: Text {
+        color: Theme.textFaint
+        font.family: Theme.font
+        font.pixelSize: Theme.fs.label * root.s
+        font.weight: Font.Bold
+        font.capitalization: Font.AllUppercase
+        font.letterSpacing: Theme.labelTracking * root.s
+    }
+
+    SurfaceHeader {
         id: header
         anchors.top: parent.top
         anchors.left: parent.left
@@ -584,14 +577,14 @@ PillSurface {
         height: 24 * root.s
         s: root.s
         glyph: "波"
-        title: "WIFI"
-        showIcon: false
+        title: "Wi-Fi"
         titleContent: Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: "· " + root.statusText
-            color: root.activeNet ? Theme.vermLit : Theme.faint
+            width: Math.min(implicitWidth, 96 * root.s)
+            text: root.statusText
+            color: root.activeNet ? Theme.vermLit : Theme.textFaint
             font.family: Theme.font
-            font.pixelSize: 9.5 * root.s
+            font.pixelSize: Theme.fs.meta * root.s
             font.weight: Font.Medium
             elide: Text.ElideRight
         }
@@ -599,50 +592,23 @@ PillSurface {
         Row {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 12 * root.s
+            spacing: Theme.sp.s * root.s
 
-            Item {
+            Button {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.wifiOn
-                width: 16 * root.s
-                height: 16 * root.s
-
-                GlyphIcon {
-                    id: reloadGlyph
-                    anchors.fill: parent
-                    name: "reboot"
-                    color: root.scanning ? Theme.flameGlow : (reloadArea.containsMouse ? Theme.cream : Theme.iconDim)
-                    stroke: 1.8
-
-                    RotationAnimator {
-                        target: reloadGlyph
-                        running: root.scanning
-                        from: 0
-                        to: 360
-                        duration: 1000
-                        loops: Animation.Infinite
-                        onRunningChanged: if (!running) reloadGlyph.rotation = 0
-                    }
-                }
-
-                MouseArea {
-                    id: reloadArea
-                    anchors.fill: parent
-                    anchors.margins: -6 * root.s
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.scanning ? root.stopScan() : root.startScan()
-                }
+                s: root.s
+                kind: "ghost"
+                text: root.scanning ? "Scanning…" : "Scan"
+                lit: root.scanning
+                onClicked: root.scanning ? root.stopScan() : root.startScan()
             }
 
             LinkToggle {
                 s: root.s
                 anchors.verticalCenter: parent.verticalCenter
                 on: root.wifiOn
-                onToggled: {
-                    if (typeof Networking !== "undefined" && Networking)
-                        Networking.wifiEnabled = !Networking.wifiEnabled;
-                }
+                onToggled: Net.toggleWifi()
             }
         }
     }
@@ -650,7 +616,7 @@ PillSurface {
     Rectangle {
         id: divider
         anchors.top: header.bottom
-        anchors.topMargin: 9 * root.s
+        anchors.topMargin: Theme.sp.s * root.s
         anchors.left: parent.left
         anchors.right: parent.right
         height: 1
@@ -660,22 +626,35 @@ PillSurface {
     Item {
         id: listFrame
         anchors.top: divider.bottom
-        anchors.topMargin: 8 * root.s
+        anchors.topMargin: Theme.sp.xs * root.s
         anchors.left: parent.left
         anchors.right: parent.right
-        height: root.wifiOn ? Math.min(Math.max(netCol.implicitHeight, 26 * root.s), 280 * root.s) : 0
+        height: !root.wifiOn ? offState.implicitHeight
+            : (root.nets.length === 0 ? searchState.implicitHeight : Math.min(netCol.implicitHeight, 280 * root.s))
 
-        Text {
-            anchors.centerIn: parent
+        EmptyState {
+            id: offState
+            visible: !root.wifiOn
+            anchors.horizontalCenter: parent.horizontalCenter
+            s: root.s
+            glyph: "wifi"
+            text: "Wi-Fi is off"
+            action: "Turn on"
+            onTriggered: Net.toggleWifi()
+        }
+
+        EmptyState {
+            id: searchState
             visible: root.wifiOn && root.nets.length === 0
-            text: "Searching networks…"
-            color: Theme.faint
-            font.family: Theme.font
-            font.pixelSize: 10.5 * root.s
+            anchors.horizontalCenter: parent.horizontalCenter
+            s: root.s
+            glyph: "wifi"
+            text: "Looking for networks…"
         }
 
         Flickable {
             id: netFlick
+            visible: root.wifiOn
             anchors.fill: parent
             contentHeight: netCol.implicitHeight
             clip: true
@@ -684,9 +663,14 @@ PillSurface {
             Column {
                 id: netCol
                 width: netFlick.width
-                spacing: 2 * root.s
+                spacing: Theme.sp.xxs * root.s
+                move: Transition {
+                    enabled: !Motion.calm
+                    NumberAnimation { properties: "y"; duration: 200; easing.type: Easing.OutCubic }
+                }
 
                 Repeater {
+                    id: netRep
                     model: netModel
 
                     Column {
@@ -699,8 +683,9 @@ PillSurface {
                         readonly property bool expanded: ssid.length > 0 && root.expandedSsid === ssid
                         readonly property bool confirming: expanded && (isActive || known)
                         readonly property bool asking: expanded && !confirming
+                        readonly property bool lit: ssid.length > 0 && root.kbSsid === ssid
                         width: netCol.width
-                        spacing: 2 * root.s
+                        spacing: Theme.sp.xxs * root.s
 
                         function syncPwField() {
                             pwField.text = root.pwDraft;
@@ -713,14 +698,19 @@ PillSurface {
 
                         Rectangle {
                             width: parent.width
-                            height: 30 * root.s
-                            radius: 9 * root.s
-                            color: netItem.isActive ? Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.14)
-                                : (rowHover.hovered ? Theme.frameBg : "transparent")
+                            height: 32 * root.s
+                            radius: Theme.r.m * root.s
+                            color: rowPress.pressed ? Theme.pressBg
+                                : netItem.isActive ? Qt.alpha(Theme.verm, netItem.lit ? 0.2 : 0.14)
+                                : (netItem.lit ? Theme.frameBg : "transparent")
+                            Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
-                            HoverHandler { id: rowHover }
+                            HoverHandler {
+                                onHoveredChanged: if (hovered && netItem.ssid.length) root.kbSsid = netItem.ssid
+                            }
 
                             MouseArea {
+                                id: rowPress
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: root.activateNetwork(netItem.modelData)
@@ -728,14 +718,14 @@ PillSurface {
 
                             Text {
                                 anchors.left: parent.left
-                                anchors.leftMargin: 10 * root.s
+                                anchors.leftMargin: Theme.sp.s * root.s
                                 anchors.right: rowRight.left
-                                anchors.rightMargin: 8 * root.s
+                                anchors.rightMargin: Theme.sp.s * root.s
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: netItem.ssid.length ? netItem.ssid : "Hidden"
-                                color: netItem.isActive ? Theme.vermLit : Theme.subtle
+                                text: netItem.ssid.length ? netItem.ssid : "Hidden network"
+                                color: netItem.isActive ? Theme.vermLit : (netItem.lit ? Theme.cream : Theme.subtle)
                                 font.family: Theme.font
-                                font.pixelSize: 11.5 * root.s
+                                font.pixelSize: Theme.fs.body * root.s
                                 font.weight: netItem.isActive ? Font.DemiBold : Font.Medium
                                 elide: Text.ElideRight
                             }
@@ -743,24 +733,13 @@ PillSurface {
                             Row {
                                 id: rowRight
                                 anchors.right: parent.right
-                                anchors.rightMargin: 10 * root.s
+                                anchors.rightMargin: Theme.sp.s * root.s
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 7 * root.s
+                                spacing: Theme.sp.s * root.s
 
-                                Rectangle {
+                                Pulse {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    visible: root.connecting && root.attemptSsid === netItem.ssid
-                                    width: 4 * root.s
-                                    height: 4 * root.s
-                                    radius: width / 2
-                                    color: Theme.flameGlow
-
-                                    SequentialAnimation on opacity {
-                                        running: root.connecting && root.attemptSsid === netItem.ssid
-                                        loops: Animation.Infinite
-                                        NumberAnimation { from: 0.35; to: 1; duration: Motion.pulse; easing.type: Easing.InOutSine }
-                                        NumberAnimation { from: 1; to: 0.35; duration: Motion.pulse; easing.type: Easing.InOutSine }
-                                    }
+                                    on: root.connecting && root.attemptSsid === netItem.ssid
                                 }
 
                                 Item {
@@ -793,69 +772,45 @@ PillSurface {
                             visible: netItem.isActive && root.connDetail.length > 0
                             width: parent.width
                             text: root.connDetail
-                            color: Theme.faint
+                            color: Theme.textFaint
                             font.family: Theme.font
-                            font.pixelSize: 9.5 * root.s
-                            font.weight: Font.Medium
-                            leftPadding: 10 * root.s
-                            bottomPadding: 2 * root.s
+                            font.pixelSize: Theme.fs.meta * root.s
+                            leftPadding: Theme.sp.s * root.s
+                            bottomPadding: Theme.sp.xxs * root.s
                             elide: Text.ElideRight
                             maximumLineCount: 1
                         }
 
-                        Item {
+                        ConfirmRow {
                             visible: netItem.confirming
-                            width: parent.width
-                            height: 30 * root.s
+                            s: root.s
+                            inset: Theme.sp.s
 
-                            Text {
-                                anchors.left: parent.left
-                                anchors.leftMargin: 10 * root.s
-                                anchors.right: confirmBtns.left
-                                anchors.rightMargin: 8 * root.s
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: netItem.isActive ? "Connected" : "Saved network"
-                                color: Theme.faint
-                                font.family: Theme.font
-                                font.pixelSize: 9.5 * root.s
-                                font.weight: Font.Medium
-                                elide: Text.ElideRight
+                            Button {
+                                s: root.s
+                                kind: netItem.isActive ? "secondary" : "primary"
+                                text: netItem.isActive ? "Disconnect" : "Connect"
+                                onClicked: netItem.isActive
+                                    ? root.disconnectNetwork(netItem.modelData)
+                                    : root.connectKnown(netItem.modelData)
                             }
 
-                            Row {
-                                id: confirmBtns
-                                anchors.right: parent.right
-                                anchors.rightMargin: 10 * root.s
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 6 * root.s
+                            Button {
+                                id: revealBtn
+                                visible: netItem.known
+                                readonly property bool shown: root.revealedSsid === netItem.ssid
+                                s: root.s
+                                kind: "ghost"
+                                text: revealBtn.shown ? "Hide" : "Show"
+                                lit: revealBtn.shown
+                                onClicked: root.revealPassword(netItem.ssid)
+                            }
 
-                                ChipButton {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    s: root.s
-                                    text: netItem.isActive ? "Disconnect" : "Connect"
-                                    onClicked: netItem.isActive
-                                        ? root.disconnectNetwork(netItem.modelData)
-                                        : root.connectKnown(netItem.modelData)
-                                }
-
-                                ChipButton {
-                                    id: revealBtn
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    visible: netItem.known
-                                    readonly property bool shown: root.revealedSsid === netItem.ssid
-                                    s: root.s
-                                    text: revealBtn.shown ? "Hide" : "Show"
-                                    lit: revealBtn.shown
-                                    onClicked: root.revealPassword(netItem.ssid)
-                                }
-
-                                ChipButton {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    s: root.s
-                                    text: "Forget"
-                                    danger: true
-                                    onClicked: root.forgetNetwork(netItem.ssid)
-                                }
+                            Button {
+                                s: root.s
+                                kind: "danger"
+                                text: "Forget"
+                                onClicked: root.forgetNetwork(netItem.ssid)
                             }
                         }
 
@@ -865,38 +820,31 @@ PillSurface {
                             width: parent.width
                             height: shown ? 24 * root.s : 0
 
-                            Text {
+                            Caps {
                                 id: revealCaption
                                 anchors.left: parent.left
-                                anchors.leftMargin: 10 * root.s
+                                anchors.leftMargin: Theme.sp.s * root.s
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: "PASSWORD"
-                                color: Theme.faint
-                                font.family: Theme.font
-                                font.pixelSize: 9 * root.s
-                                font.weight: Font.Medium
-                                font.capitalization: Font.AllUppercase
-                                font.letterSpacing: 1 * root.s
+                                text: "Password"
                             }
 
                             Text {
                                 visible: root.revealResolved && root.revealedPw.length === 0
                                 anchors.right: parent.right
-                                anchors.rightMargin: 10 * root.s
+                                anchors.rightMargin: Theme.sp.s * root.s
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: "no saved password"
-                                color: Theme.faint
+                                text: "No saved password"
+                                color: Theme.textFaint
                                 font.family: Theme.font
-                                font.pixelSize: 10 * root.s
-                                font.weight: Font.Medium
+                                font.pixelSize: Theme.fs.meta * root.s
                             }
 
                             TextEdit {
                                 visible: root.revealedPw.length > 0
                                 anchors.left: revealCaption.right
-                                anchors.leftMargin: 10 * root.s
+                                anchors.leftMargin: Theme.sp.s * root.s
                                 anchors.right: parent.right
-                                anchors.rightMargin: 10 * root.s
+                                anchors.rightMargin: Theme.sp.s * root.s
                                 anchors.verticalCenter: parent.verticalCenter
                                 horizontalAlignment: TextEdit.AlignRight
                                 readOnly: true
@@ -907,7 +855,7 @@ PillSurface {
                                 text: root.revealedSsid === netItem.ssid ? root.revealedPw : ""
                                 color: Theme.flameCore
                                 font.family: Theme.font
-                                font.pixelSize: 11.5 * root.s
+                                font.pixelSize: Theme.fs.body * root.s
                                 font.weight: Font.Medium
                             }
                         }
@@ -915,23 +863,23 @@ PillSurface {
                         Item {
                             visible: netItem.asking
                             width: parent.width
-                            height: 30 * root.s
+                            height: 32 * root.s
 
-                            TextField {
+                            QQC.TextField {
                                 id: pwField
                                 anchors.left: parent.left
-                                anchors.leftMargin: 10 * root.s
+                                anchors.leftMargin: Theme.sp.s * root.s
                                 anchors.right: pwRight.left
-                                anchors.rightMargin: 8 * root.s
+                                anchors.rightMargin: Theme.sp.s * root.s
                                 anchors.verticalCenter: parent.verticalCenter
                                 background: null
                                 padding: 0
                                 color: Theme.cream
                                 font.family: Theme.font
-                                font.pixelSize: 11.5 * root.s
+                                font.pixelSize: Theme.fs.body * root.s
                                 echoMode: TextInput.Password
                                 placeholderText: "Password"
-                                placeholderTextColor: Theme.faint
+                                placeholderTextColor: Theme.textFaint
                                 selectByMouse: true
                                 selectionColor: Theme.verm
                                 onTextEdited: root.pwDraft = text
@@ -941,24 +889,13 @@ PillSurface {
                             Row {
                                 id: pwRight
                                 anchors.right: parent.right
-                                anchors.rightMargin: 10 * root.s
+                                anchors.rightMargin: Theme.sp.s * root.s
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 7 * root.s
+                                spacing: Theme.sp.s * root.s
 
-                                Rectangle {
+                                Pulse {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    visible: root.connecting && netItem.asking
-                                    width: 4 * root.s
-                                    height: 4 * root.s
-                                    radius: width / 2
-                                    color: Theme.flameGlow
-
-                                    SequentialAnimation on opacity {
-                                        running: root.connecting && netItem.asking
-                                        loops: Animation.Infinite
-                                        NumberAnimation { from: 0.35; to: 1; duration: Motion.pulse; easing.type: Easing.InOutSine }
-                                        NumberAnimation { from: 1; to: 0.35; duration: Motion.pulse; easing.type: Easing.InOutSine }
-                                    }
+                                    on: root.connecting && netItem.asking
                                 }
 
                                 GlyphIcon {
@@ -966,7 +903,7 @@ PillSurface {
                                     width: 14 * root.s
                                     height: 14 * root.s
                                     name: "return"
-                                    color: enterArea.containsMouse ? Theme.cream : Theme.vermLit
+                                    color: enterArea.pressed ? Theme.flameGlow : (enterArea.containsMouse ? Theme.cream : Theme.vermLit)
                                     stroke: 1.8
 
                                     MouseArea {
@@ -984,11 +921,11 @@ PillSurface {
                         Text {
                             visible: netItem.asking && root.connectFailed
                             width: parent.width
-                            text: "Connection failed" + (root.connFailReason.length ? " · " + root.connFailReason : "")
-                            color: Theme.vermLit
+                            text: "Couldn't connect" + (root.connFailReason.length ? ": " + root.connFailReason : "")
+                            color: Theme.danger
                             font.family: Theme.font
-                            font.pixelSize: 9.5 * root.s
-                            leftPadding: 10 * root.s
+                            font.pixelSize: Theme.fs.meta * root.s
+                            leftPadding: Theme.sp.s * root.s
                             elide: Text.ElideRight
                             maximumLineCount: 1
                         }
@@ -1007,11 +944,11 @@ PillSurface {
     Item {
         id: hsBlock
         anchors.top: listFrame.bottom
-        anchors.topMargin: 8 * root.s
+        anchors.topMargin: Theme.sp.s * root.s
         anchors.left: parent.left
         anchors.right: parent.right
         visible: root.wifiOn
-        height: root.wifiOn ? hsCol.implicitHeight + 9 * root.s : 0
+        height: root.wifiOn ? hsCol.implicitHeight + Theme.sp.s * root.s : 0
         clip: true
 
         Rectangle {
@@ -1026,10 +963,10 @@ PillSurface {
         Column {
             id: hsCol
             anchors.top: hsDivider.bottom
-            anchors.topMargin: 9 * root.s
+            anchors.topMargin: Theme.sp.s * root.s
             anchors.left: parent.left
             anchors.right: parent.right
-            spacing: 6 * root.s
+            spacing: Theme.sp.xs * root.s
 
             component CredRow: Item {
                 id: cr
@@ -1039,36 +976,32 @@ PillSurface {
                 property bool secret: false
                 readonly property bool editing: root.hsEdit === cr.field
                 width: parent ? parent.width : 0
-                height: 22 * root.s
+                height: 24 * root.s
 
-                Text {
+                Caps {
                     anchors.left: parent.left
-                    anchors.leftMargin: 8 * root.s
+                    anchors.leftMargin: Theme.sp.s * root.s
                     anchors.verticalCenter: parent.verticalCenter
                     text: cr.label
-                    color: Theme.faint
-                    font.family: Theme.font
-                    font.pixelSize: 9 * root.s
-                    font.weight: Font.Medium
-                    font.capitalization: Font.AllUppercase
-                    font.letterSpacing: 1 * root.s
                 }
 
                 Text {
                     visible: !cr.editing
                     anchors.right: parent.right
-                    anchors.rightMargin: 8 * root.s
+                    anchors.rightMargin: Theme.sp.s * root.s
                     anchors.verticalCenter: parent.verticalCenter
-                    text: cr.value.length ? cr.value : "tap to set"
-                    color: cr.value.length ? (cr.secret ? Theme.flameCore : Theme.cream) : Theme.faint
+                    text: cr.value.length ? cr.value : "Click to set"
+                    color: crArea.containsMouse ? Theme.bright : (cr.value.length ? (cr.secret ? Theme.flameCore : Theme.cream) : Theme.textFaint)
                     font.family: Theme.font
-                    font.pixelSize: 12 * root.s
+                    font.pixelSize: Theme.fs.body * root.s
                     font.weight: Font.Medium
                     font.features: { "tnum": 1 }
 
                     MouseArea {
+                        id: crArea
                         anchors.fill: parent
                         anchors.margins: -6 * root.s
+                        hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             root.hsDraft = cr.value;
@@ -1078,11 +1011,11 @@ PillSurface {
                     }
                 }
 
-                TextField {
+                QQC.TextField {
                     id: crField
                     visible: cr.editing
                     anchors.right: parent.right
-                    anchors.rightMargin: 8 * root.s
+                    anchors.rightMargin: Theme.sp.s * root.s
                     anchors.verticalCenter: parent.verticalCenter
                     width: 150 * root.s
                     horizontalAlignment: TextInput.AlignRight
@@ -1090,9 +1023,9 @@ PillSurface {
                     padding: 0
                     color: Theme.cream
                     font.family: Theme.font
-                    font.pixelSize: 12 * root.s
+                    font.pixelSize: Theme.fs.body * root.s
                     placeholderText: cr.field === "pw" ? "8+ characters" : "Name"
-                    placeholderTextColor: Theme.faint
+                    placeholderTextColor: Theme.textFaint
                     selectByMouse: true
                     selectionColor: Theme.verm
                     text: cr.editing ? root.hsDraft : ""
@@ -1103,14 +1036,14 @@ PillSurface {
 
             Rectangle {
                 width: parent.width
-                height: 34 * root.s
-                radius: 10 * root.s
+                height: 36 * root.s
+                radius: Theme.r.m * root.s
                 color: root.hsActive ? Theme.frameBg : "transparent"
 
                 GlyphIcon {
                     id: hsGlyph
                     anchors.left: parent.left
-                    anchors.leftMargin: 8 * root.s
+                    anchors.leftMargin: Theme.sp.s * root.s
                     anchors.verticalCenter: parent.verticalCenter
                     width: 17 * root.s
                     height: 17 * root.s
@@ -1121,7 +1054,7 @@ PillSurface {
 
                 Column {
                     anchors.left: hsGlyph.right
-                    anchors.leftMargin: 11 * root.s
+                    anchors.leftMargin: Theme.sp.m * root.s
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 1 * root.s
 
@@ -1129,22 +1062,21 @@ PillSurface {
                         text: "Hotspot"
                         color: Theme.cream
                         font.family: Theme.font
-                        font.pixelSize: 12.5 * root.s
+                        font.pixelSize: Theme.fs.body * root.s
                         font.weight: Font.DemiBold
                     }
                     Text {
-                        text: root.hsBusy ? "…" : (root.hsActive ? "Active" : "Off")
-                        color: root.hsActive ? Theme.flameGlow : Theme.dim
+                        text: root.hsBusy ? (root.hsActive ? "Stopping…" : "Starting…") : (root.hsActive ? "Sharing this connection" : "Off")
+                        color: root.hsActive ? Theme.flameGlow : Theme.textFaint
                         font.family: Theme.font
-                        font.pixelSize: 9.5 * root.s
-                        font.weight: Font.Medium
+                        font.pixelSize: Theme.fs.meta * root.s
                     }
                 }
 
                 LinkToggle {
                     s: root.s
                     anchors.right: parent.right
-                    anchors.rightMargin: 8 * root.s
+                    anchors.rightMargin: Theme.sp.s * root.s
                     anchors.verticalCenter: parent.verticalCenter
                     on: root.hsActive
                     onToggled: {

@@ -6,8 +6,7 @@ import Quickshell.Hyprland
 import "Singletons"
 
 /**
- * Row of icon buttons for windows parked on Hyprland's `special:minimized`
- * workspace (Super+M). Clicking one moves it back to the focused workspace.
+ * Icons for windows parked on special:minimized; a click brings one back to this monitor's workspace.
  */
 Row {
     id: root
@@ -16,11 +15,6 @@ Row {
     property string screenName: ""
     spacing: 8 * s
 
-    /**
-     * Resolve the workspace id to restore into: the active workspace of the
-     * monitor this pill lives on, so a window reappears on the screen the user
-     * clicked, falling back to the focused workspace.
-     */
     function restoreWorkspace() {
         var ms = Hyprland.monitors.values;
         for (var i = 0; i < ms.length; i++)
@@ -41,11 +35,7 @@ Row {
     }
     readonly property int count: items.length
 
-    /**
-     * Resolve an icon path for a toplevel by matching its window class to a
-     * desktop entry id (the class often differs from the icon-theme name), with
-     * a direct icon-theme lookup as fallback.
-     */
+    /** Window class to desktop-entry icon (the class often differs from the icon name), else a direct theme lookup. */
     function iconFor(t) {
         var cls = (t && t.lastIpcObject && t.lastIpcObject.class) ? t.lastIpcObject.class
             : (t && t.wayland && t.wayland.appId ? t.wayland.appId : "");
@@ -80,7 +70,9 @@ Row {
                 smooth: true
                 source: chip.iconSrc
                 opacity: area.containsMouse ? 1 : 0.78
-                Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                scale: area.pressed && !Motion.calm ? 0.9 : 1
+                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
             }
 
             MouseArea {

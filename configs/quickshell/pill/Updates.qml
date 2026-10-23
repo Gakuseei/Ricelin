@@ -6,20 +6,7 @@ import Quickshell.Io
 import "Singletons"
 
 /**
- * 更 UPDATES sub-surface: a terminal-free face for the Ricelin update engine. It
- * never touches git itself; it shells out to the python engine at
- * ~/.config/hypr/scripts/ricelin-update.py, which prints one JSON object, and
- * renders that. `check` is a safe dry-run that reports how far behind the install
- * is, the changelog, and any protected file whose local edits clash with upstream;
- * `apply` performs the update, taking upstream wholesale only for the conflicting
- * files the user explicitly opted to overwrite.
- *
- * The engine owns every policy decision (devmode detection, on-demand cloning,
- * three-way merges); this surface is a thin reader of its contract. On a dev or
- * symlinked-worktree install the engine answers "devmode" and the surface shows a
- * calm note that updates run through plain git instead, with no buttons. Reached
- * from the settings index and morphs back to it on an empty click or the back
- * chevron.
+ * 更 UPDATES: a thin reader of ricelin-update.py's JSON; `check` is a dry run, `apply` updates and only overwrites the conflicts the user opted into.
  */
 SettingsSurface {
     id: root
@@ -42,12 +29,13 @@ SettingsSurface {
     property bool applying: false
     property bool restartNeeded: false
 
-    /** Target short sha, split off the engine's "<sha> <date>" version string. */
+    /**
+     * Target short sha, split off the engine's "<sha> <date>" version string.
+     */
     readonly property string targetShort: version.split(" ")[0]
 
     /**
-     * Short sha of the installed rice, read from the engine's manifest since the
-     * check result only names the target. Empty until a first apply recorded one.
+     * Installed short sha from the engine's manifest; empty until a first apply.
      */
     property string installedShort: ""
 
@@ -59,28 +47,33 @@ SettingsSurface {
         }
     }
 
-    /** Conflicting rel-paths the user chose to overwrite with upstream on the next apply. */
+    /**
+     * Conflicting rel-paths the user chose to overwrite with upstream on the next apply.
+     */
     property var takePaths: ({})
 
-    /** Core packages this update needs that aren't installed yet: [{id, name, desc, group}]. */
+    /**
+     * Core packages this update needs that aren't installed yet: [{id, name, desc, group}].
+     */
     property var missingDeps: []
 
     /**
-     * Packages the last apply couldn't bring in: [{id, error}]. A cancelled password
-     * prompt, an AUR build that needs a terminal, or a repo miss all land here so a
-     * failed or skipped install is never silent. Held until the next check.
+     * Packages the last apply couldn't bring in, [{id, error}], held until the next check.
      */
     property var depFailures: []
 
-    /** Per-dep install choice, keyed by id. Absent means default ON, false means opted out. */
+    /**
+     * Per-dep install choice, keyed by id. Absent means default ON, false means opted out.
+     */
     property var installDeps: ({})
 
-    /** A dep is installed on apply unless the user explicitly turned its toggle off. */
     function depChosen(id) {
         return root.installDeps[id] !== false;
     }
 
-    /** Title-case the package id into a readable label, e.g. noto-fonts-cjk -> Noto Fonts Cjk. */
+    /**
+     * Title-case the package id into a readable label, e.g. noto-fonts-cjk -> Noto Fonts Cjk.
+     */
     function prettyDep(id) {
         return id.split("-").map(function (w) {
             return w.length > 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w;
@@ -91,7 +84,9 @@ SettingsSurface {
     readonly property bool behind: status === "ok" && behindCount > 0
     readonly property bool upToDate: status === "ok" && behindCount === 0
 
-    /** rel-path -> human label for the protected files the engine can three-way merge. */
+    /**
+     * rel-path -> human label for the protected files the engine can three-way merge.
+     */
     readonly property var friendlyName: ({
         "hypr/modules/binds.lua": "Keybinds",
         "hypr/modules/decoration.lua": "Look",
@@ -126,7 +121,7 @@ SettingsSurface {
         : statusKind === "noclone" ? "download"
         : "check"
 
-    readonly property color badgeTint: statusKind === "error" || statusKind === "offline" ? Theme.dim
+    readonly property color badgeTint: statusKind === "error" || statusKind === "offline" ? Theme.danger
         : statusKind === "checking" || statusKind === "applying" || statusKind === "idle" || statusKind === "noclone" ? Theme.subtle
         : Theme.vermLit
 
@@ -141,7 +136,9 @@ SettingsSurface {
         : statusKind === "ok" ? "Up to date"
         : "Updates"
 
-    /** A line beneath the headline that orients each state, dropped when empty. */
+    /**
+     * A line beneath the headline that orients each state, dropped when empty.
+     */
     readonly property string subline: statusKind === "devmode" ? "This is a clone or symlinked work-tree, so updates run through plain git. In-app updating is off here."
         : statusKind === "noclone" ? "The rice copy didn't land yet. Check for updates to fetch it, then updates show up here."
         : statusKind === "error" ? errorText
@@ -152,8 +149,6 @@ SettingsSurface {
         if (active) {
             startCheck();
         } else {
-            checking = false;
-            applying = false;
             focusRowItem = null;
             kbIndex = -1;
         }
@@ -173,7 +168,6 @@ SettingsSurface {
         takePaths = ({});
     }
 
-    /** Drop the behind-driven sections so they vanish once an apply has landed. */
     function clearPending() {
         behindCount = 0;
         changelog = [];
@@ -184,9 +178,7 @@ SettingsSurface {
     }
 
     /**
-     * The body for the post-restart toast, composed before clearPending wipes the
-     * changelog. The version line confirms what landed, and the top change names
-     * what is new with a count when more rode along.
+     * Toast body for after the restart, built before clearPending wipes the changelog.
      */
     function updatedBody() {
         var v = root.version.replace(" ", " · ");
@@ -290,10 +282,7 @@ SettingsSurface {
                     root.errorText = "The updater returned something unexpected.";
                 }
                 /**
-                 * Hold the auto-restart while any install failed: a restart wipes
-                 * this surface, so the user would never see what didn't install. The
-                 * code is already written to disk and lands on the next manual
-                 * restart or check; the failure notice stays put until then.
+                 * No auto-restart while an install failed: the restart would hide what did not install.
                  */
                 if (root.restartNeeded && root.depFailures.length === 0) {
                     markerProc.body = root.updatedBody();
@@ -306,8 +295,7 @@ SettingsSurface {
     }
 
     /**
-     * New code only takes effect once the shell reloads, so do it for the user
-     * instead of asking. The brief delay lets the "Updated" line register first.
+     * The shell reloads itself after a short delay so the "Updated" line registers first.
      */
     Timer {
         id: restartTimer
@@ -316,9 +304,7 @@ SettingsSurface {
     }
 
     /**
-     * Relaunch the pill on its own. setsid detaches the relaunch so it outlives the
-     * instance it kills, and it only spawns one itself when no watchdog will bring
-     * it back. Settings persist through flags.json, so it returns as it was.
+     * setsid lets the relaunch outlive the instance it kills; it only spawns one when no watchdog will.
      */
     Process {
         id: restartProc
@@ -327,9 +313,7 @@ SettingsSurface {
     }
 
     /**
-     * Drop a one-shot marker the restarted shell reads to toast what landed, since
-     * the relaunch wipes this surface before any inline confirmation can stick. The
-     * body rides in as a positional arg so the value is never re-parsed by the shell.
+     * One-shot marker the restarted shell toasts; the body rides as a positional arg so the shell never re-parses it.
      */
     Process {
         id: markerProc
@@ -346,21 +330,21 @@ SettingsSurface {
         anchors.right: parent.right
         spacing: 0
 
-        SettingsHeader {
+        SurfaceHeader {
             s: root.s
             glyph: "更"
             title: "UPDATES"
-            showBack: true
+            canBack: true
         }
 
-        Item { width: 1; height: 14 * root.s }
+        Item { width: 1; height: Theme.sp.m * root.s }
 
         Row {
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: 14 * root.s
-            anchors.rightMargin: 14 * root.s
-            spacing: 12 * root.s
+            anchors.leftMargin: Theme.sp.m * root.s
+            anchors.rightMargin: Theme.sp.m * root.s
+            spacing: Theme.sp.m * root.s
 
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
@@ -389,7 +373,7 @@ SettingsSurface {
                     stroke: 2
 
                     RotationAnimation on rotation {
-                        running: root.spinning
+                        running: root.spinning && !Motion.calm
                         loops: Animation.Infinite
                         from: 0
                         to: 360
@@ -400,15 +384,15 @@ SettingsSurface {
 
             Column {
                 anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 34 * root.s - 12 * root.s
-                spacing: 3 * root.s
+                width: parent.width - 34 * root.s - Theme.sp.m * root.s
+                spacing: Theme.sp.xxs * root.s
 
                 Text {
                     text: root.headline
                     color: Theme.cream
                     font.family: Theme.font
-                    font.pixelSize: 14.5 * root.s
-                    font.weight: Font.Bold
+                    font.pixelSize: Theme.fs.title * root.s
+                    font.weight: Font.DemiBold
                 }
 
                 Text {
@@ -417,8 +401,7 @@ SettingsSurface {
                     text: root.subline
                     color: Theme.subtle
                     font.family: Theme.font
-                    font.pixelSize: 10.5 * root.s
-                    font.weight: Font.Medium
+                    font.pixelSize: Theme.fs.meta * root.s
                     wrapMode: Text.WordWrap
                     lineHeight: 1.2
                     font.features: { "tnum": 1 }
@@ -429,48 +412,41 @@ SettingsSurface {
                     text: root.behind && root.installedShort.length > 0 && root.installedShort !== root.targetShort
                         ? root.installedShort + " → " + root.targetShort
                         : root.version.replace(" ", " · ")
-                    color: Theme.faint
+                    color: Theme.textFaint
                     font.family: Theme.font
-                    font.pixelSize: 10.5 * root.s
-                    font.weight: Font.Medium
+                    font.pixelSize: Theme.fs.meta * root.s
                     font.features: { "tnum": 1 }
                 }
             }
         }
 
-        Item { width: 1; height: 15 * root.s }
+        Item { width: 1; height: Theme.sp.m * root.s }
 
         /**
-         * The changelog is the centrepiece when an update waits: each entry is a
-         * short row with a small marker, the list scrolls when it outgrows its
-         * cap. Hidden in every other state so up-to-date and devmode stay calm.
+         * The changelog leads when an update waits and hides otherwise, so calm states stay calm.
          */
         Column {
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: 14 * root.s
-            anchors.rightMargin: 14 * root.s
-            spacing: 8 * root.s
+            anchors.leftMargin: Theme.sp.m * root.s
+            anchors.rightMargin: Theme.sp.m * root.s
+            spacing: Theme.sp.s * root.s
             visible: root.behind
 
-            Text {
-                text: "WHAT'S NEW"
-                color: Theme.faint
-                font.family: Theme.font
-                font.pixelSize: 9 * root.s
-                font.weight: Font.Bold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: 1.4 * root.s
+            SettingsLabel {
+                s: root.s
+                topPadding: 0
+                bottomPadding: 0
+                text: "What's new"
             }
 
             Text {
                 width: parent.width
                 visible: root.changelog.length === 0
                 text: "No highlights noted"
-                color: Theme.dim
+                color: Theme.textFaint
                 font.family: Theme.font
-                font.pixelSize: 11 * root.s
-                font.weight: Font.Medium
+                font.pixelSize: Theme.fs.meta * root.s
                 font.italic: true
             }
 
@@ -486,13 +462,13 @@ SettingsSurface {
                 delegate: Row {
                     required property var modelData
                     width: ListView.view.width
-                    spacing: 9 * root.s
-                    topPadding: 3 * root.s
-                    bottomPadding: 3 * root.s
+                    spacing: Theme.sp.s * root.s
+                    topPadding: Theme.sp.xxs * root.s
+                    bottomPadding: Theme.sp.xxs * root.s
 
                     Rectangle {
                         anchors.top: parent.top
-                        anchors.topMargin: 9 * root.s
+                        anchors.topMargin: Theme.sp.s * root.s
                         width: 4 * root.s
                         height: 4 * root.s
                         radius: width / 2
@@ -500,12 +476,11 @@ SettingsSurface {
                     }
 
                     Text {
-                        width: parent.width - 13 * root.s
+                        width: parent.width - 12 * root.s
                         text: parent.modelData
                         color: Theme.cream
                         font.family: Theme.font
-                        font.pixelSize: 11.5 * root.s
-                        font.weight: Font.Medium
+                        font.pixelSize: Theme.fs.body * root.s
                         wrapMode: Text.WordWrap
                         lineHeight: 1.2
                     }
@@ -519,29 +494,26 @@ SettingsSurface {
             }
         }
 
-        Item { width: 1; height: root.behind ? 14 * root.s : 0 }
+        Item { width: 1; height: root.behind ? Theme.sp.m * root.s : 0 }
 
         /**
-         * Conflicts: every protected file whose local edits overlap an upstream
-         * change. Each lists by friendly name with a two-way choice, "Keep mine"
-         * the default and "Take new" overwriting wholesale on apply.
+         * Files whose local edits clash with upstream: Keep mine by default, Take new overwrites on apply.
          */
         Column {
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: 14 * root.s
-            anchors.rightMargin: 14 * root.s
-            spacing: 9 * root.s
+            anchors.leftMargin: Theme.sp.m * root.s
+            anchors.rightMargin: Theme.sp.m * root.s
+            spacing: Theme.sp.s * root.s
             visible: root.conflicts.length > 0
 
-            Text {
+            SettingsLabel {
                 width: parent.width
-                text: "Your edits clash with " + root.conflicts.length + " file" + (root.conflicts.length === 1 ? "" : "s")
-                color: Theme.subtle
-                font.family: Theme.font
-                font.pixelSize: 10.5 * root.s
-                font.weight: Font.DemiBold
+                s: root.s
+                topPadding: 0
+                bottomPadding: 0
                 wrapMode: Text.WordWrap
+                text: "Your edits clash with " + root.conflicts.length + " file" + (root.conflicts.length === 1 ? "" : "s")
             }
 
             Repeater {
@@ -554,105 +526,54 @@ SettingsSurface {
                     readonly property bool takeNew: root.takePaths[rel] === true
 
                     width: parent.width
-                    height: 30 * root.s
+                    height: 32 * root.s
 
                     Text {
                         anchors.left: parent.left
+                        anchors.right: choice.left
+                        anchors.rightMargin: Theme.sp.m * root.s
                         anchors.verticalCenter: parent.verticalCenter
                         text: root.labelFor(confRow.rel)
                         color: Theme.cream
+                        elide: Text.ElideRight
                         font.family: Theme.font
-                        font.pixelSize: 11.5 * root.s
-                        font.weight: Font.DemiBold
+                        font.pixelSize: Theme.fs.body * root.s
+                        font.weight: Font.Medium
                     }
 
-                    Row {
+                    SettingsSeg {
                         id: choice
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 0
-
-                        component Seg: Rectangle {
-                            id: seg
-                            property string label: ""
-                            property bool on: false
-                            property int corner: 0
-                            width: segText.implicitWidth + 18 * root.s
-                            height: 24 * root.s
-                            radius: 7 * root.s
-                            topLeftRadius: corner === -1 ? radius : 0
-                            bottomLeftRadius: corner === -1 ? radius : 0
-                            topRightRadius: corner === 1 ? radius : 0
-                            bottomRightRadius: corner === 1 ? radius : 0
-                            color: seg.on ? Qt.alpha(Theme.vermLit, 0.20) : Theme.frameBg
-                            border.width: 1
-                            border.color: seg.on ? Qt.alpha(Theme.vermLit, 0.55) : Theme.hairSoft
-                            Behavior on color { ColorAnimation { duration: Motion.fast } }
-                            Behavior on border.color { ColorAnimation { duration: Motion.fast } }
-
-                            Text {
-                                id: segText
-                                anchors.centerIn: parent
-                                text: seg.label
-                                color: seg.on ? Theme.bright : Theme.dim
-                                font.family: Theme.font
-                                font.pixelSize: 10 * root.s
-                                font.weight: seg.on ? Font.DemiBold : Font.Medium
-                            }
-                        }
-
-                        Seg {
-                            label: "Keep mine"
-                            on: !confRow.takeNew
-                            corner: -1
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.takePaths = Object.assign({}, root.takePaths, { [confRow.rel]: false })
-                            }
-                        }
-
-                        Seg {
-                            label: "Take new"
-                            on: confRow.takeNew
-                            corner: 1
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.takePaths = Object.assign({}, root.takePaths, { [confRow.rel]: true })
-                            }
-                        }
+                        s: root.s
+                        options: [{ label: "Keep mine", value: false }, { label: "Take new", value: true }]
+                        value: confRow.takeNew
+                        onPicked: (v) => root.takePaths = Object.assign({}, root.takePaths, { [confRow.rel]: v })
                     }
                 }
             }
         }
 
-        Item { width: 1; height: root.conflicts.length > 0 ? 14 * root.s : 0 }
+        Item { width: 1; height: root.conflicts.length > 0 ? Theme.sp.m * root.s : 0 }
 
         /**
-         * Missing packages: core packages the rice needs that aren't installed yet,
-         * whether this update introduced them or they were never there. Each is a row
-         * with the package label, its one-line purpose, and a toggle that defaults ON,
-         * so a plain "Update now" brings the rice and its packages over together. The
-         * chosen ids ride along as --install-deps and the engine batches the repo ones
-         * into a single pkexec install.
+         * Missing core packages, each on by default, so Update now brings the rice and its packages together.
          */
         Column {
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: 14 * root.s
-            anchors.rightMargin: 14 * root.s
-            spacing: 9 * root.s
+            anchors.leftMargin: Theme.sp.m * root.s
+            anchors.rightMargin: Theme.sp.m * root.s
+            spacing: Theme.sp.s * root.s
             visible: root.behind && root.missingDeps.length > 0
 
-            Text {
+            SettingsLabel {
                 width: parent.width
-                text: "Needs " + root.missingDeps.length + " package" + (root.missingDeps.length === 1 ? "" : "s")
-                color: Theme.subtle
-                font.family: Theme.font
-                font.pixelSize: 10.5 * root.s
-                font.weight: Font.DemiBold
+                s: root.s
+                topPadding: 0
+                bottomPadding: 0
                 wrapMode: Text.WordWrap
+                text: "Needs " + root.missingDeps.length + " package" + (root.missingDeps.length === 1 ? "" : "s")
             }
 
             Repeater {
@@ -664,32 +585,31 @@ SettingsSurface {
                     readonly property string depId: modelData.id
 
                     width: parent.width
-                    height: depCol.implicitHeight + 12 * root.s
+                    height: depCol.implicitHeight + Theme.sp.m * root.s
 
                     Column {
                         id: depCol
                         anchors.left: parent.left
                         anchors.right: depToggle.left
-                        anchors.rightMargin: 12 * root.s
+                        anchors.rightMargin: Theme.sp.m * root.s
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 2 * root.s
+                        spacing: Theme.sp.xxs * root.s
 
                         Text {
                             text: root.prettyDep(depRow.depId)
                             color: Theme.cream
                             font.family: Theme.font
-                            font.pixelSize: 11.5 * root.s
-                            font.weight: Font.DemiBold
+                            font.pixelSize: Theme.fs.body * root.s
+                            font.weight: Font.Medium
                         }
 
                         Text {
                             width: parent.width
                             visible: depRow.modelData.desc.length > 0
                             text: depRow.modelData.desc
-                            color: Theme.faint
+                            color: Theme.textFaint
                             font.family: Theme.font
-                            font.pixelSize: 10 * root.s
-                            font.weight: Font.Medium
+                            font.pixelSize: Theme.fs.meta * root.s
                             wrapMode: Text.WordWrap
                             lineHeight: 1.15
                         }
@@ -707,29 +627,25 @@ SettingsSurface {
             }
         }
 
-        Item { width: 1; height: (root.behind && root.missingDeps.length > 0) ? 14 * root.s : 0 }
+        Item { width: 1; height: (root.behind && root.missingDeps.length > 0) ? Theme.sp.m * root.s : 0 }
 
         /**
-         * Install failures: any chosen package the last apply couldn't bring in. The
-         * engine already folds the manual command into each reason for the deps it
-         * can't drive headless (AUR, fallback-only), so a row is package plus the
-         * exact why. Shown until the next check, independent of the behind state, so a
-         * cancelled prompt or a build that needs a terminal never reads as success.
+         * Packages the last apply couldn't install, each with the engine's reason, shown until the next check.
          */
         Column {
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: 14 * root.s
-            anchors.rightMargin: 14 * root.s
-            spacing: 9 * root.s
+            anchors.leftMargin: Theme.sp.m * root.s
+            anchors.rightMargin: Theme.sp.m * root.s
+            spacing: Theme.sp.s * root.s
             visible: root.depFailures.length > 0
 
             Text {
                 width: parent.width
                 text: "Couldn't install " + root.depFailures.length + " package" + (root.depFailures.length === 1 ? "" : "s")
-                color: Theme.verm
+                color: Theme.danger
                 font.family: Theme.font
-                font.pixelSize: 10.5 * root.s
+                font.pixelSize: Theme.fs.meta * root.s
                 font.weight: Font.DemiBold
                 wrapMode: Text.WordWrap
             }
@@ -741,36 +657,35 @@ SettingsSurface {
                     id: failRow
                     required property var modelData
                     width: parent.width
-                    spacing: 9 * root.s
+                    spacing: Theme.sp.s * root.s
 
                     Rectangle {
                         anchors.top: parent.top
-                        anchors.topMargin: 6 * root.s
+                        anchors.topMargin: Theme.sp.s * root.s
                         width: 4 * root.s
                         height: 4 * root.s
                         radius: width / 2
-                        color: Theme.verm
+                        color: Theme.danger
                     }
 
                     Column {
-                        width: parent.width - 13 * root.s
-                        spacing: 2 * root.s
+                        width: parent.width - 12 * root.s
+                        spacing: Theme.sp.xxs * root.s
 
                         Text {
                             text: root.prettyDep(failRow.modelData.id)
                             color: Theme.cream
                             font.family: Theme.font
-                            font.pixelSize: 11.5 * root.s
-                            font.weight: Font.DemiBold
+                            font.pixelSize: Theme.fs.body * root.s
+                            font.weight: Font.Medium
                         }
 
                         Text {
                             width: parent.width
                             text: failRow.modelData.error
-                            color: Theme.faint
+                            color: Theme.textFaint
                             font.family: Theme.font
-                            font.pixelSize: 10 * root.s
-                            font.weight: Font.Medium
+                            font.pixelSize: Theme.fs.meta * root.s
                             wrapMode: Text.WordWrap
                             lineHeight: 1.15
                         }
@@ -779,109 +694,61 @@ SettingsSurface {
             }
         }
 
-        Item { width: 1; height: root.depFailures.length > 0 ? 14 * root.s : 0 }
+        Item { width: 1; height: root.depFailures.length > 0 ? Theme.sp.m * root.s : 0 }
 
         Rectangle {
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: 12 * root.s
-            anchors.rightMargin: 12 * root.s
-            visible: root.behind || root.statusKind !== "devmode"
+            anchors.leftMargin: Theme.sp.m * root.s
+            anchors.rightMargin: Theme.sp.m * root.s
+            visible: root.statusKind !== "devmode"
             height: visible ? 1 : 0
-            color: Theme.hair
+            color: Theme.hairSoft
         }
 
-        Item { width: 1; height: (root.behind || root.statusKind !== "devmode") ? 15 * root.s : 0 }
-
-        Column {
+        Item {
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: 12 * root.s
-            anchors.rightMargin: 12 * root.s
-            spacing: 9 * root.s
+            anchors.leftMargin: Theme.sp.m * root.s
+            anchors.rightMargin: Theme.sp.m * root.s
+            visible: root.statusKind !== "devmode"
+            height: visible ? 28 * root.s + Theme.sp.m * root.s : 0
 
-            Rectangle {
-                id: updateBtn
-                width: parent.width
-                height: 38 * root.s
-                radius: 10 * root.s
-                visible: root.behind
-                color: Qt.alpha(Theme.vermLit, updateHover.hovered ? 0.30 : 0.20)
-                border.width: 1
-                border.color: Qt.alpha(Theme.vermLit, 0.55)
-                opacity: root.applying ? 0.55 : 1
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
-                Behavior on opacity { NumberAnimation { duration: Motion.fast } }
-
-                HoverHandler {
-                    id: updateHover
-                    enabled: !root.applying
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    enabled: !root.applying
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.startApply()
-                }
-
-                Text {
-                    anchors.centerIn: parent
-                    text: root.applying ? "Updating…" : "Update now"
-                    color: Theme.bright
-                    font.family: Theme.font
-                    font.pixelSize: 12 * root.s
-                    font.weight: Font.DemiBold
-                }
+            Text {
+                anchors.left: parent.left
+                anchors.right: actions.left
+                anchors.rightMargin: Theme.sp.m * root.s
+                anchors.verticalCenter: actions.verticalCenter
+                visible: root.restartNeeded && root.depFailures.length === 0
+                text: "Updated, restarting the shell"
+                color: Theme.subtle
+                elide: Text.ElideRight
+                font.family: Theme.font
+                font.pixelSize: Theme.fs.meta * root.s
             }
 
-            Rectangle {
-                id: checkBtn
-                width: parent.width
-                height: 38 * root.s
-                radius: 10 * root.s
-                visible: root.statusKind !== "devmode"
-                color: checkHover.hovered ? Qt.alpha(Theme.onGlow, 0.34) : Qt.alpha(Theme.onGlow, 0.20)
-                border.width: 1
-                border.color: Qt.alpha(Theme.onGlow, checkHover.hovered ? 0.6 : 0.4)
-                opacity: root.busy ? 0.55 : 1
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
-                Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            Row {
+                id: actions
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                spacing: Theme.sp.s * root.s
 
-                HoverHandler {
-                    id: checkHover
+                Button {
+                    s: root.s
+                    kind: root.behind ? "secondary" : "primary"
                     enabled: !root.busy
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    enabled: !root.busy
-                    cursorShape: Qt.PointingHandCursor
+                    text: root.checking ? "Checking…" : root.statusKind === "offline" ? "Retry" : "Check for updates"
                     onClicked: root.startCheck()
                 }
 
-                Text {
-                    anchors.centerIn: parent
-                    text: root.checking ? "Checking…"
-                        : root.statusKind === "offline" ? "Retry"
-                        : "Check for updates"
-                    color: Theme.cream
-                    font.family: Theme.font
-                    font.pixelSize: 12 * root.s
-                    font.weight: Font.DemiBold
+                Button {
+                    s: root.s
+                    visible: root.behind
+                    kind: "primary"
+                    enabled: !root.applying
+                    text: root.applying ? "Updating…" : "Update now"
+                    onClicked: root.startApply()
                 }
-            }
-
-            Text {
-                width: parent.width
-                visible: root.restartNeeded && root.depFailures.length === 0
-                text: "Updated · restarting the shell"
-                color: Theme.subtle
-                font.family: Theme.font
-                font.pixelSize: 10.5 * root.s
-                font.weight: Font.Medium
-                wrapMode: Text.WordWrap
-                lineHeight: 1.2
             }
         }
     }

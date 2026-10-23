@@ -71,6 +71,13 @@ Singleton {
         return gs;
     }
 
+    /**
+     * Notification text without terminal colour codes, which some CLI tools send along.
+     */
+    function plain(text) {
+        return String(text || "").replace(/\x1b\[[0-9;]*m/g, "");
+    }
+
     function iconFor(n) {
         if (!n) return "";
         var img = n.image || "";
@@ -111,8 +118,7 @@ Singleton {
     }
 
     /**
-     * Focus the app's Hyprland window (workspace switch included) by matching the
-     * notification's desktopEntry/appName against the live window classes.
+     * Focuses the app's window, workspace switch included, by matching desktopEntry or appName to window classes.
      */
     function raiseWindow(n) {
         if (!n) return;
@@ -124,8 +130,7 @@ Singleton {
     }
 
     /**
-     * Open the app behind a notification: invoke its default action when present,
-     * then jump to the app's window, mirroring stock notification-center behavior.
+     * Invokes the default action when there is one, then jumps to the app's window.
      */
     function activateNotif(n) {
         if (!n) return;
@@ -139,7 +144,6 @@ Singleton {
         raiseWindow(n);
     }
 
-    /** Inbox-row entry wrapper: activate the app, then dismiss the entry. */
     function activateEntry(e) {
         if (!e || !e.n) return;
         activateNotif(e.n);
@@ -184,12 +188,7 @@ Singleton {
     }
 
     /**
-     * Bind the history-snapshot handler to a notification's `closed` signal once.
-     * `keepOnReload` re-runs Component.onCompleted on every QS reload over the
-     * still-tracked notifications, so the id set gates re-hooks: without it each
-     * reload would stack another handler and a single close would push duplicate
-     * history rows. The id is cleared inside the handler so a later notification
-     * reusing the id re-hooks cleanly.
+     * Hooks `closed` once per id: keepOnReload replays onCompleted, and a second hook would push duplicate history rows.
      */
     function hookClosed(n) {
         if (root.hookedIds[n.id])
@@ -201,8 +200,8 @@ Singleton {
             if (!root.userDismissed[n.id])
                 root.history = [{
                     app: (n.appName && n.appName.length) ? n.appName : "System",
-                    summary: n.summary,
-                    body: n.body,
+                    summary: root.plain(n.summary),
+                    body: root.plain(n.body),
                     appIcon: n.appIcon,
                     desktopEntry: n.desktopEntry,
                     image: n.image,
@@ -263,14 +262,25 @@ Singleton {
         }
 
         onNotification: function(n) {
+            n.tracked = true;
+            root.hookClosed(n);
+            /**
+             * A reload hands every kept notification back; they stay in the inbox but never pop up again.
+             */
+            if (n.lastGeneration) {
+                if (!root.arrivalMs[n.id]) {
+                    var k = Object.assign({}, root.arrivalMs);
+                    k[n.id] = Date.now();
+                    root.arrivalMs = k;
+                }
+                return;
+            }
             var a = Object.assign({}, root.arrivalMs);
             a[n.id] = Date.now();
             root.arrivalMs = a;
             var e = Object.assign({}, root.expireAt);
-            e[n.id] = Date.now() + (n.urgency === NotificationUrgency.Low ? 4000 : 6000);
+            e[n.id] = Date.now() + (n.urgency === NotificationUrgency.Low ? 2500 : 4000);
             root.expireAt = e;
-            n.tracked = true;
-            root.hookClosed(n);
             var critical = n.urgency === NotificationUrgency.Critical;
             if (!Flags.dnd || critical)
                 root.popups = root.popups.concat([n]).slice(-3);

@@ -9,24 +9,27 @@ import Quickshell.Hyprland
 import "Singletons"
 
 /**
- * Washi pill top shell. Each monitor carries two layer-shell windows:
- *
- *  - `reserve` is a zero-content strip that only claims an exclusive zone the
- *    height of the rest pill, so tiled windows always sit below the pill even
- *    while it is expanded or a surface is open.
- *  - `overlay` is a full-screen transparent Overlay layer hosting the single
- *    morphing pill anchored at top-centre. The pill never moves windows and is
- *    never re-parented; it just grows in place, so every surface grows out of
- *    the rest pill instead of popping up as a separate panel.
- *
- * Input is routed by the window mask. While the pill is collapsed the mask is
- * the pill rect only, so the rest of the screen clicks through to windows.
- * While the pill is expanded (hovered/pinned) or a surface is open the mask is
- * cleared so the whole layer catches clicks. A backdrop press dismisses, and
- * keyboard focus is taken on demand so Escape closes the open surface.
+ * Washi pill top shell with one Overlay layer per monitor, masked to the pill rect while collapsed so the rest of the screen clicks through.
  */
 ShellRoot {
     id: root
+
+    /**
+     * Heartbeat for watchdog.sh, which restarts this shell when it stops beating.
+     */
+    FileView {
+        id: heartbeat
+        path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/ricelin-pill-alive"
+        printErrors: false
+        blockLoading: false
+    }
+    Timer {
+        interval: 2000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: heartbeat.setText(String(Date.now()))
+    }
 
     property string openMon: ""
     property string openSurface: ""
@@ -41,16 +44,13 @@ ShellRoot {
     Component.onCompleted: {
         refresh();
         Devices.restore();
+        Devices.detect();
         void GameMode.active;
         void Sound.eq;
     }
 
     /**
-     * After an update relaunches the shell, raise a one-shot toast naming what
-     * landed, so the apply ends in a confirmation instead of a silent restart. The
-     * updater drops the marker just before it restarts; the short delay lets the
-     * notification server own the bus before we post to it, and the marker is
-     * removed as it is read so the toast only ever fires once.
+     * Shows a one-shot toast after an update relaunch, delayed so the notification server owns the bus first.
      */
     Timer {
         interval: 2500
@@ -68,25 +68,8 @@ ShellRoot {
             + "Ricelin 0 '' 'Ricelin updated' \"$b\" '[]' '{}' 5000 >/dev/null 2>&1"]
     }
 
-    PanelWindow {
-        id: inhibitWin
-        visible: Flags.keepAwake
-        implicitWidth: 1
-        implicitHeight: 1
-        color: "transparent"
-        exclusionMode: ExclusionMode.Ignore
-        WlrLayershell.layer: WlrLayer.Background
-        WlrLayershell.namespace: "pill-inhibit"
-        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-        anchors { top: true; left: true }
-        IdleInhibitor { window: inhibitWin; enabled: Flags.keepAwake }
-    }
-
     /**
-     * The Wayland IdleInhibitor above only pauses the compositor's own idle
-     * (DPMS); hypridle runs its own timer and never sees it, so the lock still
-     * fired with keep-awake on. A logind idle inhibitor is the wire hypridle
-     * does respect, so hold one for as long as the flag is set.
+     * hypridle ignores the Wayland IdleInhibitor, so a logind idle inhibitor is held while keep-awake is on.
      */
     Process {
         running: Flags.keepAwake
@@ -95,10 +78,7 @@ ShellRoot {
     }
 
     /**
-     * Only these raw events can change what the pill renders (per-monitor
-     * active workspace, minimized toplevels, monitor hotplug). Everything
-     * else (window drags, resizes, title spam) must not trigger the triple
-     * model refresh, which costs three Hyprland IPC round-trips.
+     * Only these events can change what the pill shows, since each model refresh costs three Hyprland IPC round-trips.
      */
     readonly property var refreshEvents: ({
         workspace: true, workspacev2: true,
@@ -122,9 +102,7 @@ ShellRoot {
     }
 
     /**
-     * An empty monitor argument resolves to the focused monitor here, so the
-     * keybind scripts skip their hyprctl+jq round trip and a surface open costs
-     * one IPC call instead of three process spawns.
+     * An empty monitor resolves to the focused one here so keybind scripts skip their own hyprctl+jq lookup.
      */
     function toggleSurface(mon, surface) {
         if (!mon || mon.length === 0)
@@ -163,10 +141,7 @@ ShellRoot {
         function recorder(mon: string): void { root.toggleSurface(mon, "recorder"); }
 
         /**
-         * Quick-record keybind (SUPER+D): one button cycles the whole flow with no
-         * surface. Recording → stop. Counting down → cancel. A chooser already up
-         * on this monitor → dismiss. Otherwise open the standalone source chooser on
-         * the focused monitor `mon`, so only that pill renders it.
+         * SUPER+D quick record that stops, cancels or dismisses whatever is running, else opens the source chooser on `mon` only.
          */
         function quickRecord(mon: string): void {
             if (ScreenRec.recording) {
@@ -191,18 +166,14 @@ ShellRoot {
                 root.toggleSurface(mon, "media");
         }
         function peek(mon: string): void { root.peek(mon); }
+        function timer(minutes: int): void { minutes > 0 ? Countdown.start(minutes * 60) : Countdown.cancel(); }
         function hide(): void { root.close(); }
 
         /** Opens any surface by name, settings sub-pages included; dev and scripting door. */
         function page(mon: string, name: string): void { root.toggleSurface(mon, name); }
 
         /**
-         * The two halves of the SUPER+M minimize toggle, driven by the
-         * minimize-toggle script which has already read the focused window. A
-         * desktop window drops into the minimized stash; a window already stashed
-         * comes back to the workspace it is handed, so the same key hides and
-         * restores. Both target the window by address so they act on the one the
-         * user pressed on, not whatever the compositor calls active afterwards.
+         * SUPER+M minimize toggle halves, which target the window by address so they act on the one pressed on and not whatever is active afterwards.
          */
         function minimizeWindow(addr: string): void {
             Hyprland.dispatch('hl.dsp.window.move({ workspace = "special:minimized", follow = false, window = "address:' + addr + '" })');
@@ -219,35 +190,6 @@ ShellRoot {
         model: Quickshell.screens
 
         PanelWindow {
-            id: reserve
-            required property var modelData
-            readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
-            readonly property real topGap: 8 * Flags.topGap * s
-            readonly property real restHeight: 38 * s
-
-            /** Trimming the reserved band below the pill's bottom lets windows climb, so App gap sets the pill-to-window air without touching the desktop gaps_out. */
-            readonly property real reservedH: Math.max(0, restHeight + topGap - 12 * (1 - Flags.appGap) * s)
-
-            readonly property real gameBarH: 34 * s
-
-            screen: modelData
-            color: "transparent"
-            exclusionMode: ExclusionMode.Normal
-            exclusiveZone: Flags.gameMode ? gameBarH : reservedH
-            aboveWindows: true
-
-            anchors { top: true; left: true; right: true }
-            implicitHeight: Flags.gameMode ? gameBarH : reservedH
-
-            mask: emptyReserve
-            Region { id: emptyReserve }
-        }
-    }
-
-    Variants {
-        model: Quickshell.screens
-
-        PanelWindow {
             id: overlay
             required property var modelData
             readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
@@ -257,21 +199,12 @@ ShellRoot {
             readonly property bool modal: pill.authPending ? false : (surfaceOpen || pill.held || pill.quickChoosing)
 
             /**
-             * True while this monitor's active workspace reports a fullscreen
-             * client. The pill retracts off the top edge and the layer is
-             * click-through so fullscreen content owns the screen, until a
-             * surface or a peek summons it back over the content.
+             * True while this monitor's workspace has a fullscreen client, which retracts the pill and makes the layer click-through.
              */
+            readonly property var hyprMon: Hyprland.monitorFor(modelData)
             readonly property bool monFullscreen: {
-                var mons = Hyprland.monitors.values;
-                for (var i = 0; i < mons.length; i++) {
-                    if (mons[i].name === modelData.name) {
-                        var ws = mons[i].activeWorkspace;
-                        var o = ws ? ws.lastIpcObject : null;
-                        return o ? !!o.hasfullscreen : false;
-                    }
-                }
-                return false;
+                const ws = hyprMon ? hyprMon.activeWorkspace : null;
+                return ws && ws.lastIpcObject ? !!ws.lastIpcObject.hasfullscreen : false;
             }
             readonly property bool summoned: modal || root.peekMon === modelData.name
             readonly property bool pillHidden: monFullscreen && !summoned
@@ -282,19 +215,22 @@ ShellRoot {
                 pill.pinned = false;
             }
 
-            /** Rest, hover, toasts and OSDs fit a top band; the layer only spans the screen while a surface or tall morph needs it. */
-            readonly property real bandH: Math.ceil(topGap + 200 * s + slot.pad)
-            readonly property bool tall: modal || topGap + Math.max(pill.height, pill.targetH) + slot.pad > bandH
+            /** Trimming the reserved band below the pill's bottom lets windows climb, so App gap sets the pill-to-window air without touching the desktop gaps_out. */
+            readonly property real reservedH: Math.max(0, pill.restH + topGap - 12 * (1 - Flags.appGap) * s)
 
             screen: modelData
             color: "transparent"
-            exclusionMode: ExclusionMode.Ignore
+            exclusionMode: ExclusionMode.Normal
+            exclusiveZone: Flags.gameMode ? 34 * s : reservedH
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: ((surfaceOpen || pill.quickChoosing) && !pill.authPending) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             WlrLayershell.namespace: "pill"
 
             anchors { top: true; left: true; right: true }
-            implicitHeight: tall ? modelData.height : bandH
+            /**
+             * Always screen tall: a layer resize shows the old buffer stretched into the new size for one frame, which flickered every open and close.
+             */
+            implicitHeight: modelData.height
 
             mask: modal ? fullRegion : (pillHidden ? hiddenRegion : pillRegion)
             Region { id: hiddenRegion }
@@ -311,6 +247,8 @@ ShellRoot {
                 width: overlay.width
                 height: overlay.height
             }
+
+            IdleInhibitor { window: overlay; enabled: Flags.keepAwake }
 
             MouseArea {
                 anchors.fill: parent
@@ -342,83 +280,25 @@ ShellRoot {
                 HoverHandler {
                     onHoveredChanged: pill.hovered = hovered
                 }
-                Keys.onEscapePressed: {
-                    if (pill.quickChoosing) {
-                        ScreenRec.quickChoosing = false;
-                        ScreenRec.quickScreenChoosing = false;
-                    } else if (!pill.keybindsBack()) {
-                        root.close();
-                    }
-                }
-                Keys.onUpPressed: (e) => {
-                    if (pill.keybindsOpen && !pill.keybindsListening) { pill.keybindsMove(-1); e.accepted = true; return; }
-                    e.accepted = pill.mixerStep(1) || pill.recorderStep(5) || pill.settingsMove(-1);
-                }
-                Keys.onDownPressed: (e) => {
-                    if (pill.keybindsOpen && !pill.keybindsListening) { pill.keybindsMove(1); e.accepted = true; return; }
-                    e.accepted = pill.mixerStep(-1) || pill.recorderStep(-5) || pill.settingsMove(1);
-                }
-                Keys.onLeftPressed: (e) => {
-                    if (pill.mixerOpen) { pill.mixerFocusMove(-1); e.accepted = true; }
-                    else if (pill.wallpaperOpen) { pill.wallpaperMove(-1); e.accepted = true; }
-                    else if (pill.powerOpen) { pill.powerMove(-1); e.accepted = true; }
-                    else if (pill.recorderOpen) { e.accepted = pill.recorderStep(-5); }
-                    else if (pill.settingsLike) { pill.settingsAdjust(-1); e.accepted = true; }
-                }
-                Keys.onRightPressed: (e) => {
-                    if (pill.mixerOpen) { pill.mixerFocusMove(1); e.accepted = true; }
-                    else if (pill.wallpaperOpen) { pill.wallpaperMove(1); e.accepted = true; }
-                    else if (pill.powerOpen) { pill.powerMove(1); e.accepted = true; }
-                    else if (pill.recorderOpen) { e.accepted = pill.recorderStep(5); }
-                    else if (pill.settingsLike) { pill.settingsAdjust(1); e.accepted = true; }
-                }
-
-                /**
-                 * Return/Enter/Space: the wallpaper strip applies its focused
-                 * thumb on every press; the power surface fires a safe tile on
-                 * the first press and, for a destructive tile, holds the heat
-                 * fill across autorepeat presses (drained on release). Autorepeat
-                 * is swallowed for everything else so a held key never re-fires.
-                 */
                 Keys.onPressed: (e) => {
-                    if (pill.wallpaperOpen && !pill.wallpaperSearching
-                        && e.text.length === 1 && e.text > " ") {
-                        pill.wallpaperType(e.text);
+                    if (e.key === Qt.Key_Escape) {
+                        if (pill.quickChoosing) {
+                            ScreenRec.quickChoosing = false;
+                            ScreenRec.quickScreenChoosing = false;
+                        } else {
+                            pill.surfaceBack();
+                        }
                         e.accepted = true;
                         return;
                     }
-                    if (e.key !== Qt.Key_Return && e.key !== Qt.Key_Enter && e.key !== Qt.Key_Space)
-                        return;
-                    if (pill.wallpaperOpen) {
-                        if (!e.isAutoRepeat) pill.wallpaperActivate();
-                        e.accepted = true;
-                    } else if (pill.powerOpen) {
-                        if (!e.isAutoRepeat) pill.powerPress();
-                        e.accepted = true;
-                    } else if (pill.settingsLike) {
-                        if (!e.isAutoRepeat) pill.settingsActivate();
-                        e.accepted = true;
-                    } else if (pill.keybindsOpen && !pill.keybindsListening) {
-                        if (!e.isAutoRepeat) pill.keybindsActivate();
-                        e.accepted = true;
-                    }
+                    e.accepted = pill.current !== null && pill.current.handleKey(e) === true;
                 }
                 Keys.onReleased: (e) => {
-                    if (e.isAutoRepeat)
-                        return;
-                    if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space)
-                        && pill.powerOpen) {
-                        pill.powerRelease();
-                        e.accepted = true;
-                    }
+                    e.accepted = pill.current !== null && pill.current.handleRelease(e) === true;
                 }
 
                 /**
-                 * Slot the pill rests in. While a toast is dragged the slot
-                 * becomes a soft-edged mask: the pill slides against an invisible
-                 * wall and dissolves at the edge it leaves through instead of
-                 * getting cut. The fade lives in the padding outside the pill's
-                 * resting footprint, so an unmoved pill is never touched by it.
+                 * While a toast is dragged the slot becomes a soft-edged mask in the padding outside the pill, so an unmoved pill is never faded.
                  */
                 Item {
                     id: slot
@@ -474,6 +354,7 @@ ShellRoot {
                     anchors.horizontalCenter: parent.horizontalCenter
                     s: overlay.s
                     screenName: overlay.modelData.name
+                    monitor: overlay.hyprMon
                     barWindow: overlay
                     surface: overlay.surface
                     forcePinned: root.peekMon === overlay.modelData.name
@@ -515,12 +396,11 @@ ShellRoot {
                     if (pill.quickChoosing)
                         focusScope.forceActiveFocus();
                 }
-                function onWallpaperSearchingChanged() {
-                    if (!pill.wallpaperSearching && overlay.surfaceOpen)
-                        focusScope.forceActiveFocus();
-                }
-                function onKeybindsListeningChanged() {
-                    if (!pill.keybindsListening && overlay.surfaceOpen)
+            }
+            Connections {
+                target: pill.current
+                function onHoldsFocusChanged() {
+                    if (!pill.current.holdsFocus && overlay.surfaceOpen)
                         focusScope.forceActiveFocus();
                 }
             }

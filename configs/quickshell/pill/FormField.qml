@@ -4,13 +4,15 @@ import QtQuick
 import QtQuick.Controls
 import "Singletons"
 
-/** Labelled box of an inline editor form: a TextField, or with `capture` a tap target that arms key capture. */
+/**
+ * Labelled box of an inline editor form: a TextField, or with `capture` a click target that arms key capture.
+ */
 Item {
     id: field
 
     property real s: 1
     property string label: ""
-    property real fontSize: 11.5
+    property real fontSize: Theme.fs.body
     readonly property alias input: input
     property alias text: input.text
     property alias placeholder: input.placeholderText
@@ -28,16 +30,13 @@ Item {
     width: parent ? parent.width : 0
     height: 40 * field.s
 
-    Text {
+    SettingsLabel {
         anchors.left: parent.left
         anchors.top: parent.top
+        s: field.s
+        topPadding: 0
+        bottomPadding: 0
         text: field.label
-        color: Theme.faint
-        font.family: Theme.font
-        font.pixelSize: 8.5 * field.s
-        font.weight: Font.Medium
-        font.capitalization: Font.AllUppercase
-        font.letterSpacing: 1 * field.s
     }
 
     Rectangle {
@@ -45,27 +44,28 @@ Item {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: 26 * field.s
-        radius: 8 * field.s
-        color: field.listening ? Qt.alpha(Theme.vermLit, 0.12) : Theme.frameBg
+        radius: Theme.r.s * field.s
+        color: field.listening ? Qt.alpha(Theme.vermLit, 0.12)
+            : (capArea.pressed ? Theme.pressBg : (capArea.containsMouse ? Qt.alpha(Theme.cream, 0.08) : Theme.frameBg))
         border.width: 1
         border.color: field.listening ? Qt.alpha(Theme.vermLit, 0.55)
-            : (input.activeFocus ? Qt.alpha(Theme.vermLit, 0.45) : Theme.hairSoft)
-        Behavior on color { enabled: field.capture; ColorAnimation { duration: Motion.fast } }
+            : (input.activeFocus ? Qt.alpha(Theme.vermLit, 0.45) : (capArea.containsMouse ? Theme.frameBorder : Theme.hairSoft))
+        Behavior on color { enabled: field.capture; ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
         TextField {
             id: input
             visible: !field.capture
             anchors.left: parent.left
-            anchors.leftMargin: 11 * field.s
+            anchors.leftMargin: Theme.sp.m * field.s
             anchors.right: parent.right
-            anchors.rightMargin: 11 * field.s
+            anchors.rightMargin: Theme.sp.m * field.s
             anchors.verticalCenter: parent.verticalCenter
             background: null
             padding: 0
             color: Theme.cream
             font.family: Theme.font
             font.pixelSize: field.fontSize * field.s
-            placeholderTextColor: Theme.faint
+            placeholderTextColor: Theme.textFaint
             selectByMouse: true
             selectionColor: Theme.verm
             onTextEdited: field.edited()
@@ -78,19 +78,23 @@ Item {
         Text {
             visible: field.capture
             anchors.left: parent.left
-            anchors.leftMargin: 11 * field.s
+            anchors.leftMargin: Theme.sp.m * field.s
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.sp.m * field.s
             anchors.verticalCenter: parent.verticalCenter
-            text: field.listening ? field.hint : (field.value.length ? field.value : "tap to set a key")
-            color: field.listening ? Theme.flameGlow : (field.value.length ? Theme.cream : Theme.faint)
+            text: field.listening ? field.hint : (field.value.length ? field.value : "Click to set a key")
+            color: field.listening ? Theme.flameGlow : (field.value.length ? Theme.cream : Theme.textFaint)
             font.family: Theme.font
-            font.pixelSize: 11.5 * field.s
+            font.pixelSize: Theme.fs.body * field.s
             font.weight: field.value.length ? Font.DemiBold : Font.Medium
             elide: Text.ElideRight
         }
 
         MouseArea {
+            id: capArea
             anchors.fill: parent
             visible: field.capture
+            hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: field.tapped()
         }

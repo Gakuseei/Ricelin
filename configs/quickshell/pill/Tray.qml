@@ -9,11 +9,7 @@ import Quickshell.Services.SystemTray
 import "Singletons"
 
 /**
- * System tray. Draws StatusNotifier items as warm-tinted icons. Left-click
- * activates (preferring the resolved desktop entry), middle-click does the
- * secondary action, right-click opens the item's native menu in a floating
- * washi card, wheel scrolls the item. The menu gets its own overlay window so
- * it can grab keyboard focus for dismissal.
+ * System tray of warm-tinted StatusNotifier icons whose right-click menu gets its own overlay window so it can grab keyboard focus.
  */
 Item {
     id: tray
@@ -62,7 +58,7 @@ Item {
                     border.width: 1
                     border.color: Theme.frameBorder
                     opacity: area.containsMouse ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                    Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
                 }
 
                 Image {
@@ -111,9 +107,7 @@ Item {
     }
 
     /**
-     * One menu line: separator, or a row with optional checkbox/radio state,
-     * icon, label and a submenu chevron that rotates when expanded. Used for
-     * both top-level entries and indented submenu children.
+     * One tray menu line, used for both top-level entries and indented submenu children.
      */
     component MenuRow: Item {
         id: mrow
@@ -153,7 +147,7 @@ Item {
                 radius: width / 2
                 color: Theme.vermLit
                 opacity: mrowArea.containsMouse && mrow.entryData.enabled ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
             }
 
             Rectangle {
@@ -226,7 +220,7 @@ Item {
                 color: mrow.expanded ? Theme.vermLit : Theme.iconDim
                 stroke: 2
                 rotation: mrow.expanded ? 90 : 0
-                Behavior on rotation { NumberAnimation { duration: Motion.fast } }
+                Behavior on rotation { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
             }
 
             MouseArea {

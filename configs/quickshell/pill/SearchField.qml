@@ -10,21 +10,20 @@ Item {
     property string placeholder: ""
     property string counterText: ""
     property real kanjiSize: 16
-    property real fontSize: 15
-    property real gap: 10
+    property real fontSize: Theme.fs.title
+    property real gap: Theme.sp.s
     property real lead: 0
-    property real trail: 10
-    property real lineGap: 2
+    property real trail: Theme.sp.s
+    property real lineGap: Theme.sp.xxs
     property real restOpacity: 0
     property bool showCursor: false
-    /** Off leaves Escape to the pill's own back and close handling. */
+    /**
+     * Off leaves Escape to the pill's own back and close handling.
+     */
     property bool catchEscape: true
 
     /**
-     * Map Left/Right to the moved() signal instead of text-cursor motion. For a
-     * horizontal result strip the arrows should page the strip; without this the
-     * field swallows them until the caret sits at a text boundary, so navigation
-     * stalls mid-query.
+     * Left/Right emit moved() instead of moving the caret, for horizontal result strips.
      */
     property bool horizontalNav: false
     readonly property alias input: field
@@ -70,7 +69,7 @@ Item {
         font.family: Theme.font
         font.pixelSize: root.fontSize * root.s
         placeholderText: root.placeholder
-        placeholderTextColor: Theme.faint
+        placeholderTextColor: Theme.textFaint
         selectByMouse: true
         selectionColor: Theme.verm
         cursorDelegate: root.showCursor ? null : noCursor
@@ -108,11 +107,11 @@ Item {
         id: counter
         anchors.verticalCenter: parent.verticalCenter
         anchors.right: rightSlot.left
-        anchors.rightMargin: rightSlot.width > 0 ? 10 * root.s : 0
+        anchors.rightMargin: rightSlot.width > 0 ? Theme.sp.s * root.s : 0
         text: root.counterText
-        color: Theme.faint
+        color: Theme.textFaint
         font.family: Theme.font
-        font.pixelSize: 10.5 * root.s
+        font.pixelSize: Theme.fs.meta * root.s
         font.features: { "tnum": 1 }
     }
 

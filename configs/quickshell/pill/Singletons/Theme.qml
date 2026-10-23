@@ -3,24 +3,13 @@ import QtQuick
 import Quickshell
 
 /**
- * Pill palette. Two sources: the curated washi/flame hex below is the identity
- * and the default, used whenever the dynamic-palette flag is off. With the flag
- * on, the surfaces and the whole accent ramp follow the wallpaper through the
- * matugen-fed `Dyn` singleton, while the text family, light veils and shadow
- * stay locked here so copy keeps its contrast on any generated background. Each
- * token is a single ternary, so static mode renders byte-identical to the fixed
- * theme and only the colours that should breathe with the wallpaper do.
+ * Pill palette with the curated washi/flame hex by default, where surfaces and accents follow the wallpaper via Dyn when the dynamic flag is on.
  */
 Singleton {
     readonly property bool dyn: Flags.paletteMode !== "static"
 
     /**
-     * Bright warm pop shared by the flame glow, charging glyphs, the recording
-     * countdown, the unread inbox dot, the calendar's today cell and the held
-     * power tile. The dynamic branch uses the wallpaper accent (Dyn.primary):
-     * matugen's on-primary-container does not populate here and collapses the
-     * token to black, while the accent always loads and contrasts the pill
-     * surface. Static mode keeps the fixed warm hex.
+     * The dynamic branch uses Dyn.primary because matugen's on-primary-container does not populate here and collapses the token to black.
      */
     readonly property color onGlow: dyn ? Dyn.primary : "#ff9a64"
 
@@ -41,6 +30,25 @@ Singleton {
     readonly property color hair:     Qt.alpha(cream, 0.13)
     readonly property color hairSoft: Qt.alpha(cream, 0.08)
     readonly property color sheen:    Qt.alpha(cream, 0.07)
+    readonly property color danger:    "#e0533f"
+
+    /**
+     * Readable faint text (4.5:1 on the cards); faint itself stays for strokes and dividers.
+     */
+    readonly property color textFaint: dyn ? Qt.rgba((Qt.color(Dyn.faint).r + Qt.color(Dyn.subtle).r) / 2, (Qt.color(Dyn.faint).g + Qt.color(Dyn.subtle).g) / 2, (Qt.color(Dyn.faint).b + Qt.color(Dyn.subtle).b) / 2, 1) : "#9a8c82"
+    readonly property color accentFill: dyn ? Dyn.primary : "#a3371f"
+    readonly property color onAccent:   dyn ? Dyn.surface : "#fff6f0"
+
+    /**
+     * The one type, space and corner scale every surface draws from, in unscaled pixels.
+     */
+    readonly property var fs: ({ label: 9, meta: 10.5, body: 12.5, title: 15, display: 30 })
+    readonly property var sp: ({ xxs: 2, xs: 4, s: 8, m: 12, l: 16, xl: 20 })
+    readonly property var r: ({ xs: 4, s: 7, m: 9, l: 13, full: 999 })
+    readonly property var inset: ({ top: 15, side: 18, bottom: 14 })
+    readonly property real labelTracking: 1.4
+    readonly property color pressBg: Qt.alpha(cream, 0.09)
+
     readonly property color vermDim:   dyn ? Qt.darker(Dyn.primary, 1.5) : "#8a5440"
     readonly property color vermDimDeep: dyn ? Qt.darker(Dyn.primary, 2.2) : "#5a3526"
     readonly property color vermBurn:  dyn ? Qt.darker(Dyn.primaryContainer, 1.1) : "#8a2c14"
@@ -50,10 +58,7 @@ Singleton {
     readonly property color flameGlow: dyn ? onGlow : "#ff9a64"
 
     /**
-     * Flame canvas ramp: literal hex strings (color type won't work), fed
-     * directly to Canvas addColorStop/strokeStyle. A color property serializes
-     * to #aarrggbb and corrupts the gradient render, so the dynamic branch passes
-     * matugen's raw hex strings through untouched rather than any Qt.darker math.
+     * Literal hex strings because a color property serializes to #aarrggbb and corrupts the Canvas gradient, so no Qt.darker math here.
      */
     readonly property string flameInk:   dyn ? Dyn.primary : "#f0795a"
     readonly property string flameEmber: dyn ? Dyn.primaryContainer : "#7e2812"
@@ -66,9 +71,7 @@ Singleton {
     readonly property color creamMenu:     Qt.alpha(cream, 0.82)
     readonly property real shadowOpacity: 0.5
     /**
-     * Snapshot of the system families, not a binding: Qt.fontFamilies() is not
-     * notifiable, so a font dropped onto the pill re-registers through
-     * refreshFonts() once its FontLoader is ready.
+     * A snapshot and not a binding since Qt.fontFamilies() is not notifiable, so refreshFonts() runs once a dropped font's FontLoader is ready.
      */
     property var fontFamilies: Qt.fontFamilies()
     function refreshFonts() { fontFamilies = Qt.fontFamilies(); }
@@ -76,9 +79,7 @@ Singleton {
     readonly property string fontJp: "Zen Kaku Gothic New"
 
     /**
-     * MPRIS trackArtists arrives as a JS array from some players and as a
-     * plain string from others (Spotify); calling join on the string throws
-     * and kills the whole binding. Handles both, falls back to trackArtist.
+     * MPRIS trackArtists is an array from some players and a plain string from others (Spotify), where join would throw and kill the binding.
      */
     function joinArtists(artists, single) {
         if (artists && typeof artists.join === "function" && artists.length > 0)

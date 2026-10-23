@@ -1,35 +1,20 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls as QQC
 import Quickshell
 import "Singletons"
 
 /**
- * Calendar surface: a weather glance, the month grid, and an event editor that
- * grows out to the right when a day is picked.
- *
- * The centre is the month grid (header with month/year and prev/next nav, weekday
- * row, day cells sized to exactly the rows the month needs). Today keeps its warm
- * frame and the Ame ring; a day that holds a stored event marks its number warm
- * with a small ember dot. To the left, when Weather.ready, a slim panel shows the
- * current temperature, the condition kanji and city, and the next few hours. To
- * the right, selecting a day slides open an editor listing that day's events with
- * a delete tap and an add form (start, end, title).
- *
- * The date math (offset/monthLen/rows/today/shiftMonth/resetToday) is unchanged;
- * the grid is wrapped, not rewritten. implicitWidth sums the visible panels so the
- * pill morphs wider as the editor opens; implicitHeight still drives the height
- * down to the live row count. View date resets to the real today on every open,
- * and Ame keeps targeting today via ameForm/amePoint.
+ * Calendar: weather glance, month grid, and an event editor that opens to the right when a day is picked.
  */
 PillSurface {
     id: root
 
-    mTop: 16
-    mLeft: 18
-    mRight: 18
-    mBottom: 16
+    mTop: Theme.inset.top
+    mLeft: Theme.inset.side
+    mRight: Theme.inset.side
+    mBottom: Theme.inset.bottom
 
     readonly property var loc: Qt.locale("en_US")
 
@@ -52,13 +37,7 @@ PillSurface {
     readonly property bool weatherShown: Weather.ready
     readonly property bool editorShown: selectedDate.length > 0
 
-    /**
-     * Selection: selectedDate is the picked day (and a span's start), selEndDate
-     * the span's last day or "" for a single day. pickingEnd arms the grid so the
-     * next day click closes the span; hoverDay previews that span live while the
-     * pointer moves. Keys are zero-padded "YYYY-MM-DD" so a string compare spans
-     * them, even across months.
-     */
+    /** Picked day (a span's start) and span end as zero-padded "YYYY-MM-DD", so string compares work across months. */
     property string selectedDate: ""
     property string selEndDate: ""
     property bool pickingEnd: false
@@ -112,13 +91,7 @@ PillSurface {
     readonly property bool todayVisible: viewMonth === today.getMonth()
         && viewYear === today.getFullYear()
 
-    /**
-     * Ame is the focus cursor: it rings the picked day, or today when this month
-     * is in view with nothing picked. Browsing another month with nothing picked
-     * leaves no focus, so the bead parks as a soul ember on the 暦 header glyph
-     * (the calendar's lantern, mirroring Sysmon) rather than floating over a
-     * random date cell — which is what read as Ame jumping somewhere random.
-     */
+    /** Ame rings the picked day or today; with neither in view it parks as an ember on the 暦 header glyph. */
     readonly property bool selectedInView: selectedDate.length > 0
         && Number(selectedDate.split("-")[1]) === viewMonth + 1
         && Number(selectedDate.split("-")[0]) === viewYear
@@ -135,8 +108,8 @@ PillSurface {
         void width;
         void height;
         if (Flags.showGlyphs)
-            return calGlyph.mapToItem(root, calGlyph.width / 2, -3 * s);
-        return monthLabel.mapToItem(root, -8 * s, monthLabel.height / 2);
+            return header.mapToItem(root, 8 * s, header.height / 2 - 11 * s);
+        return header.mapToItem(root, -8 * s, header.height / 2);
     }
 
     ameForm: focused ? "ring" : "soul"
@@ -170,6 +143,18 @@ PillSurface {
         return viewYear + "-" + mm + "-" + dd;
     }
 
+    /**
+     * The new month slides in from the side it came from.
+     */
+    property real monthDir: 1
+    property real monthShift: 0
+    property real monthFade: 1
+    ParallelAnimation {
+        id: monthIn
+        NumberAnimation { target: root; property: "monthShift"; from: 14 * root.s * root.monthDir; to: 0; duration: 200; easing.type: Easing.OutCubic }
+        NumberAnimation { target: root; property: "monthFade"; from: 0.3; to: 1; duration: 200; easing.type: Easing.OutCubic }
+    }
+
     function shiftMonth(delta) {
         var m = viewMonth + delta;
         var y = viewYear;
@@ -178,6 +163,9 @@ PillSurface {
         viewMonth = m;
         viewYear = y;
         hoverDay = 0;
+        monthDir = delta > 0 ? 1 : -1;
+        if (!Motion.calm)
+            monthIn.restart();
         if (!pickingEnd) {
             selectedDate = "";
             selEndDate = "";
@@ -194,10 +182,7 @@ PillSurface {
     }
 
     /**
-     * Click handling: while arming a span the next click sets its end (clicking
-     * the start again drops the span); a click below the start swaps the two so
-     * the earlier day stays the start. Otherwise it toggles a single day and
-     * re-clicking the open day closes the editor.
+     * While picking an end the click closes the span, swapping if earlier and dropping it on the start day, otherwise it toggles a single day.
      */
     function selectDay(day) {
         var key = dateKey(day);
@@ -223,6 +208,70 @@ PillSurface {
     }
 
     onActiveChanged: if (active) resetToday()
+
+    function back() {
+        if (pickingEnd) {
+            pickingEnd = false;
+            hoverDay = 0;
+            return true;
+        }
+        if (selectedDate.length === 0)
+            return false;
+        selectedDate = "";
+        selEndDate = "";
+        return true;
+    }
+
+    component SmallCaps: Text {
+        color: Theme.textFaint
+        font.family: Theme.font
+        font.pixelSize: Theme.fs.label * root.s
+        font.weight: Font.Bold
+        font.capitalization: Font.AllUppercase
+        font.letterSpacing: Theme.labelTracking * root.s
+    }
+
+    /** Underlined inline input used by the editor's title and time fields. */
+    component LineField: Item {
+        id: lf
+
+        property alias field: lfInput
+        property alias placeholder: lfInput.placeholderText
+        property bool numeric: false
+
+        signal edited(string text)
+        signal submitted()
+
+        height: 26 * root.s
+
+        QQC.TextField {
+            id: lfInput
+            anchors.fill: parent
+            background: null
+            padding: 0
+            leftPadding: Theme.sp.xxs * root.s
+            verticalAlignment: TextInput.AlignVCenter
+            color: Theme.cream
+            font.family: Theme.font
+            font.pixelSize: Theme.fs.body * root.s
+            font.features: lf.numeric ? { "tnum": 1 } : {}
+            placeholderTextColor: Theme.textFaint
+            inputMethodHints: lf.numeric ? Qt.ImhPreferNumbers : Qt.ImhNone
+            selectByMouse: true
+            selectionColor: Theme.verm
+            onTextChanged: lf.edited(text)
+            Keys.onReturnPressed: lf.submitted()
+        }
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: 1
+            color: Theme.faint
+            opacity: lfInput.activeFocus ? 0.7 : 0.2
+            Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+        }
+    }
 
     Item {
         id: weather
@@ -269,7 +318,7 @@ PillSurface {
                         text: Weather.labelFor(Weather.codeNow)
                         color: Theme.subtle
                         font.family: Theme.font
-                        font.pixelSize: 10 * root.s
+                        font.pixelSize: Theme.fs.meta * root.s
                         font.weight: Font.Medium
                     }
                 }
@@ -279,12 +328,7 @@ PillSurface {
                 width: parent.width
                 spacing: 8 * root.s
 
-                /**
-                 * IP geolocation only ever resolves to the ISP city, so the town
-                 * is editable in place: tap to type, which sets Flags.weatherCity
-                 * and re-geocodes through Open-Meteo for the exact spot. Blank it
-                 * to fall back to auto IP detection.
-                 */
+                /** IP lookup only finds the ISP city, so a click edits the town in place; blank falls back to auto. */
                 Item {
                     id: cityBox
                     anchors.verticalCenter: parent.verticalCenter
@@ -293,19 +337,14 @@ PillSurface {
 
                     property bool editing: false
 
-                    Text {
+                    SmallCaps {
                         id: cityText
                         visible: !cityBox.editing
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Weather.city.length > 0 ? Weather.city : "set town"
-                        color: cityArea.containsMouse ? Theme.subtle : Theme.dim
-                        font.family: Theme.font
-                        font.pixelSize: 9 * root.s
-                        font.weight: Font.Medium
-                        font.capitalization: Font.AllUppercase
-                        font.letterSpacing: 0.8 * root.s
+                        text: Weather.city.length > 0 ? Weather.city : "Set town"
+                        color: cityArea.containsMouse ? Theme.subtle : Theme.textFaint
                         elide: Text.ElideRight
                     }
                     MouseArea {
@@ -321,7 +360,7 @@ PillSurface {
                             cityField.selectAll();
                         }
                     }
-                    TextField {
+                    QQC.TextField {
                         id: cityField
                         visible: cityBox.editing
                         anchors.left: parent.left
@@ -332,12 +371,12 @@ PillSurface {
                         verticalAlignment: TextInput.AlignVCenter
                         color: Theme.cream
                         font.family: Theme.font
-                        font.pixelSize: 9 * root.s
-                        font.weight: Font.Medium
+                        font.pixelSize: Theme.fs.label * root.s
+                        font.weight: Font.Bold
                         font.capitalization: Font.AllUppercase
-                        font.letterSpacing: 0.8 * root.s
-                        placeholderText: "town"
-                        placeholderTextColor: Theme.faint
+                        font.letterSpacing: Theme.labelTracking * root.s
+                        placeholderText: "Town"
+                        placeholderTextColor: Theme.textFaint
                         selectByMouse: true
                         selectionColor: Theme.verm
                         onAccepted: {
@@ -364,9 +403,9 @@ PillSurface {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: Weather.humidity + "%"
-                        color: Theme.faint
+                        color: Theme.textFaint
                         font.family: Theme.font
-                        font.pixelSize: 9.5 * root.s
+                        font.pixelSize: Theme.fs.meta * root.s
                         font.weight: Font.Medium
                         font.features: { "tnum": 1 }
                     }
@@ -391,14 +430,9 @@ PillSurface {
                         width: wxCol.width / 4
                         spacing: 5 * root.s
 
-                        Text {
+                        SmallCaps {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: dayCol.modelData.day
-                            color: Theme.faint
-                            font.family: Theme.font
-                            font.pixelSize: 9 * root.s
-                            font.weight: Font.DemiBold
-                            font.capitalization: Font.AllUppercase
                             font.letterSpacing: 0.5 * root.s
                         }
                         GlyphIcon {
@@ -414,7 +448,7 @@ PillSurface {
                             text: dayCol.modelData.temp + "°"
                             color: Theme.cream
                             font.family: Theme.font
-                            font.pixelSize: 11 * root.s
+                            font.pixelSize: Theme.fs.meta * root.s
                             font.weight: Font.Medium
                             font.features: { "tnum": 1 }
                         }
@@ -433,9 +467,9 @@ PillSurface {
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: dayCol.modelData.rh + "%"
-                                color: Theme.faint
+                                color: Theme.textFaint
                                 font.family: Theme.font
-                                font.pixelSize: 8.5 * root.s
+                                font.pixelSize: Theme.fs.label * root.s
                                 font.weight: Font.Medium
                                 font.features: { "tnum": 1 }
                             }
@@ -466,46 +500,19 @@ PillSurface {
         anchors.bottom: parent.bottom
         width: root.gridW
 
-        Item {
+        SurfaceHeader {
             id: header
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 24 * root.s
-
-            Row {
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 8 * root.s
-
-                Text {
-                    id: calGlyph
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: Flags.showGlyphs
-                    text: "暦"
-                    color: Theme.cream
-                    font.family: Theme.fontJp
-                    font.weight: Font.Medium
-                    font.pixelSize: 16 * root.s
-                }
-                Text {
-                    id: monthLabel
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.loc.standaloneMonthName(root.viewMonth, Locale.LongFormat)
-                        + " " + root.viewYear
-                    color: Theme.subtle
-                    font.family: Theme.font
-                    font.pixelSize: 11 * root.s
-                    font.weight: Font.DemiBold
-                    font.capitalization: Font.AllUppercase
-                    font.letterSpacing: 1.0 * root.s
-                }
-            }
+            s: root.s
+            glyph: "暦"
+            title: root.loc.standaloneMonthName(root.viewMonth, Locale.LongFormat) + " " + root.viewYear
 
             Row {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 2 * root.s
+                spacing: Theme.sp.xxs * root.s
 
                 Repeater {
                     model: [-1, 1]
@@ -514,11 +521,13 @@ PillSurface {
                         id: nav
                         required property int modelData
                         width: 22 * root.s
-                        height: 22 * root.s
-                        radius: Motion.rSmall * root.s
-                        color: navArea.containsMouse ? Theme.frameBg : "transparent"
+                        height: width
+                        radius: Theme.r.s * root.s
+                        scale: navArea.pressed && !Motion.calm ? 0.94 : 1
+                        color: navArea.pressed ? Theme.hair : (navArea.containsMouse ? Theme.frameBg : "transparent")
                         border.width: navArea.containsMouse ? 1 : 0
                         border.color: Theme.frameBorder
+                        Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
                         GlyphIcon {
                             anchors.centerIn: parent
@@ -568,14 +577,11 @@ PillSurface {
                     width: weekdays.width / 7
                     height: 16 * root.s
 
-                    Text {
+                    SmallCaps {
                         anchors.centerIn: parent
                         text: root.loc.standaloneDayName((wd.index + 1) % 7, Locale.NarrowFormat)
-                        color: wd.weekend ? Theme.faint : Theme.dim
-                        font.family: Theme.font
-                        font.pixelSize: 9 * root.s
-                        font.weight: Font.Medium
-                        font.letterSpacing: 0.5 * root.s
+                        color: wd.weekend ? Theme.textFaint : Theme.subtle
+                        font.letterSpacing: 0
                     }
                 }
             }
@@ -583,6 +589,8 @@ PillSurface {
 
         Grid {
             id: grid
+            opacity: root.monthFade
+            transform: Translate { x: root.monthShift }
             y: weekdays.y + weekdays.height + 4 * root.s
             anchors.left: parent.left
             anchors.right: parent.right
@@ -616,17 +624,17 @@ PillSurface {
                     Rectangle {
                         anchors.centerIn: parent
                         width: 22 * root.s
-                        height: 22 * root.s
-                        radius: Motion.rSmall * root.s
-                        color: cellArea.containsMouse && cell.inMonth && !cell.current
-                            ? Qt.rgba(0.94, 0.88, 0.84, 0.04) : "transparent"
+                        height: width
+                        radius: Theme.r.s * root.s
+                        color: !cell.inMonth || cell.current ? "transparent"
+                            : (cellArea.pressed ? Theme.hair : (cellArea.containsMouse ? Qt.alpha(Theme.cream, 0.04) : "transparent"))
                     }
 
                     Rectangle {
                         anchors.centerIn: parent
                         width: 24 * root.s
-                        height: 24 * root.s
-                        radius: Motion.rSmall * root.s
+                        height: width
+                        radius: Theme.r.s * root.s
                         visible: cell.current || cell.sel
                         color: cell.sel && !cell.current ? Qt.alpha(Theme.vermLit, 0.12) : Theme.frameBg
                         border.width: 1
@@ -644,8 +652,8 @@ PillSurface {
                             : Theme.ghost
                         opacity: cell.inMonth && !cell.current && !cell.weekend && !cell.hasEvent ? 0.85 : 1.0
                         font.family: Theme.font
-                        font.pixelSize: 11 * root.s
-                        font.weight: cell.current || cell.hasEvent ? Font.DemiBold : Font.Normal
+                        font.pixelSize: Theme.fs.meta * root.s
+                        font.weight: cell.current ? Font.Bold : cell.hasEvent ? Font.DemiBold : Font.Normal
                         font.features: { "tnum": 1 }
                     }
 
@@ -655,7 +663,7 @@ PillSurface {
                         anchors.topMargin: 9 * root.s
                         visible: cell.hasEvent && !cell.current
                         width: 3 * root.s
-                        height: 3 * root.s
+                        height: width
                         radius: width / 2
                         color: Theme.flameGlow
                     }
@@ -679,12 +687,11 @@ PillSurface {
             anchors.top: grid.bottom
             anchors.topMargin: 6 * root.s
             visible: root.pickingEnd
-            text: "click the end day"
+            text: "Click the last day"
             color: Theme.flameGlow
             font.family: Theme.font
-            font.pixelSize: 9 * root.s
+            font.pixelSize: Theme.fs.meta * root.s
             font.weight: Font.DemiBold
-            font.letterSpacing: 0.4 * root.s
         }
 
         MouseArea {
@@ -748,11 +755,7 @@ PillSurface {
         property string endVal: ""
         property string titleVal: ""
 
-        /**
-         * recur is "" / "month" / "year". It suggests yearly by itself once the
-         * title reads like a birthday and then stays as the user left it after they
-         * work the Repeat toggle by hand (recurManual).
-         */
+        /** "" / "month" / "year"; a birthday-like title suggests yearly until the user picks by hand. */
         property string recur: ""
         property bool recurManual: false
 
@@ -768,9 +771,9 @@ PillSurface {
             titleVal = "";
             recur = "";
             recurManual = false;
-            startField.text = "";
-            endField.text = "";
-            titleField.text = "";
+            startField.field.text = "";
+            endField.field.text = "";
+            titleField.field.text = "";
         }
 
         /** A time is kept only when it reads as HH:MM, otherwise it drops to an all-day blank. */
@@ -788,7 +791,7 @@ PillSurface {
             Events.add(root.selectedDate, editor.recur !== "" ? "" : root.selEndDate,
                        t, e, titleVal.trim(), editor.recur);
             clearForm();
-            titleField.forceActiveFocus();
+            titleField.field.forceActiveFocus();
         }
 
         onWidthChanged: if (width < 1) { clearForm(); mode = "allday"; }
@@ -800,15 +803,12 @@ PillSurface {
             anchors.top: parent.top
             spacing: 8 * root.s
 
-            Text {
+            SmallCaps {
                 width: parent.width
+                height: 22 * root.s
+                verticalAlignment: Text.AlignVCenter
                 text: editor.heading
-                color: Theme.cream
-                font.family: Theme.font
-                font.pixelSize: 12 * root.s
-                font.weight: Font.DemiBold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: 0.8 * root.s
+                color: Theme.subtle
                 elide: Text.ElideRight
             }
 
@@ -837,14 +837,13 @@ PillSurface {
                         width: edFlick.width
                         spacing: 4 * root.s
 
-                        Text {
+                        EmptyState {
+                            width: parent.width
                             visible: editor.dayEvents.length === 0
-                            text: "Nothing yet"
-                            color: Theme.faint
-                            font.family: Theme.font
-                            font.pixelSize: 11 * root.s
-                            font.weight: Font.Medium
-                            font.italic: true
+                            s: root.s
+                            topPadding: Theme.sp.s * root.s
+                            bottomPadding: Theme.sp.s * root.s
+                            text: "Nothing planned"
                         }
 
                         Repeater {
@@ -855,7 +854,7 @@ PillSurface {
                                 required property var modelData
                                 width: edList.width
                                 height: evBody.implicitHeight + 12 * root.s
-                                radius: Motion.rSmall * root.s
+                                radius: Theme.r.s * root.s
                                 color: evArea.hovered ? Theme.frameBg : "transparent"
 
                                 /** "all day" or "09:00–10:00", a date span when multi-day, "every year" when recurring. */
@@ -879,19 +878,19 @@ PillSurface {
                                 Column {
                                     id: evBody
                                     anchors.left: parent.left
-                                    anchors.leftMargin: 8 * root.s
+                                    anchors.leftMargin: Theme.sp.s * root.s
                                     anchors.right: evDel.left
                                     anchors.rightMargin: 6 * root.s
                                     anchors.top: parent.top
                                     anchors.topMargin: 6 * root.s
-                                    spacing: 2 * root.s
+                                    spacing: Theme.sp.xxs * root.s
 
                                     Text {
                                         text: evRow.modelData.text
                                         width: parent.width
                                         color: Theme.cream
                                         font.family: Theme.font
-                                        font.pixelSize: 11 * root.s
+                                        font.pixelSize: Theme.fs.meta * root.s
                                         font.weight: Font.Medium
                                         wrapMode: Text.Wrap
                                         maximumLineCount: 4
@@ -902,7 +901,7 @@ PillSurface {
                                         width: parent.width
                                         color: Theme.flameGlow
                                         font.family: Theme.font
-                                        font.pixelSize: 9 * root.s
+                                        font.pixelSize: Theme.fs.label * root.s
                                         font.weight: Font.DemiBold
                                         font.features: { "tnum": 1 }
                                         wrapMode: Text.Wrap
@@ -919,7 +918,9 @@ PillSurface {
                                     width: 16 * root.s
                                     height: 16 * root.s
                                     opacity: evArea.hovered ? 1 : 0.32
-                                    Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                                    scale: delArea.pressed && !Motion.calm ? 0.9 : 1
+                                    Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
+                                    Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
                                     GlyphIcon {
                                         anchors.fill: parent
@@ -959,36 +960,13 @@ PillSurface {
                 width: parent.width
                 spacing: 8 * root.s
 
-                Item {
+                LineField {
+                    id: titleField
                     width: parent.width - addBtn.width - 8 * root.s
                     height: 28 * root.s
-
-                    TextField {
-                        id: titleField
-                        anchors.fill: parent
-                        background: null
-                        padding: 0
-                        leftPadding: 2 * root.s
-                        verticalAlignment: TextInput.AlignVCenter
-                        color: Theme.cream
-                        font.family: Theme.font
-                        font.pixelSize: 13 * root.s
-                        placeholderText: "what's on"
-                        placeholderTextColor: Theme.faint
-                        selectByMouse: true
-                        selectionColor: Theme.verm
-                        onTextChanged: { editor.titleVal = text; editor.autoRecur(); }
-                        Keys.onReturnPressed: editor.commit()
-                    }
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        height: 1
-                        color: Theme.faint
-                        opacity: titleField.activeFocus ? 0.7 : 0.2
-                        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-                    }
+                    placeholder: "What's on?"
+                    onEdited: (t) => { editor.titleVal = t; editor.autoRecur(); }
+                    onSubmitted: editor.commit()
                 }
 
                 Rectangle {
@@ -996,20 +974,22 @@ PillSurface {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 28 * root.s
                     height: 28 * root.s
-                    radius: Motion.rSmall * root.s
+                    radius: Theme.r.s * root.s
                     readonly property bool armed: editor.titleVal.trim().length > 0
-                    color: addArea.containsMouse && armed ? Qt.alpha(Theme.vermLit, 0.22)
+                    scale: addArea.pressed && armed && !Motion.calm ? 0.94 : 1
+                    color: addArea.containsMouse && armed ? Qt.alpha(Theme.vermLit, addArea.pressed ? 0.3 : 0.22)
                         : (armed ? Qt.alpha(Theme.vermLit, 0.12) : Theme.frameBg)
                     border.width: 1
                     border.color: armed ? Qt.alpha(Theme.vermLit, 0.5) : Theme.frameBorder
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
+                    Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
                     Text {
                         anchors.centerIn: parent
                         text: "+"
                         color: addBtn.armed ? Theme.vermLit : Theme.iconDim
                         font.family: Theme.font
-                        font.pixelSize: 18 * root.s
+                        font.pixelSize: Theme.fs.title * root.s
                         font.weight: Font.Medium
                     }
 
@@ -1038,72 +1018,22 @@ PillSurface {
                 spacing: 8 * root.s
                 visible: editor.mode === "timed"
 
-                Item {
+                LineField {
+                    id: startField
                     width: (parent.width - 8 * root.s) / 2
-                    height: 26 * root.s
-
-                    TextField {
-                        id: startField
-                        anchors.fill: parent
-                        background: null
-                        padding: 0
-                        leftPadding: 2 * root.s
-                        verticalAlignment: TextInput.AlignVCenter
-                        color: Theme.cream
-                        font.family: Theme.font
-                        font.pixelSize: 13 * root.s
-                        font.features: { "tnum": 1 }
-                        placeholderText: "09:00"
-                        placeholderTextColor: Theme.faint
-                        inputMethodHints: Qt.ImhPreferNumbers
-                        selectByMouse: true
-                        selectionColor: Theme.verm
-                        onTextChanged: editor.startVal = text
-                        Keys.onReturnPressed: editor.commit()
-                    }
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        height: 1
-                        color: Theme.faint
-                        opacity: startField.activeFocus ? 0.7 : 0.2
-                        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-                    }
+                    numeric: true
+                    placeholder: "09:00"
+                    onEdited: (t) => editor.startVal = t
+                    onSubmitted: editor.commit()
                 }
 
-                Item {
+                LineField {
+                    id: endField
                     width: (parent.width - 8 * root.s) / 2
-                    height: 26 * root.s
-
-                    TextField {
-                        id: endField
-                        anchors.fill: parent
-                        background: null
-                        padding: 0
-                        leftPadding: 2 * root.s
-                        verticalAlignment: TextInput.AlignVCenter
-                        color: Theme.cream
-                        font.family: Theme.font
-                        font.pixelSize: 13 * root.s
-                        font.features: { "tnum": 1 }
-                        placeholderText: "until"
-                        placeholderTextColor: Theme.faint
-                        inputMethodHints: Qt.ImhPreferNumbers
-                        selectByMouse: true
-                        selectionColor: Theme.verm
-                        onTextChanged: editor.endVal = text
-                        Keys.onReturnPressed: editor.commit()
-                    }
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        height: 1
-                        color: Theme.faint
-                        opacity: endField.activeFocus ? 0.7 : 0.2
-                        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-                    }
+                    numeric: true
+                    placeholder: "Until"
+                    onEdited: (t) => editor.endVal = t
+                    onSubmitted: editor.commit()
                 }
             }
 
@@ -1125,12 +1055,7 @@ PillSurface {
                 }
             }
 
-            /**
-             * Span control: the chip shows the day or range, the button arms the
-             * grid so the next day click closes a span (the under-grid hint and
-             * range tint guide it), and ✕ drops a set span back to a single day.
-             * Hidden for a recurring entry, which is a single repeating day.
-             */
+            /** Day or range chip, a button that arms the grid for the span's end, and ✕ back to one day; hidden when recurring. */
             Row {
                 width: parent.width
                 spacing: 8 * root.s
@@ -1141,22 +1066,22 @@ PillSurface {
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - extendBtn.width - clearSpan.width - 16 * root.s
                     height: 28 * root.s
-                    radius: Motion.rSmall * root.s
+                    radius: Theme.r.m * root.s
                     color: Theme.frameBg
                     border.width: 1
                     border.color: Theme.frameBorder
 
                     Row {
                         anchors.left: parent.left
-                        anchors.leftMargin: 9 * root.s
+                        anchors.leftMargin: Theme.sp.s * root.s
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 7 * root.s
+                        spacing: Theme.sp.s * root.s
 
                         Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 9 * root.s
                             height: 9 * root.s
-                            radius: 3 * root.s
+                            radius: Theme.r.xs * root.s
                             color: Theme.flameGlow
                         }
                         Text {
@@ -1164,47 +1089,26 @@ PillSurface {
                             text: editor.spanLabel
                             color: root.selEndDate.length > 0 ? Theme.cream : Theme.subtle
                             font.family: Theme.font
-                            font.pixelSize: 11 * root.s
+                            font.pixelSize: Theme.fs.meta * root.s
                             font.weight: Font.Medium
                             font.features: { "tnum": 1 }
                         }
                     }
                 }
 
-                Rectangle {
+                Button {
                     id: extendBtn
                     anchors.verticalCenter: parent.verticalCenter
-                    readonly property bool armed: root.pickingEnd
-                    width: extendLabel.implicitWidth + 18 * root.s
-                    height: 28 * root.s
-                    radius: Motion.rSmall * root.s
-                    color: armed ? Qt.alpha(Theme.vermLit, 0.14) : Theme.frameBg
-                    border.width: 1
-                    border.color: armed ? Qt.alpha(Theme.vermLit, 0.5) : Theme.frameBorder
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-                    Text {
-                        id: extendLabel
-                        anchors.centerIn: parent
-                        text: root.pickingEnd ? "pick…" : (root.selEndDate.length > 0 ? "edit" : "+ days")
-                        color: extendBtn.armed ? Theme.vermLit : Theme.dim
-                        font.family: Theme.font
-                        font.pixelSize: 10.5 * root.s
-                        font.weight: Font.Bold
-                        font.letterSpacing: 0.3 * root.s
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            if (root.pickingEnd) {
-                                root.pickingEnd = false;
-                                root.hoverDay = 0;
-                            } else {
-                                root.selEndDate = "";
-                                root.pickingEnd = true;
-                            }
+                    s: root.s
+                    lit: root.pickingEnd
+                    text: root.pickingEnd ? "Cancel" : (root.selEndDate.length > 0 ? "Change" : "Add days")
+                    onClicked: {
+                        if (root.pickingEnd) {
+                            root.pickingEnd = false;
+                            root.hoverDay = 0;
+                        } else {
+                            root.selEndDate = "";
+                            root.pickingEnd = true;
                         }
                     }
                 }

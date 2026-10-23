@@ -1,45 +1,34 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Quickshell
 import Quickshell.Io
 import Quickshell.Bluetooth
 import "Singletons"
 
 /**
- * 歯 BLUETOOTH surface: kanji header, scan with 25s auto-stop, adapter toggle,
- * a connected block on top and the nearby list below. Connected rows are
- * taller and carry a full-width battery thread fed by Peripherals (UPower),
- * since BlueZ keeps Battery1 behind Experimental; USB-dongle peripherals with
- * a battery join that block as display-only rows. Known devices use the
- * Quickshell connect/disconnect calls; unpaired devices run a bluetoothctl
- * pair-trust-connect flow with an inline ember while running and a transient
- * failure line. Standalone root surface, so Escape and the backdrop dismiss
- * it like every other surface.
+ * 歯 BLUETOOTH surface: connected devices with their battery on top, nearby ones below; unknown devices pair through bluetoothctl.
  */
 PillSurface {
     id: root
 
-    mTop: 13
-    mLeft: 16
-    mRight: 16
-    mBottom: 13
+    mTop: Theme.inset.top
+    mLeft: Theme.inset.side
+    mRight: Theme.inset.side
+    mBottom: Theme.inset.bottom
 
-    readonly property var adapter: (typeof Bluetooth !== "undefined" && Bluetooth) ? Bluetooth.defaultAdapter : null
-    readonly property var devices: (typeof Bluetooth !== "undefined" && Bluetooth && Bluetooth.devices) ? Bluetooth.devices.values : []
+    readonly property var adapter: Net.btAdapter
+    readonly property bool btOn: Net.btOn
+    readonly property var devices: Bluetooth.devices.values
 
-    /**
-     * BlueZ hands the cache out in arbitrary order; sort connected first,
-     * then paired, then named devices, nameless MACs last so a discovery scan
-     * doesn't churn the useful rows around. Reads connectedCount so a
-     * connect flip re-sorts, which the raw device list never signals.
-     */
+    /** Connected, then paired, then named, nameless last; reads connectedCount because a connect flip never touches the list. */
     readonly property var devicesSorted: {
         var tick = Peripherals.connectedCount;
         function rank(d) {
             if (!d) return 3;
             if (d.connected) return 0;
             if (d.paired) return 1;
-            return (d.name && d.name.length) ? 2 : 3;
+            return root.nameOf(d).length ? 2 : 3;
         }
         return devices.slice().sort(function(a, b) {
             var r = rank(a) - rank(b);
@@ -48,44 +37,35 @@ PillSurface {
         });
     }
 
-    /**
-     * Rows for the connected block: every connected Bluetooth device paired
-     * with its UPower battery entry by MAC, then USB-dongle peripherals that
-     * have no Bluetooth counterpart. `up` is null when nothing reports charge.
-     */
+    /** Connected Bluetooth devices paired with their UPower battery by MAC, then USB-dongle peripherals; `up` is null without a reading. */
     readonly property var connectedRows: {
         var rows = [];
         var byMac = Peripherals.byMac;
         for (var i = 0; i < devicesSorted.length; i++) {
             var d = devicesSorted[i];
             if (!d || !d.connected) continue;
-            rows.push({ bt: d, up: byMac[String(d.address || "").toUpperCase()] || null });
+            rows.push({ key: d, bt: d, up: byMac[String(d.address || "").toUpperCase()] || null });
         }
         var usb = Peripherals.usb;
         for (var j = 0; j < usb.length; j++)
-            rows.push({ bt: null, up: usb[j] });
+            rows.push({ key: usb[j], bt: null, up: usb[j] });
         return rows;
     }
-    readonly property var nearbyRows: devicesSorted.filter(function(d) { return d && !d.connected; })
+    readonly property var nearbyRows: btOn ? devicesSorted.filter(function(d) { return d && !d.connected; }) : []
+    readonly property bool hasRows: connectedRows.length > 0 || nearbyRows.length > 0
     readonly property bool discovering: adapter ? adapter.discovering === true : false
+
+    /** Keyboard order: connected Bluetooth devices, then nearby ones. */
+    readonly property var navDevices: connectedRows.filter(function(r) { return r.bt !== null; })
+        .map(function(r) { return r.bt; }).concat(nearbyRows)
 
     property string pairingAddress: ""
     property string failedAddress: ""
-
-    /**
-     * Address of the known device whose inline confirm row (disconnect or
-     * connect, plus forget) is open, mirroring the wifi surface's expanded
-     * SSID.
-     */
     property string expandedAddress: ""
+    property string kbAddr: ""
 
     implicitHeight: listFrame.y + listFrame.height
 
-    /**
-     * Maps the BlueZ device-class icon name onto a baked glyph: audio gear reads
-     * as a speaker, input devices as their shape, displays and computers as a
-     * monitor, players as a note; anything unknown falls back to bluetooth.
-     */
     function iconFor(d) {
         var ic = (d && d.icon) ? String(d.icon) : "";
         if (ic.indexOf("audio-") === 0 || ic === "audio-card") return "speaker";
@@ -97,15 +77,21 @@ PillSurface {
         return "bluetooth";
     }
 
-    function metaFor(d) {
+    /** The device's own name, or empty when BlueZ only echoes the address back as one. */
+    function nameOf(d) {
+        var n = d ? String(d.deviceName || d.name || "") : "";
+        if (n.length && d.address && n.replace(/[-_]/g, ":").toUpperCase() === String(d.address).toUpperCase())
+            return "";
+        return n;
+    }
+
+    function metaFor(d, pairing) {
         if (!d) return "";
         var parts = [];
-        if (d.paired) parts.push("paired");
-        if (d.state !== undefined && typeof BluetoothDeviceState !== "undefined") {
-            var st = BluetoothDeviceState.toString(d.state);
-            if (st && st.length > 0 && parts.indexOf(st.toLowerCase()) === -1) parts.push(st.toLowerCase());
-        }
-        if (d.address && d.address.length) parts.push(d.address);
+        if (pairing) parts.push("Pairing…");
+        else if (d.state === BluetoothDeviceState.Connecting) parts.push("Connecting…");
+        else if (d.paired) parts.push("Paired");
+        if (!nameOf(d).length && d.address) parts.push(d.address);
         return parts.join(" · ");
     }
 
@@ -117,18 +103,15 @@ PillSurface {
     }
 
     function rowName(row) {
-        if (row.bt) return row.bt.deviceName || row.bt.name || "Unknown";
-        return (row.up && row.up.model) ? row.up.model : "Unknown";
+        if (row.bt) return nameOf(row.bt) || "Unknown device";
+        return (row.up && row.up.model) ? row.up.model : "Unknown device";
     }
 
-    /**
-     * Click dispatch for a device row. A connected or paired device toggles
-     * the inline confirm row rather than acting at once; an unpaired device
-     * runs the bluetoothctl pair-trust-connect flow.
-     */
+    /** A connected or paired device opens its confirm row; an unpaired one pairs. */
     function activateDevice(d) {
         if (!d)
             return;
+        kbAddr = d.address || "";
         if (d.connected || d.paired) {
             var addr = d.address || "";
             expandedAddress = (addr.length && expandedAddress === addr) ? "" : addr;
@@ -149,11 +132,6 @@ PillSurface {
             d.disconnect();
     }
 
-    /**
-     * Unpairs through the Quickshell device object, the same layer the
-     * connect and disconnect calls use; BlueZ drops the bond and the row
-     * falls back to its Pair chip.
-     */
     function forgetDevice(d) {
         expandedAddress = "";
         if (d && typeof d.forget === "function")
@@ -171,19 +149,81 @@ PillSurface {
         pairProc.running = true;
     }
 
+    function setScan(on) {
+        if (!adapter)
+            return;
+        adapter.discovering = on;
+        if (on)
+            scanTimer.restart();
+        else
+            scanTimer.stop();
+    }
+
+    function back() {
+        if (expandedAddress.length) {
+            expandedAddress = "";
+            return true;
+        }
+        return false;
+    }
+
+    function handleKey(e) {
+        if (e.key === Qt.Key_Up || e.key === Qt.Key_Down) {
+            var list = navDevices;
+            if (!list.length)
+                return false;
+            var down = e.key === Qt.Key_Down;
+            var i = -1;
+            for (var k = 0; k < list.length; k++)
+                if ((list[k].address || "") === kbAddr)
+                    i = k;
+            i = i < 0 ? (down ? 0 : list.length - 1) : Math.max(0, Math.min(list.length - 1, i + (down ? 1 : -1)));
+            kbAddr = list[i].address || "";
+            reveal(kbAddr);
+            return true;
+        }
+        if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) {
+            if (e.isAutoRepeat)
+                return true;
+            var d = navDevices.find(function(x) { return (x.address || "") === root.kbAddr; });
+            if (!d)
+                return false;
+            activateDevice(d);
+            return true;
+        }
+        return false;
+    }
+
+    function reveal(addr) {
+        var reps = [conRep, nearRep];
+        for (var r = 0; r < reps.length; r++) {
+            for (var i = 0; i < reps[r].count; i++) {
+                var it = reps[r].itemAt(i);
+                if (it && it.addr === addr) {
+                    if (it.y < devFlick.contentY)
+                        devFlick.contentY = it.y;
+                    else if (it.y + it.height > devFlick.contentY + devFlick.height)
+                        devFlick.contentY = it.y + it.height - devFlick.height;
+                    return;
+                }
+            }
+        }
+    }
+
     onActiveChanged: {
         if (active) {
-            if (adapter && adapter.enabled) {
-                adapter.discovering = true;
-                scanTimer.restart();
-            }
+            if (btOn)
+                setScan(true);
         } else {
             scanTimer.stop();
             expandedAddress = "";
+            kbAddr = "";
             if (adapter && adapter.discovering)
                 adapter.discovering = false;
         }
     }
+
+    onBtOnChanged: if (btOn && active) setScan(true)
 
     Timer {
         id: scanTimer
@@ -213,7 +253,24 @@ PillSurface {
         }
     }
 
-    SettingsHeader {
+    component Pulse: Rectangle {
+        id: pulse
+        property bool on: false
+        visible: on
+        width: 4 * root.s
+        height: 4 * root.s
+        radius: width / 2
+        color: Theme.flameGlow
+
+        SequentialAnimation on opacity {
+            running: pulse.on && !Motion.calm
+            loops: Animation.Infinite
+            NumberAnimation { from: 0.35; to: 1; duration: Motion.pulse; easing.type: Easing.InOutSine }
+            NumberAnimation { from: 1; to: 0.35; duration: Motion.pulse; easing.type: Easing.InOutSine }
+        }
+    }
+
+    SurfaceHeader {
         id: header
         anchors.top: parent.top
         anchors.left: parent.left
@@ -221,44 +278,28 @@ PillSurface {
         height: 24 * root.s
         s: root.s
         glyph: "歯"
-        title: "BLUETOOTH"
-        showIcon: false
+        title: "Bluetooth"
 
         Row {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 10 * root.s
+            spacing: Theme.sp.s * root.s
 
-            Text {
+            Button {
                 anchors.verticalCenter: parent.verticalCenter
-                visible: root.adapter ? root.adapter.enabled === true : false
+                visible: root.btOn
+                s: root.s
+                kind: "ghost"
                 text: root.discovering ? "Scanning…" : "Scan"
-                color: root.discovering ? Theme.vermLit : Theme.dim
-                font.family: Theme.font
-                font.pixelSize: 9.5 * root.s
-                font.weight: Font.DemiBold
-
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -6 * root.s
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (!root.adapter)
-                            return;
-                        root.adapter.discovering = !root.adapter.discovering;
-                        if (root.adapter.discovering)
-                            scanTimer.restart();
-                        else
-                            scanTimer.stop();
-                    }
-                }
+                lit: root.discovering
+                onClicked: root.setScan(!root.discovering)
             }
 
             LinkToggle {
                 s: root.s
                 anchors.verticalCenter: parent.verticalCenter
-                on: root.adapter ? root.adapter.enabled === true : false
-                onToggled: if (root.adapter) root.adapter.enabled = !root.adapter.enabled
+                on: root.btOn
+                onToggled: Net.toggleBt()
             }
         }
     }
@@ -266,471 +307,424 @@ PillSurface {
     Rectangle {
         id: divider
         anchors.top: header.bottom
-        anchors.topMargin: 9 * root.s
+        anchors.topMargin: Theme.sp.s * root.s
         anchors.left: parent.left
         anchors.right: parent.right
         height: 1
         color: Theme.hair
     }
 
-    component Eyebrow: Item {
-        property string label: ""
-        width: parent ? parent.width : 0
-        height: 18 * root.s
-
-        Text {
-            anchors.left: parent.left
-            anchors.leftMargin: 8 * root.s
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 2 * root.s
-            text: parent.label
-            color: Theme.faint
-            font.family: Theme.font
-            font.pixelSize: 8.5 * root.s
-            font.weight: Font.DemiBold
-            font.letterSpacing: 1.4 * root.s
-        }
-    }
-
-    /**
-     * Inline confirm row under a known device: Disconnect or Connect plus
-     * Forget, shared by the connected block and the nearby list.
-     */
-    component ConfirmRow: Item {
-        id: confirm
-        property var dev: null
-        property bool connected: false
-        width: parent ? parent.width : 0
-        height: 30 * root.s
-
-        Text {
-            anchors.left: parent.left
-            anchors.leftMargin: 10 * root.s
-            anchors.right: confirmBtns.left
-            anchors.rightMargin: 8 * root.s
-            anchors.verticalCenter: parent.verticalCenter
-            text: confirm.connected ? "Connected" : "Paired"
-            color: Theme.faint
-            font.family: Theme.font
-            font.pixelSize: 9.5 * root.s
-            font.weight: Font.Medium
-            elide: Text.ElideRight
-        }
-
-        Row {
-            id: confirmBtns
-            anchors.right: parent.right
-            anchors.rightMargin: 10 * root.s
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 6 * root.s
-
-            ChipButton {
-                anchors.verticalCenter: parent.verticalCenter
-                s: root.s
-                text: confirm.connected ? "Disconnect" : "Connect"
-                onClicked: confirm.connected
-                    ? root.disconnectDevice(confirm.dev)
-                    : root.connectDevice(confirm.dev)
-            }
-
-            ChipButton {
-                anchors.verticalCenter: parent.verticalCenter
-                s: root.s
-                text: "Forget"
-                danger: true
-                onClicked: root.forgetDevice(confirm.dev)
-            }
-        }
-    }
-
-    Item {
+    Column {
         id: listFrame
         anchors.top: divider.bottom
-        anchors.topMargin: 6 * root.s
+        anchors.topMargin: Theme.sp.xs * root.s
         anchors.left: parent.left
         anchors.right: parent.right
-        readonly property bool empty: root.connectedRows.length === 0 && root.nearbyRows.length === 0
-        height: empty ? 24 * root.s : Math.min(devCol.implicitHeight, 260 * root.s)
 
-        Text {
-            visible: listFrame.empty
-            anchors.centerIn: parent
-            text: root.discovering ? "Scanning…" : "No devices found"
-            color: Theme.faint
-            font.family: Theme.font
-            font.pixelSize: 10.5 * root.s
-        }
+        Item {
+            visible: root.hasRows
+            width: parent.width
+            height: root.hasRows ? Math.min(devCol.implicitHeight, 260 * root.s) : 0
 
-        Flickable {
-            id: devFlick
-            visible: !listFrame.empty
-            anchors.fill: parent
-            contentHeight: devCol.implicitHeight
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
+            Flickable {
+                id: devFlick
+                anchors.fill: parent
+                contentHeight: devCol.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
 
-            Column {
-                id: devCol
-                width: devFlick.width
-                spacing: 2 * root.s
+                Column {
+                    id: devCol
+                    width: devFlick.width
+                    spacing: Theme.sp.xxs * root.s
+                    move: Transition {
+                        enabled: !Motion.calm
+                        NumberAnimation { properties: "y"; duration: 200; easing.type: Easing.OutCubic }
+                    }
 
-                Eyebrow {
-                    visible: root.connectedRows.length > 0
-                    label: "CONNECTED"
-                }
+                    SettingsLabel {
+                        visible: root.connectedRows.length > 0
+                        s: root.s
+                        text: "Connected"
+                        leftPadding: Theme.sp.s * root.s
+                        topPadding: Theme.sp.xs * root.s
+                        bottomPadding: Theme.sp.xs * root.s
+                    }
 
-                Repeater {
-                    model: root.connectedRows
+                    Repeater {
+                        id: conRep
+                        model: ScriptModel {
+                            values: root.connectedRows
+                            objectProp: "key"
+                        }
 
-                    Column {
-                        id: conItem
-                        required property var modelData
-                        readonly property var bt: modelData ? modelData.bt : null
-                        readonly property var up: modelData ? modelData.up : null
-                        readonly property string addr: (bt && bt.address) ? bt.address : ""
-                        readonly property int battery: root.batteryFor(modelData)
-                        readonly property bool hasBattery: battery >= 0
-                        readonly property bool charging: up ? Peripherals.charging(up) : false
-                        readonly property bool low: hasBattery && !charging && battery <= Peripherals.lowAt
-                        readonly property bool confirming: addr.length > 0 && root.expandedAddress === addr
-                        readonly property bool busy: (bt && typeof BluetoothDeviceState !== "undefined")
-                            ? bt.state === BluetoothDeviceState.Disconnecting : false
-                        width: devCol.width
-                        spacing: 2 * root.s
-
-                        Rectangle {
-                            width: parent.width
-                            height: 50 * root.s
-                            radius: 10 * root.s
-                            color: (conHover.hovered && conItem.bt) ? Theme.frameBg : "transparent"
-
-                            HoverHandler { id: conHover }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: conItem.bt !== null
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.activateDevice(conItem.bt)
-                            }
+                        Column {
+                            id: conItem
+                            required property var modelData
+                            readonly property var bt: modelData ? modelData.bt : null
+                            readonly property var up: modelData ? modelData.up : null
+                            readonly property string addr: (bt && bt.address) ? bt.address : ""
+                            readonly property int battery: root.batteryFor(modelData)
+                            readonly property bool hasBattery: battery >= 0
+                            readonly property bool charging: up ? Peripherals.charging(up) : false
+                            readonly property bool low: hasBattery && !charging && battery <= Peripherals.lowAt
+                            readonly property bool confirming: addr.length > 0 && root.expandedAddress === addr
+                            readonly property bool busy: bt ? bt.state === BluetoothDeviceState.Disconnecting : false
+                            readonly property bool lit: addr.length > 0 && root.kbAddr === addr
+                            width: devCol.width
+                            spacing: Theme.sp.xxs * root.s
 
                             Rectangle {
-                                id: conTile
-                                anchors.left: parent.left
-                                anchors.leftMargin: 6 * root.s
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 32 * root.s
-                                height: 32 * root.s
-                                radius: 9 * root.s
-                                color: Theme.tileBg
-                                border.width: 1
-                                border.color: conItem.low ? Qt.alpha(Theme.vermLit, 0.55) : Theme.border
+                                width: parent.width
+                                height: 50 * root.s
+                                radius: Theme.r.m * root.s
+                                color: conPress.pressed ? Theme.pressBg : (conItem.lit ? Theme.frameBg : "transparent")
+                                Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
-                                GlyphIcon {
-                                    anchors.centerIn: parent
-                                    width: 17 * root.s
-                                    height: 17 * root.s
-                                    name: conItem.bt ? root.iconFor(conItem.bt) : Peripherals.glyphFor(conItem.up)
-                                    color: Theme.vermLit
-                                    stroke: 1.7
+                                HoverHandler {
+                                    onHoveredChanged: if (hovered && conItem.addr.length) root.kbAddr = conItem.addr
+                                }
+
+                                MouseArea {
+                                    id: conPress
+                                    anchors.fill: parent
+                                    enabled: conItem.bt !== null
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.activateDevice(conItem.bt)
+                                }
+
+                                Rectangle {
+                                    id: conTile
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: Theme.sp.s * root.s
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 32 * root.s
+                                    height: 32 * root.s
+                                    radius: Theme.r.m * root.s
+                                    color: Theme.tileBg
+                                    border.width: 1
+                                    border.color: conItem.low ? Qt.alpha(Theme.vermLit, 0.55) : Theme.border
+
+                                    GlyphIcon {
+                                        anchors.centerIn: parent
+                                        width: 17 * root.s
+                                        height: 17 * root.s
+                                        name: conItem.bt ? root.iconFor(conItem.bt) : Peripherals.glyphFor(conItem.up)
+                                        color: Theme.vermLit
+                                        stroke: 1.7
+                                    }
+                                }
+
+                                Item {
+                                    anchors.left: conTile.right
+                                    anchors.leftMargin: Theme.sp.m * root.s
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: Theme.sp.m * root.s
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    anchors.topMargin: Theme.sp.s * root.s
+                                    anchors.bottomMargin: Theme.sp.m * root.s
+
+                                    Row {
+                                        id: nameRow
+                                        anchors.left: parent.left
+                                        anchors.right: conRight.left
+                                        anchors.rightMargin: Theme.sp.s * root.s
+                                        anchors.top: parent.top
+                                        spacing: Theme.sp.s * root.s
+
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: Math.min(implicitWidth, nameRow.width - (usbTag.visible ? usbTag.width + nameRow.spacing : 0))
+                                            text: root.rowName(conItem.modelData)
+                                            color: Theme.cream
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fs.body * root.s
+                                            font.weight: Font.DemiBold
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Rectangle {
+                                            id: usbTag
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            visible: conItem.bt === null
+                                            width: usbLabel.implicitWidth + Theme.sp.s * root.s
+                                            height: usbLabel.implicitHeight + Theme.sp.xxs * root.s
+                                            radius: Theme.r.xs * root.s
+                                            color: "transparent"
+                                            border.width: 1
+                                            border.color: Theme.hair
+
+                                            Text {
+                                                id: usbLabel
+                                                anchors.centerIn: parent
+                                                text: "USB"
+                                                color: Theme.textFaint
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fs.label * root.s
+                                                font.weight: Font.Bold
+                                                font.capitalization: Font.AllUppercase
+                                                font.letterSpacing: Theme.labelTracking * root.s
+                                            }
+                                        }
+                                    }
+
+                                    Row {
+                                        id: conRight
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: nameRow.verticalCenter
+                                        spacing: Theme.sp.xs * root.s
+
+                                        Pulse {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            on: conItem.busy
+                                        }
+
+                                        GlyphIcon {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            visible: conItem.charging
+                                            width: 10 * root.s
+                                            height: 10 * root.s
+                                            name: "bolt"
+                                            color: Theme.flameGlow
+                                            stroke: 2
+                                        }
+
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            visible: conItem.hasBattery
+                                            text: conItem.battery + "%"
+                                            color: conItem.low ? Theme.vermLit : (conItem.charging ? Theme.flameGlow : Theme.subtle)
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fs.meta * root.s
+                                            font.weight: Font.DemiBold
+                                            font.features: { "tnum": 1 }
+                                        }
+                                    }
+
+                                    Filament {
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.bottom: parent.bottom
+                                        visible: conItem.hasBattery
+                                        s: root.s
+                                        kind: "battery"
+                                        level: Math.max(0, conItem.battery) / 100
+                                    }
+
+                                    Text {
+                                        anchors.left: parent.left
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: -Theme.sp.xs * root.s
+                                        visible: !conItem.hasBattery
+                                        text: "No battery reading"
+                                        color: Theme.textFaint
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fs.meta * root.s
+                                    }
                                 }
                             }
 
-                            Item {
-                                anchors.left: conTile.right
-                                anchors.leftMargin: 11 * root.s
-                                anchors.right: parent.right
-                                anchors.rightMargin: 10 * root.s
-                                anchors.top: parent.top
-                                anchors.bottom: parent.bottom
-                                anchors.topMargin: 8 * root.s
-                                anchors.bottomMargin: 10 * root.s
+                            ConfirmRow {
+                                visible: conItem.confirming
+                                s: root.s
+                                inset: Theme.sp.s
+                                status: "Connected"
 
-                                Row {
-                                    id: nameRow
+                                Button {
+                                    s: root.s
+                                    text: "Disconnect"
+                                    onClicked: root.disconnectDevice(conItem.bt)
+                                }
+                                Button {
+                                    s: root.s
+                                    kind: "danger"
+                                    text: "Forget"
+                                    onClicked: root.forgetDevice(conItem.bt)
+                                }
+                            }
+                        }
+                    }
+
+                    SettingsLabel {
+                        visible: root.connectedRows.length > 0 && root.nearbyRows.length > 0
+                        s: root.s
+                        text: "Nearby"
+                        leftPadding: Theme.sp.s * root.s
+                        topPadding: Theme.sp.s * root.s
+                        bottomPadding: Theme.sp.xs * root.s
+                    }
+
+                    Repeater {
+                        id: nearRep
+                        model: ScriptModel {
+                            values: root.nearbyRows
+                        }
+
+                        Column {
+                            id: devItem
+                            required property var modelData
+                            readonly property bool isPaired: modelData ? modelData.paired === true : false
+                            readonly property string addr: (modelData && modelData.address) ? modelData.address : ""
+                            readonly property bool pairing: addr.length > 0 && root.pairingAddress === addr
+                            readonly property bool failed: addr.length > 0 && root.failedAddress === addr
+                            readonly property bool busy: modelData ? modelData.state === BluetoothDeviceState.Connecting : false
+                            readonly property bool confirming: addr.length > 0 && root.expandedAddress === addr
+                            readonly property bool lit: addr.length > 0 && root.kbAddr === addr
+                            readonly property string meta: root.metaFor(modelData, pairing)
+                            width: devCol.width
+                            spacing: Theme.sp.xxs * root.s
+
+                            Rectangle {
+                                width: parent.width
+                                height: 40 * root.s
+                                radius: Theme.r.m * root.s
+                                color: devPress.pressed ? Theme.pressBg : (devItem.lit ? Theme.frameBg : "transparent")
+                                Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
+
+                                HoverHandler {
+                                    onHoveredChanged: if (hovered && devItem.addr.length) root.kbAddr = devItem.addr
+                                }
+
+                                MouseArea {
+                                    id: devPress
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.activateDevice(devItem.modelData)
+                                }
+
+                                Rectangle {
+                                    id: devTile
                                     anchors.left: parent.left
-                                    anchors.right: conRight.left
-                                    anchors.rightMargin: 8 * root.s
-                                    anchors.top: parent.top
-                                    spacing: 6 * root.s
+                                    anchors.leftMargin: Theme.sp.s * root.s
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 26 * root.s
+                                    height: 26 * root.s
+                                    radius: Theme.r.s * root.s
+                                    color: Theme.tileBg
+                                    border.width: 1
+                                    border.color: Theme.border
+
+                                    GlyphIcon {
+                                        anchors.centerIn: parent
+                                        width: 15 * root.s
+                                        height: 15 * root.s
+                                        name: root.iconFor(devItem.modelData)
+                                        color: devItem.lit ? Theme.cream : Theme.iconDim
+                                        stroke: 1.7
+                                    }
+                                }
+
+                                Column {
+                                    anchors.left: devTile.right
+                                    anchors.leftMargin: Theme.sp.m * root.s
+                                    anchors.right: devRight.left
+                                    anchors.rightMargin: Theme.sp.s * root.s
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: Theme.sp.xxs * root.s
 
                                     Text {
-                                        id: conName
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: Math.min(implicitWidth, nameRow.width - (usbTag.visible ? usbTag.width + nameRow.spacing : 0))
-                                        text: root.rowName(conItem.modelData)
-                                        color: Theme.cream
+                                        width: parent.width
+                                        text: root.nameOf(devItem.modelData) || "Unknown device"
+                                        color: devItem.lit ? Theme.cream : Theme.subtle
                                         font.family: Theme.font
-                                        font.pixelSize: 12 * root.s
-                                        font.weight: Font.DemiBold
+                                        font.pixelSize: Theme.fs.body * root.s
+                                        font.weight: Font.Medium
                                         elide: Text.ElideRight
                                     }
 
-                                    Rectangle {
-                                        id: usbTag
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        visible: conItem.bt === null
-                                        width: usbLabel.implicitWidth + 8 * root.s
-                                        height: 13 * root.s
-                                        radius: 4 * root.s
-                                        color: "transparent"
-                                        border.width: 1
-                                        border.color: Theme.hair
-
-                                        Text {
-                                            id: usbLabel
-                                            anchors.centerIn: parent
-                                            text: "USB"
-                                            color: Theme.faint
-                                            font.family: Theme.font
-                                            font.pixelSize: 7.5 * root.s
-                                            font.weight: Font.DemiBold
-                                            font.letterSpacing: 1 * root.s
-                                        }
+                                    Text {
+                                        width: parent.width
+                                        visible: devItem.meta.length > 0
+                                        text: devItem.meta
+                                        color: Theme.textFaint
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fs.meta * root.s
+                                        elide: Text.ElideRight
                                     }
                                 }
 
                                 Row {
-                                    id: conRight
+                                    id: devRight
                                     anchors.right: parent.right
-                                    anchors.verticalCenter: nameRow.verticalCenter
-                                    spacing: 5 * root.s
-
-                                    Rectangle {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        visible: conItem.busy
-                                        width: 4 * root.s
-                                        height: 4 * root.s
-                                        radius: width / 2
-                                        color: Theme.flameGlow
-
-                                        SequentialAnimation on opacity {
-                                            running: conItem.busy
-                                            loops: Animation.Infinite
-                                            NumberAnimation { from: 0.35; to: 1; duration: Motion.pulse; easing.type: Easing.InOutSine }
-                                            NumberAnimation { from: 1; to: 0.35; duration: Motion.pulse; easing.type: Easing.InOutSine }
-                                        }
-                                    }
-
-                                    GlyphIcon {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        visible: conItem.charging
-                                        width: 10 * root.s
-                                        height: 10 * root.s
-                                        name: "bolt"
-                                        color: Theme.flameGlow
-                                        stroke: 2
-                                    }
-
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        visible: conItem.hasBattery
-                                        text: conItem.battery + "%"
-                                        color: conItem.low ? Theme.vermLit : (conItem.charging ? Theme.flameGlow : Theme.subtle)
-                                        font.family: Theme.font
-                                        font.pixelSize: 11 * root.s
-                                        font.weight: Font.DemiBold
-                                        font.features: { "tnum": 1 }
-                                    }
-                                }
-
-                                Filament {
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.bottom: parent.bottom
-                                    visible: conItem.hasBattery
-                                    s: root.s
-                                    kind: "battery"
-                                    level: Math.max(0, conItem.battery) / 100
-                                }
-
-                                Text {
-                                    anchors.left: parent.left
-                                    anchors.bottom: parent.bottom
-                                    anchors.bottomMargin: -2 * root.s
-                                    visible: !conItem.hasBattery
-                                    text: "No battery reading"
-                                    color: Theme.faint
-                                    font.family: Theme.font
-                                    font.pixelSize: 9 * root.s
-                                    font.weight: Font.Medium
-                                }
-                            }
-                        }
-
-                        ConfirmRow {
-                            visible: conItem.confirming
-                            dev: conItem.bt
-                            connected: true
-                        }
-                    }
-                }
-
-                Eyebrow {
-                    visible: root.connectedRows.length > 0 && root.nearbyRows.length > 0
-                    label: "NEARBY"
-                }
-
-                Repeater {
-                    model: root.nearbyRows
-
-                    Column {
-                        id: devItem
-                        required property var modelData
-                        readonly property bool isPaired: modelData ? modelData.paired === true : false
-                        readonly property string addr: (modelData && modelData.address) ? modelData.address : ""
-                        readonly property bool pairing: addr.length > 0 && root.pairingAddress === addr
-                        readonly property bool failed: addr.length > 0 && root.failedAddress === addr
-                        readonly property bool busy: (modelData && typeof BluetoothDeviceState !== "undefined")
-                            ? modelData.state === BluetoothDeviceState.Connecting : false
-                        readonly property bool confirming: addr.length > 0 && root.expandedAddress === addr
-                        width: devCol.width
-                        spacing: 2 * root.s
-
-                        Rectangle {
-                            width: parent.width
-                            height: 38 * root.s
-                            radius: 9 * root.s
-                            color: rowHover.hovered ? Theme.frameBg : "transparent"
-
-                            HoverHandler { id: rowHover }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.activateDevice(devItem.modelData)
-                            }
-
-                            Rectangle {
-                                id: devTile
-                                anchors.left: parent.left
-                                anchors.leftMargin: 6 * root.s
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 26 * root.s
-                                height: 26 * root.s
-                                radius: 8 * root.s
-                                color: Theme.tileBg
-                                border.width: 1
-                                border.color: Theme.border
-
-                                GlyphIcon {
-                                    anchors.centerIn: parent
-                                    width: 15 * root.s
-                                    height: 15 * root.s
-                                    name: root.iconFor(devItem.modelData)
-                                    color: Theme.iconDim
-                                    stroke: 1.7
-                                }
-                            }
-
-                            Column {
-                                anchors.left: devTile.right
-                                anchors.leftMargin: 10 * root.s
-                                anchors.right: devRight.left
-                                anchors.rightMargin: 8 * root.s
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 1 * root.s
-
-                                Text {
-                                    width: parent.width
-                                    text: devItem.modelData ? (devItem.modelData.deviceName || devItem.modelData.name || "Unknown") : "Unknown"
-                                    color: Theme.subtle
-                                    font.family: Theme.font
-                                    font.pixelSize: 11.5 * root.s
-                                    font.weight: Font.Medium
-                                    elide: Text.ElideRight
-                                }
-
-                                Text {
-                                    width: parent.width
-                                    visible: text.length > 0
-                                    text: root.metaFor(devItem.modelData)
-                                    color: Theme.faint
-                                    font.family: Theme.font
-                                    font.pixelSize: 9.5 * root.s
-                                    font.weight: Font.Medium
-                                    elide: Text.ElideRight
-                                }
-                            }
-
-                            Row {
-                                id: devRight
-                                anchors.right: parent.right
-                                anchors.rightMargin: 8 * root.s
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 8 * root.s
-
-                                Rectangle {
+                                    anchors.rightMargin: Theme.sp.s * root.s
                                     anchors.verticalCenter: parent.verticalCenter
-                                    visible: devItem.pairing || devItem.busy
-                                    width: 4 * root.s
-                                    height: 4 * root.s
-                                    radius: width / 2
-                                    color: Theme.flameGlow
+                                    spacing: Theme.sp.s * root.s
 
-                                    SequentialAnimation on opacity {
-                                        running: devItem.pairing || devItem.busy
-                                        loops: Animation.Infinite
-                                        NumberAnimation { from: 0.35; to: 1; duration: Motion.pulse; easing.type: Easing.InOutSine }
-                                        NumberAnimation { from: 1; to: 0.35; duration: Motion.pulse; easing.type: Easing.InOutSine }
+                                    Pulse {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        on: devItem.pairing || devItem.busy
                                     }
-                                }
 
-                                Rectangle {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    visible: !devItem.isPaired && !devItem.pairing
-                                    radius: 999
-                                    color: pairArea.containsMouse ? Theme.frameBg : Theme.tileBg
-                                    border.width: 1
-                                    border.color: pairArea.containsMouse ? Theme.vermDim : Theme.border
-                                    height: 18 * root.s
-                                    width: pairText.implicitWidth + 16 * root.s
-                                    Behavior on color { ColorAnimation { duration: Motion.fast } }
-                                    Behavior on border.color { ColorAnimation { duration: Motion.fast } }
-
-                                    Text {
-                                        id: pairText
-                                        anchors.centerIn: parent
+                                    Button {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: !devItem.isPaired && !devItem.pairing
+                                        s: root.s
                                         text: "Pair"
-                                        color: pairArea.containsMouse ? Theme.cream : Theme.dim
-                                        font.family: Theme.font
-                                        font.pixelSize: 9.5 * root.s
-                                        font.weight: Font.DemiBold
-                                    }
-
-                                    MouseArea {
-                                        id: pairArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
                                         onClicked: root.activateDevice(devItem.modelData)
                                     }
                                 }
                             }
-                        }
 
-                        ConfirmRow {
-                            visible: devItem.confirming
-                            dev: devItem.modelData
-                            connected: false
-                        }
+                            ConfirmRow {
+                                visible: devItem.confirming
+                                s: root.s
+                                inset: Theme.sp.s
+                                status: "Paired"
 
-                        Text {
-                            visible: devItem.failed
-                            text: "Pairing failed"
-                            color: Theme.vermLit
-                            font.family: Theme.font
-                            font.pixelSize: 9.5 * root.s
-                            leftPadding: 42 * root.s
+                                Button {
+                                    s: root.s
+                                    kind: "primary"
+                                    text: "Connect"
+                                    onClicked: root.connectDevice(devItem.modelData)
+                                }
+                                Button {
+                                    s: root.s
+                                    kind: "danger"
+                                    text: "Forget"
+                                    onClicked: root.forgetDevice(devItem.modelData)
+                                }
+                            }
+
+                            Text {
+                                visible: devItem.failed
+                                text: "Pairing failed, try again"
+                                color: Theme.danger
+                                font.family: Theme.font
+                                font.pixelSize: Theme.fs.meta * root.s
+                                leftPadding: 46 * root.s
+                                bottomPadding: Theme.sp.xs * root.s
+                            }
                         }
                     }
                 }
             }
+
+            WheelScroller {
+                anchors.fill: parent
+                s: root.s
+                flick: devFlick
+            }
         }
 
-        WheelScroller {
-            anchors.fill: parent
+        EmptyState {
+            visible: !root.btOn
+            anchors.horizontalCenter: parent.horizontalCenter
             s: root.s
-            flick: devFlick
+            glyph: "bluetooth"
+            text: "Bluetooth is off"
+            action: "Turn on"
+            onTriggered: Net.toggleBt()
+        }
+
+        EmptyState {
+            visible: root.btOn && !root.hasRows
+            anchors.horizontalCenter: parent.horizontalCenter
+            s: root.s
+            glyph: "bluetooth"
+            text: root.discovering ? "Looking for devices…" : "No devices found"
+            action: root.discovering ? "Stop" : "Scan"
+            onTriggered: root.setScan(!root.discovering)
         }
     }
 }

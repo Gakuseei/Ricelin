@@ -8,34 +8,22 @@ import "lib/keychord.js" as Chord
 import "Singletons"
 
 /**
- * 鍵 KEYBINDS surface: a searchable list of the keyboard shortcuts parsed from
- * ~/.config/hypr/modules/binds.lua, each row a combo chip on the left and its
- * name or derived action on the right; hovering a row reveals the underlying
- * command. Tapping a row opens a unified form prefilled in EDIT mode — a
- * key-binding field that arms chord capture, a name field and a command field
- * — with Save and Delete. A dashed bar at the bottom opens the same form EMPTY
- * in ADD mode. Save folds the minimal set of binds.js calls (rebind / editCmd /
- * editName, or add) into one text and writes it; the write reloads Hyprland and
- * re-parses. A command is only editable when it is a single string literal
- * (`exec_cmd("...")`); a non-exec dispatch or an env-prefixed exec path is shown
- * read-only as the raw action so it can never be clobbered.
- *
- * The capture path mirrors the wallpaper strip's search handoff: while
- * `listening`, an Item with focus swallows every keystroke; the captured combo
- * is held in form state and only applied on Save, so a mistaken chord can be
- * retried without touching the file.
+ * 鍵 Keybinds: searchable binds.lua list; a row or the add bar opens one form that writes only the changed facets on Save.
  */
 PillSurface {
     id: root
 
-    mTop: 15
-    mLeft: 19
-    mRight: 19
-    mBottom: 14
+    mTop: Theme.inset.top
+    mLeft: Theme.inset.side
+    mRight: Theme.inset.side
+    mBottom: Theme.inset.bottom
 
     implicitHeight: content.implicitHeight
 
     readonly property string bindsPath: Quickshell.env("HOME") + "/.config/hypr/modules/binds.lua"
+
+    readonly property real rowH: 38 * s
+    readonly property int maxRows: 6
 
     property var binds: []
     property int focusIndex: 0
@@ -57,10 +45,6 @@ PillSurface {
     property string origCmd: ""
     property string origAction: ""
 
-    /**
-     * Binds whose combo, label, name or inner command contains the current query
-     * as a case-insensitive substring. An empty query passes every bind through.
-     */
     readonly property var filtered: {
         if (root.query.length === 0)
             return root.binds;
@@ -70,15 +54,22 @@ PillSurface {
         });
     }
 
-    /**
-     * Display form of a combo: mouse tokens are spelled out so a scroll or button
-     * gesture reads clearly. These binds are shown read-only.
-     */
+    /** Footer hint built from the actions this view actually offers. */
+    readonly property string hint: {
+        var parts = [];
+        if (root.formOpen)
+            parts.push(root.formAdd ? "Enter adds" : "Enter saves");
+        else if (root.filtered.length > 0)
+            parts.push("Click or Enter to edit");
+        parts.push(root.formOpen ? "Esc back" : "Esc close");
+        return parts.join("  ·  ");
+    }
+
     function comboPretty(c) {
-        return c.replace("mouse_up", "Scroll ↑")
+        return Chord.pretty(c.replace("mouse_up", "Scroll ↑")
                 .replace("mouse_down", "Scroll ↓")
-                .replace("mouse:272", "LMB")
-                .replace("mouse:273", "RMB");
+                .replace("mouse:272", "Left drag")
+                .replace("mouse:273", "Right drag"));
     }
 
     function refresh() {
@@ -87,24 +78,35 @@ PillSurface {
             root.focusIndex = Math.max(0, root.filtered.length - 1);
     }
 
-    /**
-     * Slide the focused row by `dir` (+1 down, -1 up), clamped over the filtered
-     * list, and keep it in view. No-op while a chord capture is live so the arrow
-     * keys feed the catcher instead.
-     */
+    holdsFocus: listening
+
+    function back() {
+        if (!formOpen)
+            return false;
+        closeForm();
+        return true;
+    }
+
+    function handleKey(e) {
+        if (listening)
+            return false;
+        if (e.key === Qt.Key_Up || e.key === Qt.Key_Down)
+            move(e.key === Qt.Key_Up ? -1 : 1);
+        else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) {
+            if (!e.isAutoRepeat)
+                activate();
+        } else
+            return false;
+        return true;
+    }
+
     function move(dir) {
-        if (root.listening || root.formOpen)
-            return;
-        if (root.filtered.length === 0)
+        if (root.listening || root.formOpen || root.filtered.length === 0)
             return;
         root.focusIndex = Math.max(0, Math.min(root.filtered.length - 1, root.focusIndex + dir));
         list.positionViewAtIndex(root.focusIndex, ListView.Contain);
     }
 
-    /**
-     * Open the unified form in EDIT mode for the focused row, seeding form state
-     * from the bind so Save can diff against the originals.
-     */
     function activate() {
         if (root.listening || root.focusIndex < 0 || root.focusIndex >= root.filtered.length)
             return;
@@ -152,10 +154,7 @@ PillSurface {
         root.conflict = "";
     }
 
-    /**
-     * Apply a captured chord to the form state (not the file). A bare modifier is
-     * ignored so capture keeps waiting for the final key; Escape ends capture.
-     */
+    /** The chord lands in form state only; a bare modifier keeps capture waiting. */
     function capture(key, modifiers) {
         if (key === Qt.Key_Escape) {
             root.listening = false;
@@ -170,53 +169,49 @@ PillSurface {
         Qt.callLater(nameField.input.forceActiveFocus);
     }
 
-    /**
-     * Commit the form. ADD guards the combo against an existing bind, then writes
-     * one appended exec line. EDIT folds only the changed facets — combo via
-     * rebind, command via editCmd, name via editName — into a single text before
-     * one write. A combo that collides with another bind is refused inline.
-     */
+    function taken(combo) {
+        return Chord.pretty(combo) + " is already bound";
+    }
+
+    /** Add appends one exec line; edit folds only the changed facets into a single write. */
     function save() {
         var text = bindsFile.text();
         if (root.formAdd) {
-            if (root.formCombo.length === 0) { root.conflict = "pick a key"; return; }
-            if (root.formCmd.length === 0) { root.conflict = "command empty"; return; }
-            if (Binds.inUse(text, root.formCombo, -1)) {
-                root.conflict = root.formCombo + " already bound";
-                return;
-            }
+            if (root.formCombo.length === 0) { root.conflict = "Pick a key first"; return; }
+            if (root.formCmd.length === 0) { root.conflict = "Command is empty"; return; }
+            if (Binds.inUse(text, root.formCombo, -1)) { root.conflict = root.taken(root.formCombo); return; }
             var a = Binds.add(text, root.formCombo, root.formCmd, root.formName);
-            if (!a.ok) { root.conflict = a.error || "add failed"; return; }
+            if (!a.ok) { root.conflict = a.error || "Could not add the bind"; return; }
             writer.setText(a.text);
             return;
         }
 
         if (root.formCombo !== root.origCombo && Binds.inUse(text, root.formCombo, root.formLine)) {
-            root.conflict = root.formCombo + " already bound";
+            root.conflict = root.taken(root.formCombo);
             return;
         }
 
         var out = text;
         if (root.formCombo !== root.origCombo) {
             var r = Binds.rebind(out, root.formLine, root.formCombo);
-            if (!r.ok) { root.conflict = r.error || "rebind failed"; return; }
+            if (!r.ok) { root.conflict = r.error || "Could not change the key"; return; }
             out = r.text;
         }
         if (root.formCmdEditable && root.formCmd !== root.origCmd) {
-            if (root.formCmd.length === 0) { root.conflict = "command empty"; return; }
+            if (root.formCmd.length === 0) { root.conflict = "Command is empty"; return; }
             var c = Binds.editCmd(out, root.formLine, root.formCmd);
-            if (!c.ok) { root.conflict = c.error || "command edit failed"; return; }
+            if (!c.ok) { root.conflict = c.error || "Could not change the command"; return; }
             out = c.text;
         }
         if (!root.formCmdEditable && root.formAction !== root.origAction) {
-            if (root.formAction.trim().length === 0) { root.conflict = "action empty"; return; }
+            if (root.formAction.trim().length === 0) { root.conflict = "Action is empty"; return; }
             var a2 = Binds.editAction(out, root.formLine, root.formAction.trim());
-            if (!a2.ok) { root.conflict = a2.error || "action edit failed"; return; }
+            if (!a2.ok) { root.conflict = a2.error || "Could not change the action"; return; }
             out = a2.text;
         }
         if (root.formName !== root.origName) {
             var n = Binds.editName(out, root.formLine, root.formName);
-            if (!n.ok) { root.conflict = n.error || "name edit failed"; return; }
+            if (!n.ok) { root.conflict = n.error || "Could not change the name"; return; }
             out = n.text;
         }
 
@@ -231,7 +226,7 @@ PillSurface {
         if (root.formAdd || root.formLine < 0)
             return;
         var d = Binds.del(bindsFile.text(), root.formLine);
-        if (!d.ok) { root.conflict = d.error || "delete failed"; return; }
+        if (!d.ok) { root.conflict = d.error || "Could not delete the bind"; return; }
         writer.setText(d.text);
     }
 
@@ -240,15 +235,11 @@ PillSurface {
             bindsFile.reload();
             refresh();
             focusIndex = 0;
-            listening = false;
             query = "";
-            formOpen = false;
-            conflict = "";
-        } else {
-            listening = false;
-            formOpen = false;
-            conflict = "";
         }
+        listening = false;
+        formOpen = false;
+        conflict = "";
     }
 
     onFormOpenChanged: if (formOpen) Qt.callLater(nameField.input.forceActiveFocus)
@@ -286,22 +277,15 @@ PillSurface {
         atomicWrites: true
         printErrors: false
         onSaved: {
-            reloadProc.running = true;
-            root.formOpen = false;
-            root.listening = false;
-            root.conflict = "";
+            HyprReload.request();
+            root.closeForm();
             bindsFile.reload();
             root.refresh();
         }
         onSaveFailed: (err) => {
-            root.conflict = "write failed";
+            root.conflict = "Could not write binds.lua";
             console.log("keybinds: write failed: " + err);
         }
-    }
-
-    Process {
-        id: reloadProc
-        command: ["setsid", "-f", "sh", "-c", "sleep 0.4; hyprctl reload"]
     }
 
     Item {
@@ -322,14 +306,15 @@ PillSurface {
         anchors.right: parent.right
         spacing: 0
 
-        SettingsHeader {
+        SurfaceHeader {
             s: root.s
             glyph: "鍵"
-            title: "KEYBINDS"
-            showBack: true
+            title: "Keybinds"
+            crumb: root.formOpen ? (root.formAdd ? "New bind" : "Edit bind") : ""
+            canBack: true
         }
 
-        Item { width: 1; height: 8 * root.s }
+        Item { width: 1; height: Theme.sp.s * root.s }
 
         SearchField {
             width: parent.width
@@ -337,9 +322,9 @@ PillSurface {
             visible: !root.formOpen
             s: root.s
             kanji: "探"
-            placeholder: "search binds"
+            placeholder: "Search binds"
             kanjiSize: 15
-            fontSize: 13
+            fontSize: Theme.fs.body
             gap: 9
             trail: 0
             lineGap: 3
@@ -354,15 +339,24 @@ PillSurface {
             onAccepted: root.activate()
         }
 
-        Item { width: 1; height: 8 * root.s }
+        Item { width: 1; height: Theme.sp.s * root.s; visible: !root.formOpen }
+
+        EmptyState {
+            width: parent.width
+            visible: !root.formOpen && root.filtered.length === 0
+            s: root.s
+            glyph: "keyboard"
+            text: root.query.length > 0 ? "No binds match" : "No keybinds found"
+        }
 
         ListView {
             id: list
             width: parent.width
-            height: visible ? Math.min(contentHeight, 250 * root.s) : 0
-            visible: !root.formOpen
+            height: !root.formOpen ? Math.min(root.filtered.length, root.maxRows) * root.rowH : 0
+            visible: !root.formOpen && root.filtered.length > 0
             clip: true
             boundsBehavior: Flickable.StopAtBounds
+            snapMode: ListView.SnapToItem
             model: root.filtered
 
             property Item focusRowItem: null
@@ -373,9 +367,10 @@ PillSurface {
                 required property var modelData
 
                 readonly property bool focused: root.focusIndex === brow.index
+                readonly property bool editable: !brow.modelData.isMouse
 
                 width: ListView.view.width
-                height: 38 * root.s
+                height: root.rowH
 
                 onFocusedChanged: if (focused) list.focusRowItem = brow
 
@@ -388,74 +383,64 @@ PillSurface {
                     anchors.fill: parent
                     anchors.topMargin: 3 * root.s
                     anchors.bottomMargin: 3 * root.s
-                    radius: 9 * root.s
-                    color: (rowHover.hovered || brow.focused) ? Theme.frameBg : "transparent"
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    radius: Theme.r.m * root.s
+                    color: rowArea.pressed && brow.editable ? Theme.hair
+                        : (rowHover.hovered || brow.focused) ? Theme.frameBg : "transparent"
+                    Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
                 }
 
-                Rectangle {
-                    id: comboChip
+                KeyCap {
+                    id: comboCaps
                     anchors.left: parent.left
-                    anchors.leftMargin: 12 * root.s
+                    anchors.leftMargin: Theme.sp.m * root.s
                     anchors.verticalCenter: parent.verticalCenter
-                    width: comboText.implicitWidth + 16 * root.s
-                    height: comboText.implicitHeight + 8 * root.s
-                    radius: 7 * root.s
-                    color: brow.focused ? Qt.alpha(Theme.vermLit, 0.16) : Theme.frameBg
-                    border.width: 1
-                    border.color: brow.focused ? Qt.alpha(Theme.vermLit, 0.45) : Theme.hairSoft
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-                    Text {
-                        id: comboText
-                        anchors.centerIn: parent
-                        text: root.comboPretty(brow.modelData.combo)
-                        color: brow.focused ? Theme.cream : Theme.subtle
-                        font.family: Theme.font
-                        font.pixelSize: 11 * root.s
-                        font.weight: Font.Bold
-                        font.letterSpacing: 0.3 * root.s
-                    }
+                    s: root.s
+                    combo: root.comboPretty(brow.modelData.combo)
                 }
 
-                Column {
-                    anchors.left: comboChip.right
-                    anchors.leftMargin: 12 * root.s
+                Item {
+                    anchors.left: comboCaps.right
+                    anchors.leftMargin: Theme.sp.m * root.s
                     anchors.right: parent.right
-                    anchors.rightMargin: 14 * root.s
+                    anchors.rightMargin: Theme.sp.m * root.s
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 1 * root.s
+                    height: labelText.implicitHeight
+
+                    readonly property bool showCmd: rowHover.hovered && brow.modelData.cmd.length > 0
 
                     Text {
-                        anchors.right: parent.right
+                        id: labelText
                         width: parent.width
                         horizontalAlignment: Text.AlignRight
+                        opacity: parent.showCmd ? 0 : 1
                         text: brow.modelData.label
-                        color: brow.focused ? Theme.subtle : Theme.faint
+                        color: brow.focused ? Theme.cream : Theme.textFaint
                         font.family: Theme.font
-                        font.pixelSize: 11 * root.s
+                        font.pixelSize: Theme.fs.meta * root.s
                         font.weight: Font.Medium
                         elide: Text.ElideRight
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
                     }
 
                     Text {
-                        anchors.right: parent.right
+                        anchors.verticalCenter: labelText.verticalCenter
                         width: parent.width
                         horizontalAlignment: Text.AlignRight
-                        visible: rowHover.hovered && brow.modelData.cmd.length > 0
+                        opacity: parent.showCmd ? 1 : 0
                         text: brow.modelData.cmd
-                        color: Theme.dim
+                        color: Theme.textFaint
                         font.family: Theme.font
-                        font.pixelSize: 9 * root.s
-                        font.weight: Font.Normal
+                        font.pixelSize: Theme.fs.meta * root.s
                         elide: Text.ElideLeft
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
                     }
                 }
 
                 MouseArea {
+                    id: rowArea
                     anchors.fill: parent
                     enabled: !root.listening
-                    cursorShape: brow.modelData.isMouse ? Qt.ArrowCursor : Qt.PointingHandCursor
+                    cursorShape: brow.editable ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onClicked: {
                         root.focusIndex = brow.index;
                         root.openEdit(brow.modelData);
@@ -464,51 +449,11 @@ PillSurface {
             }
         }
 
-        Item {
-            width: parent.width
-            height: 38 * root.s
+        AddBar {
             visible: !root.formOpen
-
-            Rectangle {
-                anchors.fill: parent
-                anchors.topMargin: 5 * root.s
-                anchors.bottomMargin: 5 * root.s
-                radius: 9 * root.s
-                color: addArea.containsMouse ? Qt.alpha(Theme.vermLit, 0.1) : "transparent"
-                border.width: 1
-                border.color: Qt.alpha(Theme.vermLit, addArea.containsMouse ? 0.6 : 0.32)
-
-                Row {
-                    anchors.centerIn: parent
-                    spacing: 6 * root.s
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "+"
-                        color: Theme.vermLit
-                        font.family: Theme.font
-                        font.pixelSize: 14 * root.s
-                        font.weight: Font.Bold
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "add keybind"
-                        color: Theme.vermLit
-                        font.family: Theme.font
-                        font.pixelSize: 11 * root.s
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 0.5 * root.s
-                    }
-                }
-
-                MouseArea {
-                    id: addArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.openAdd()
-                }
-            }
+            s: root.s
+            text: "Add keybind"
+            onClicked: root.openAdd()
         }
 
         Column {
@@ -517,30 +462,34 @@ PillSurface {
             visible: root.formOpen
             spacing: 10 * root.s
 
-            BackHeader {
-                s: root.s
-                title: root.formAdd ? "NEW BIND" : "EDIT BIND"
-                onBack: root.closeForm()
-            }
-
             FormField {
+                id: keyField
                 s: root.s
-                label: "KEY"
+                label: "Key"
                 capture: true
                 listening: root.listening
-                value: root.formCombo
-                hint: "press keys…  esc cancels"
+                /** A blank value keeps the field's own caption empty; the caps below draw the chord. */
+                value: " "
+                hint: "Press keys…  Esc cancels"
                 onTapped: {
                     root.conflict = "";
                     root.listening = true;
+                }
+
+                KeyCap {
+                    x: 11 * root.s
+                    y: keyField.height - 13 * root.s - height / 2
+                    visible: !root.listening
+                    s: root.s
+                    combo: root.formCombo.length > 0 ? root.comboPretty(root.formCombo) : ""
                 }
             }
 
             FormField {
                 id: nameField
                 s: root.s
-                label: "NAME"
-                placeholder: "label (optional)"
+                label: "Name"
+                placeholder: "Label (optional)"
                 text: root.formName
                 onEdited: root.formName = nameField.text
                 onCancelled: root.closeForm()
@@ -551,9 +500,9 @@ PillSurface {
             FormField {
                 id: cmdField
                 s: root.s
-                label: root.formCmdEditable ? "COMMAND" : "ACTION"
-                fontSize: root.formCmdEditable ? 11.5 : 10.5
-                placeholder: root.formCmdEditable ? "shell command" : "lua dispatch"
+                label: root.formCmdEditable ? "Command" : "Action"
+                fontSize: root.formCmdEditable ? Theme.fs.body : Theme.fs.meta
+                placeholder: root.formCmdEditable ? "Shell command" : "Lua dispatch"
                 text: root.formCmdEditable ? root.formCmd : root.formAction
                 onEdited: {
                     if (root.formCmdEditable)
@@ -569,81 +518,47 @@ PillSurface {
                 width: parent.width
                 visible: root.conflict.length > 0
                 text: root.conflict
-                color: Theme.vermLit
+                color: Theme.danger
                 font.family: Theme.font
-                font.pixelSize: 10 * root.s
+                font.pixelSize: Theme.fs.meta * root.s
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
             }
 
             Item {
                 width: parent.width
-                height: 30 * root.s
+                height: 28 * root.s
 
-                Rectangle {
-                    id: deleteBtn
+                Button {
                     anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
                     visible: !root.formAdd
-                    width: deleteLabel.implicitWidth + 24 * root.s
-                    height: 28 * root.s
-                    radius: 8 * root.s
-                    color: deleteArea.containsMouse ? Qt.alpha(Theme.verm, 0.2) : Qt.alpha(Theme.verm, 0.1)
-                    border.width: 1
-                    border.color: Qt.alpha(Theme.vermLit, 0.45)
-
-                    Text {
-                        id: deleteLabel
-                        anchors.centerIn: parent
-                        text: "Delete"
-                        color: Theme.vermLit
-                        font.family: Theme.font
-                        font.pixelSize: 10.5 * root.s
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 0.3 * root.s
-                    }
-
-                    MouseArea {
-                        id: deleteArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.removeBind()
-                    }
+                    s: root.s
+                    kind: "danger"
+                    text: "Delete"
+                    onClicked: root.removeBind()
                 }
 
-                Rectangle {
-                    id: saveBtn
+                Row {
                     anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: saveLabel.implicitWidth + 30 * root.s
-                    height: 28 * root.s
-                    radius: 8 * root.s
-                    color: saveArea.containsMouse ? Theme.vermLit : Theme.verm
+                    spacing: Theme.sp.s * root.s
 
-                    Text {
-                        id: saveLabel
-                        anchors.centerIn: parent
-                        text: "Save"
-                        color: Theme.cream
-                        font.family: Theme.font
-                        font.pixelSize: 10.5 * root.s
-                        font.weight: Font.Bold
-                        font.letterSpacing: 0.4 * root.s
+                    Button {
+                        s: root.s
+                        kind: "ghost"
+                        text: "Cancel"
+                        onClicked: root.closeForm()
                     }
-
-                    MouseArea {
-                        id: saveArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
+                    Button {
+                        s: root.s
+                        kind: "primary"
+                        text: root.formAdd ? "Add" : "Save"
                         onClicked: root.save()
                     }
                 }
             }
         }
 
-        Item { width: 1; height: 9 * root.s }
+        Item { width: 1; height: Theme.sp.s * root.s }
 
         Rectangle {
             width: parent.width
@@ -657,15 +572,15 @@ PillSurface {
 
             Text {
                 anchors.left: parent.left
-                anchors.leftMargin: 4 * root.s
+                anchors.leftMargin: Theme.sp.xs * root.s
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.formOpen ? "save · delete · esc back" : "tap edit · + add · esc close"
-                color: Theme.faint
+                text: root.hint
+                color: Theme.textFaint
                 font.family: Theme.font
-                font.pixelSize: 9.5 * root.s
-                font.weight: Font.DemiBold
+                font.pixelSize: Theme.fs.label * root.s
+                font.weight: Font.Bold
                 font.capitalization: Font.AllUppercase
-                font.letterSpacing: 1 * root.s
+                font.letterSpacing: Theme.labelTracking * root.s
             }
         }
     }

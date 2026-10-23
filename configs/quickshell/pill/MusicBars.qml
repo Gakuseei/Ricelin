@@ -4,10 +4,7 @@ import QtQuick
 import "Singletons"
 
 /**
- * Rest-pill spectrum: one rounded ember bar per cava band, packed into the
- * clock-glyph slot so the cluster never widens the pill. Heights chase
- * Cava.levels with a short ease so the motion stays liquid instead of strobing
- * on every frame cava emits.
+ * Rest-pill spectrum in the clock-glyph slot; heights chase cava with a short ease so they never strobe.
  */
 Row {
     id: root

@@ -35,6 +35,34 @@ Singleton {
     readonly property var source: Pipewire.defaultAudioSource
     readonly property string deviceKey: sink ? (sink.name || "") : ""
 
+    /** Real output devices, without per-app streams and our own EQ filter, sorted by label. */
+    readonly property var outputs: {
+        const out = [];
+        const all = Pipewire.nodes.values;
+        for (let i = 0; i < all.length; i++) {
+            const n = all[i];
+            if (n && n.isSink && !n.isStream && n.audio && n.name !== "ricelin_eq")
+                out.push(n);
+        }
+        return out.sort((a, b) => root.label(a).localeCompare(root.label(b)));
+    }
+
+    /** Real capture devices, without sink monitors and our own mic filter, sorted by label. */
+    readonly property var inputs: {
+        const out = [];
+        const all = Pipewire.nodes.values;
+        for (let i = 0; i < all.length; i++) {
+            const n = all[i];
+            if (n && !n.isSink && !n.isStream && n.audio && !/monitor/i.test(n.name || "") && n.name !== "ricelin_mic")
+                out.push(n);
+        }
+        return out.sort((a, b) => root.label(a).localeCompare(root.label(b)));
+    }
+
+    function label(node) {
+        return node ? (node.description || node.nickname || node.name || "") : "";
+    }
+
     /** The running filter's capture node, null while the EQ is off or still starting. */
     readonly property var filterNode: {
         const all = Pipewire.nodes.values;

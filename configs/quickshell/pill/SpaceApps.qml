@@ -4,21 +4,15 @@ import QtQuick
 import "Singletons"
 
 /**
- * App manager for a user-defined special workspace (the one named by
- * Spaces.editing). The same two-view shape as Stash: the list view shows each
- * routed window class as an app tile with friendly name and faint raw-class
- * subtitle and a ✕ to drop it, capped by a dashed "add app" bar; the add view
- * swaps in the launcher's fuzzy picker whose pick derives a window class from the
- * entry's StartupWMClass. Reads and writes through the Spaces singleton, which
- * owns spaces.lua and fires the debounced reload — this surface holds no file.
+ * Apps routed into the custom space named by Spaces.editing; Spaces owns spaces.lua and the reload.
  */
 PillSurface {
     id: root
 
-    mTop: 15
-    mLeft: 19
-    mRight: 19
-    mBottom: 14
+    mTop: Theme.inset.top
+    mLeft: Theme.inset.side
+    mRight: Theme.inset.side
+    mBottom: Theme.inset.bottom
 
     implicitHeight: content.implicitHeight
 
@@ -32,11 +26,17 @@ PillSurface {
         return null;
     }
     readonly property var entries: editingSpace ? editingSpace.apps : []
-    readonly property string spaceName: editingSpace && editingSpace.name ? editingSpace.name : "SPACE"
+    readonly property string spaceName: editingSpace && editingSpace.name ? editingSpace.name : "Space"
 
-    /** Pill.qml folds the picker back when the surface leaves */
     readonly property alias addOpen: content.addOpen
     function closeAdd() { content.closeAdd(); }
+    function back() {
+        if (!addOpen)
+            return false;
+        closeAdd();
+        return true;
+    }
+    function handleKey(e) { return content.handleKey(e); }
 
     function removeAt(i) {
         if (i < 0 || i >= root.entries.length)
@@ -50,7 +50,10 @@ PillSurface {
         content.closeAdd();
     }
 
-    onActiveChanged: content.closeAdd()
+    onActiveChanged: {
+        content.closeAdd();
+        content.focusIndex = 0;
+    }
 
     AppRouteList {
         id: content

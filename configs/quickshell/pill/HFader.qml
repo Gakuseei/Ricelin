@@ -2,12 +2,7 @@ import QtQuick
 import "Singletons"
 
 /**
- * Horizontal capture-level fader for the recorder's audio rows: a thin matte
- * track with a flame fill and a flat tick marker at the value, no knob. Mirrors
- * the mixer VFader look and contract (drag plus `step` for scroll-wheel and
- * arrow keys, 5% per notch) so the same focus and stepping logic drives it.
- * The host owns focus and feeds `focused`; `on` saturates the fill, off dims
- * it. Value is 0..1. A right-aligned percent readout trails the track.
+ * Horizontal twin of VFader with a trailing percent readout; the host drives `focused`, `on` saturates the fill, value is 0..1.
  */
 Item {
     id: root
@@ -23,10 +18,7 @@ Item {
 
     implicitHeight: 16 * s
 
-    /**
-     * Nudge the value by a signed percentage (e.g. +5 / -5), clamped to 0..100%,
-     * emitting `moved` and `committed` so the captured level updates on each step.
-     */
+    /** Nudge by a signed percentage, clamped, emitting both signals so the level follows each step. */
     function step(deltaPct) {
         const v = Math.max(0, Math.min(1, root.value + deltaPct / 100));
         root.moved(v);
@@ -40,7 +32,7 @@ Item {
         id: track
         anchors.left: parent.left
         anchors.right: pct.left
-        anchors.rightMargin: 11 * root.s
+        anchors.rightMargin: Theme.sp.s * root.s
         anchors.verticalCenter: parent.verticalCenter
         height: 3 * root.s
         radius: height / 2
@@ -58,7 +50,7 @@ Item {
                 GradientStop { position: 0.0; color: root.on ? Theme.vermBurn : Theme.vermDimDeep }
                 GradientStop { position: 1.0; color: root.on ? Theme.vermLit : Theme.vermDim }
             }
-            Behavior on width { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast } }
+            Behavior on width { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
         }
 
         Rectangle {
@@ -69,7 +61,7 @@ Item {
             height: 11 * root.s
             radius: 2 * root.s
             color: Theme.tickRest
-            Behavior on x { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast } }
+            Behavior on x { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
         }
 
         MouseArea {
@@ -92,12 +84,12 @@ Item {
         id: pct
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        width: 32 * root.s
+        width: 34 * root.s
         horizontalAlignment: Text.AlignRight
         text: root.readout
         color: root.focused ? Theme.cream : Theme.subtle
         font.family: Theme.font
-        font.pixelSize: 10 * root.s
+        font.pixelSize: Theme.fs.meta * root.s
         font.weight: Font.DemiBold
         font.features: { "tnum": 1 }
     }

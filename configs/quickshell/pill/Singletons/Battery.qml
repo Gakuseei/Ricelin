@@ -4,11 +4,7 @@ import Quickshell
 import Quickshell.Services.UPower
 
 /**
- * Laptop-battery state for the pill, sourced from UPower's display device and
- * gated so a desktop without a battery reports `present` false (the hover
- * cluster and 蓄 surface stay hidden). Exposes percentage, charge state, a
- * signed draw/charge wattage, capacity and optional health, plus a formatted
- * time-to-empty/full string. `low` flags a discharging battery at or below 20%.
+ * Laptop battery state from UPower's display device, with `present` false on a desktop so the hover cluster and 蓄 surface stay hidden.
  */
 Singleton {
     id: root

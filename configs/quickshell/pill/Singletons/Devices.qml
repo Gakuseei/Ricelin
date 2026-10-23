@@ -4,15 +4,7 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * Single owner of screen vibrance (nvibrant) and external-monitor brightness
- * (ddcutil) for the mixer. The persisted vibrance percent is the source of
- * truth: loaded and re-applied once at startup so the tint survives a reboot,
- * and every later set both pushes to nvibrant and writes back the state file.
- * DDC monitors come from `ddcutil detect` (one brightness fader each); the
- * setvcp/getvcp wire format lives here so every caller speaks it the same.
- * The internal laptop backlight (eDP, no DDC/CI) is driven separately via
- * brightnessctl and gated on /sys/class/backlight being present, so a desktop
- * exposes nothing.
+ * Single owner of screen vibrance (nvibrant) and monitor brightness (ddcutil, brightnessctl), with the persisted vibrance percent as the source of truth.
  */
 Singleton {
     id: root
@@ -22,10 +14,13 @@ Singleton {
     property int vibrance: 40
 
     /**
-     * DDC-capable monitors from `ddcutil detect`: [{ bus, label }] with label
-     * taken from the DRM connector, falling back to the I2C bus number.
+     * DDC monitors from `ddcutil detect` as `[{ bus, label }]`, labelled by DRM connector or else the I2C bus number.
      */
     property var ddcMonitors: []
+
+    /** Brightness percent per DDC bus, read once after detect and kept by setBrightness. */
+    property var ddcPct: ({})
+    property bool detected: false
 
     /** True once an internal backlight has been found under /sys/class/backlight. */
     property bool backlightPresent: false
@@ -34,9 +29,7 @@ Singleton {
     property int backlightPct: 75
 
     /**
-     * Loads the persisted vibrance percent and applies it once, so the saved
-     * tint is restored on boot. Singletons init lazily, so a startup caller
-     * must reference this for the restore to fire.
+     * Re-applies the saved vibrance once, and since singletons init lazily a startup caller must reference this for it to fire.
      */
     function restore() {
         var raw = vibState.text();
@@ -46,10 +39,6 @@ Singleton {
             applyVibrance(root.vibrance);
     }
 
-    /**
-     * Sets the screen vibrance to `pct` percent: pushes it to nvibrant and
-     * persists it to the state file. `vibrance` mirrors the last set value.
-     */
     function setVibrance(pct) {
         root.vibrance = Math.round(pct);
         applyVibrance(pct);
@@ -57,8 +46,7 @@ Singleton {
     }
 
     /**
-     * nvibrant takes one value per connector slot and ignores extras, so the
-     * same value goes to every slot rather than guessing which ones are lit.
+     * nvibrant ignores extra connector slots, so every slot gets the same value instead of guessing which ones are lit.
      */
     function applyVibrance(pct) {
         var raw = Math.round(Math.max(0, Math.min(100, pct)) * 1023 / 100);
@@ -75,19 +63,27 @@ Singleton {
     }
 
     function detect() {
+        if (detected)
+            return;
+        detected = true;
         ddcDetect.running = true;
         blDetect.running = true;
     }
 
+    function storePct(bus, pct) {
+        var m = Object.assign({}, ddcPct);
+        m[bus] = pct;
+        ddcPct = m;
+    }
+
     function setBrightness(bus, pct) {
+        storePct(bus, pct);
         Quickshell.execDetached(["timeout", "3", "ddcutil", "setvcp", "10",
             String(pct), "--bus", bus, "--noverify"]);
     }
 
     /**
-     * Sets the internal laptop backlight to `pct` percent via brightnessctl.
-     * No-op effect on machines without /sys/class/backlight (brightnessctl
-     * simply finds no device), and inert when brightnessctl is absent.
+     * Harmless on machines without /sys/class/backlight or brightnessctl, since it just finds no device.
      */
     function setBacklight(pct) {
         root.backlightPct = Math.round(Math.max(1, Math.min(100, pct)));
@@ -95,8 +91,7 @@ Singleton {
     }
 
     /**
-     * Parses a `ddcutil getvcp --brief` line, returning the current brightness
-     * percent or -1 when no value is present.
+     * Parses a `ddcutil getvcp --brief` line into a brightness percent, or -1 when no value is present.
      */
     function parseBrightness(text) {
         var m = text.match(/C\s+(\d+)\s+/);
@@ -118,6 +113,21 @@ Singleton {
                         mons.push({ bus: bus[1], label: conn ? conn[1] : "BUS " + bus[1] });
                 }
                 root.ddcMonitors = mons;
+                ddcRead.command = ["sh", "-c", "for b; do printf '%s %s\\n' \"$b\" \"$(timeout 3 ddcutil getvcp 10 --bus \"$b\" --brief)\"; done", "_"]
+                    .concat(mons.map(function(d) { return d.bus; }));
+                ddcRead.running = mons.length > 0;
+            }
+        }
+    }
+
+    /** One sequential getvcp per bus, so two monitors never fight over the I2C lines. */
+    Process {
+        id: ddcRead
+        stdout: SplitParser {
+            onRead: (line) => {
+                var v = root.parseBrightness(line);
+                if (v >= 0)
+                    root.storePct(line.split(" ")[0], v);
             }
         }
     }

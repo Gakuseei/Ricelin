@@ -1,7 +1,9 @@
 import QtQuick
 import "Singletons"
 
-/** Small-caps group label between settings rows. */
+/**
+ * The one small-caps label: group names between rows and field names in forms.
+ */
 Text {
     id: label
 
@@ -9,10 +11,11 @@ Text {
 
     topPadding: 16 * label.s
     bottomPadding: 6 * label.s
-    color: Theme.faint
+    leftPadding: 0 * label.s
+    color: Theme.textFaint
     font.family: Theme.font
-    font.pixelSize: 8.5 * label.s
+    font.pixelSize: Theme.fs.label * label.s
     font.weight: Font.Bold
     font.capitalization: Font.AllUppercase
-    font.letterSpacing: 1.2 * label.s
+    font.letterSpacing: Theme.labelTracking * label.s
 }

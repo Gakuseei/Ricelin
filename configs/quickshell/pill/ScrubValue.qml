@@ -4,15 +4,7 @@ import QtQuick
 import "Singletons"
 
 /**
- * Numeric value control for the settings tabs. At rest it is just the number, so
- * a column of them stays clean instead of a grid of boxes. Hover wakes a faint
- * accent backdrop and the ghost − / + glyphs. One control-wide handler does the
- * work: drag the number left or right to scrub, or tap near the − / + end to
- * step exactly. The whole control is the target, so it reads minimal but stays
- * easy to grab. Every path runs through `snap`, so the emitted value is always
- * clamped to `from..to`, landed on the `step` grid and rounded to `decimals`.
- * `value` stays a plain one-way binding to the backing field; edits flow out
- * through `edited`.
+ * Numeric value: drag to scrub, click the − / + end to step, wheel to step; every path snaps to `from..to` on the `step` grid.
  */
 Item {
     id: root
@@ -26,13 +18,13 @@ Item {
     property real s: 1
     signal edited(real value)
 
-    /** Optional value-to-text mapper. When set it owns the label, so the raw number and unit step aside (used for the HH:MM schedule scrubs). */
+    /**
+     * Optional value-to-text mapper; when set it owns the label and the unit steps aside.
+     */
     property var fmt: null
 
     /**
-     * Value the host captured when the tab opened. While the live value differs
-     * from it the undo glyph surfaces, so a stray scrub is always one click away
-     * from the value it had on open. `undefined` until the host snapshots.
+     * Value captured when the tab opened; the undo glyph shows while the live value differs.
      */
     property var openValue: undefined
     readonly property bool dirty: openValue !== undefined && !isNaN(openValue) && root.value !== openValue
@@ -40,14 +32,13 @@ Item {
     readonly property bool hovered: hh.hovered || scrub.containsMouse || scrub.pressed || undoMA.containsMouse
     readonly property real pxPerStep: 8 * root.s
 
-    /** Which end the pointer sits over while hovering, so the right glyph lights up. */
     readonly property bool overMinus: scrub.containsMouse && scrub.mouseX < width * 0.4
     readonly property bool overPlus: scrub.containsMouse && scrub.mouseX > width * 0.6
 
     HoverHandler { id: hh }
 
-    implicitWidth: Math.max(64 * root.s, content.implicitWidth + 14 * root.s)
-    implicitHeight: content.implicitHeight + 8 * root.s
+    implicitWidth: Math.max(64 * root.s, content.implicitWidth + Theme.sp.m * root.s)
+    implicitHeight: content.implicitHeight + Theme.sp.s * root.s
 
     function snap(v) {
         var n = root.from + Math.round((v - root.from) / root.step) * root.step;
@@ -67,23 +58,20 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        radius: Motion.rSmall * root.s
-        color: Qt.alpha(Theme.onGlow, root.hovered ? 0.14 : 0)
-        Behavior on color { ColorAnimation { duration: Motion.fast } }
+        anchors.leftMargin: 0
+        anchors.rightMargin: 0
+        radius: Theme.r.s * root.s
+        color: Qt.alpha(Theme.onGlow, scrub.pressed ? 0.24 : (root.hovered ? 0.14 : 0))
+        Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
     }
 
-    /**
-     * Drag to scrub, tap an end to step. A small move turns the press into a
-     * scrub; a clean tap on the left or right fraction steps once. Sits under the
-     * row so the undo glyph above keeps its own click.
-     */
     MouseArea {
         id: scrub
         anchors.fill: parent
-        anchors.leftMargin: -12 * root.s
-        anchors.rightMargin: -10 * root.s
-        anchors.topMargin: -3 * root.s
-        anchors.bottomMargin: -3 * root.s
+        anchors.leftMargin: -Theme.sp.m * root.s
+        anchors.rightMargin: -Theme.sp.m * root.s
+        anchors.topMargin: -Theme.sp.xs * root.s
+        anchors.bottomMargin: -Theme.sp.xs * root.s
         hoverEnabled: true
         preventStealing: true
         cursorShape: Qt.SizeHorCursor
@@ -120,9 +108,7 @@ Item {
     }
 
     /**
-     * Wheel-to-step bridge (button-less MouseArea, the mixer pattern — native
-     * WheelHandler is unreliable on this layer-shell). One notch is one step;
-     * fractional touchpad deltas accumulate until they make a whole notch.
+     * Button-less wheel bridge: WheelHandler is unreliable on this layer-shell, and touchpad deltas add up to whole notches.
      */
     MouseArea {
         anchors.fill: scrub
@@ -145,7 +131,7 @@ Item {
     Row {
         id: content
         anchors.centerIn: parent
-        spacing: 6 * root.s
+        spacing: Theme.sp.xs * root.s
 
         GlyphIcon {
             id: undoG
@@ -158,7 +144,7 @@ Item {
             stroke: 1.9
             color: undoMA.containsMouse ? Theme.bright : Qt.alpha(Theme.onGlow, 0.55)
             Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
 
             MouseArea {
                 id: undoMA
@@ -175,15 +161,12 @@ Item {
             id: minusG
             anchors.verticalCenter: parent.verticalCenter
             text: "−"
-            width: root.hovered ? implicitWidth : 0
             opacity: root.hovered ? 1 : 0
-            clip: true
             color: root.overMinus ? Theme.bright : Qt.alpha(Theme.onGlow, 0.6)
             font.family: Theme.font
-            font.pixelSize: 15 * root.s
+            font.pixelSize: Theme.fs.title * root.s
             font.weight: Font.Medium
-            Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
         }
 
         Item {
@@ -195,7 +178,7 @@ Item {
             Row {
                 id: vrow
                 anchors.centerIn: parent
-                spacing: 1 * root.s
+                spacing: Theme.sp.xxs * root.s
 
                 Text {
                     id: numText
@@ -203,16 +186,17 @@ Item {
                     text: root.fmt ? root.fmt(root.value) : root.value.toFixed(root.decimals)
                     color: Theme.cream
                     font.family: Theme.font
-                    font.pixelSize: 13 * root.s
+                    font.pixelSize: Theme.fs.body * root.s
                     font.weight: Font.DemiBold
+                    font.features: { "tnum": 1 }
                 }
                 Text {
                     anchors.verticalCenter: numText.verticalCenter
                     visible: !root.fmt && root.unit.length > 0
                     text: root.unit
-                    color: Theme.faint
+                    color: Theme.textFaint
                     font.family: Theme.font
-                    font.pixelSize: 9.5 * root.s
+                    font.pixelSize: Theme.fs.meta * root.s
                     font.weight: Font.Medium
                 }
             }
@@ -222,15 +206,12 @@ Item {
             id: plusG
             anchors.verticalCenter: parent.verticalCenter
             text: "+"
-            width: root.hovered ? implicitWidth : 0
             opacity: root.hovered ? 1 : 0
-            clip: true
             color: root.overPlus ? Theme.bright : Qt.alpha(Theme.onGlow, 0.6)
             font.family: Theme.font
-            font.pixelSize: 15 * root.s
+            font.pixelSize: Theme.fs.title * root.s
             font.weight: Font.Medium
-            Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
         }
     }
 }

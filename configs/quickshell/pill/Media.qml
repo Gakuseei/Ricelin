@@ -6,18 +6,10 @@ import Quickshell.Widgets
 import "Singletons"
 
 /**
- * Now-playing card. Album art bleeds edge-to-edge on the left, faded into the
- * card; a blurred copy glows through a near-opaque warm wash behind everything.
- * Right of the cover: title, artist, a dim source/time line, the play/pause
- * seal (奏/休) flanked by 前/次 skips. Playback runs as a brush stroke along the
- * bottom, its painted head the dock for the pill's soul bead. All now-playing
- * data comes from [[Players]]; when two or more players run, the source token
- * glows into a bubble that opens a picker.
+ * Now playing: full-bleed art card, so it keeps no surface insets; the seal and its glyph always show the action a click takes.
  */
 PillSurface {
     id: root
-
-    signal requestSurface(string name)
 
     readonly property var player: Players.active
     readonly property bool hasPlayer: player !== null
@@ -28,9 +20,7 @@ PillSurface {
     readonly property string serviceLabel: Players.serviceLabel
 
     /**
-     * Art only decodes while this monitor's surface is open, keyed on the track
-     * so a browser reusing one file path still reloads on a new song. The shared
-     * url means every monitor shows the same cover, never a stale neighbour.
+     * Decodes only while open, keyed on the track so a browser's reused file path still reloads.
      */
     readonly property string coverSource: {
         if (!root.active)
@@ -40,7 +30,9 @@ PillSurface {
             return "";
         return u.indexOf("file:") === 0 ? u + "#" + Players.trackKey : u;
     }
-    /** Latched on first decode so the fallback glyph doesn't flash back while a track change reloads behind the retained cover. */
+    /**
+     * Latched on first decode so the fallback glyph never flashes back behind a retained cover.
+     */
     property bool everReady: false
     onCoverSourceChanged: if (coverSource.length === 0) everReady = false
 
@@ -51,7 +43,6 @@ PillSurface {
     property bool dragging: false
     readonly property real frac: dragging ? dragFrac : playFrac
 
-    /** Source picker is open; only reachable when more than one player runs. */
     property bool picking: false
     readonly property bool canPick: Players.pickable.length > 1
     onActiveChanged: if (!active) picking = false
@@ -117,7 +108,9 @@ PillSurface {
         implicitWidth: Flags.showGlyphs ? kanjiLabel.implicitWidth : 15 * root.s
         implicitHeight: Flags.showGlyphs ? kanjiLabel.implicitHeight : 15 * root.s
         opacity: skip.can ? 1 : 0.4
-        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+        scale: skipArea.pressed && !Motion.calm ? 0.9 : 1
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
         Text {
             id: kanjiLabel
@@ -151,7 +144,6 @@ PillSurface {
         }
     }
 
-    /** Round album swatch that tags a source, falls back to a warm tile. */
     component ArtDot: ClippingRectangle {
         id: dot
         property string url: ""
@@ -216,17 +208,49 @@ PillSurface {
                 visible: !root.everReady
             }
 
-            Image {
-                id: cover
-                anchors.fill: parent
-                source: root.coverSource
-                sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2))
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                retainWhileLoading: true
-                cache: String(source).indexOf("file:") !== 0
-                onStatusChanged: if (status === Image.Ready) root.everReady = true
+            /**
+             * Two covers take turns: the next one decodes behind and cross-fades in once ready.
+             */
+            property bool flip: false
+            property string want: root.coverSource
+            onWantChanged: if (coverA && coverB) (flip ? coverA : coverB).wanted = want
+
+            Repeater {
+                model: 2
+
+                Image {
+                    id: cover
+                    required property int index
+                    readonly property bool front: (index === 1) === coverBox.flip
+                    property string wanted: ""
+                    anchors.fill: parent
+                    source: wanted
+                    sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2))
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    cache: String(source).indexOf("file:") !== 0
+                    opacity: front ? 1 : 0
+                    visible: opacity > 0.01
+                    Behavior on opacity { NumberAnimation { duration: Motion.glide; easing.type: Easing.OutCubic } }
+                    Component.onCompleted: {
+                        if (index === 0) {
+                            wanted = root.coverSource;
+                            coverBox.coverA = cover;
+                        } else {
+                            coverBox.coverB = cover;
+                        }
+                    }
+                    onStatusChanged: {
+                        if (status !== Image.Ready)
+                            return;
+                        root.everReady = true;
+                        if (!front && wanted === coverBox.want)
+                            coverBox.flip = !coverBox.flip;
+                    }
+                }
             }
+            property Image coverA: null
+            property Image coverB: null
 
             GlyphIcon {
                 anchors.centerIn: parent
@@ -255,14 +279,16 @@ PillSurface {
 
     Text {
         anchors.top: parent.top
-        anchors.topMargin: 7 * root.s
+        anchors.topMargin: Theme.sp.s * root.s
         anchors.right: parent.right
         anchors.rightMargin: root.edgePad
         text: "Sound ›"
-        color: soundLinkArea.containsMouse ? Theme.cream : Theme.dim
+        color: soundLinkArea.containsMouse ? Theme.cream : Theme.textFaint
+        opacity: soundLinkArea.pressed ? 0.7 : 1
         font.family: Theme.font
-        font.pixelSize: 9.5 * root.s
+        font.pixelSize: Theme.fs.meta * root.s
         font.weight: Font.DemiBold
+        Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
         MouseArea {
             id: soundLinkArea
@@ -281,23 +307,25 @@ PillSurface {
         anchors.rightMargin: root.edgePad
         anchors.top: parent.top
         anchors.topMargin: 24 * root.s
-        spacing: 3 * root.s
+        spacing: Theme.sp.xxs * root.s
 
         Marquee {
             anchors.left: parent.left
             anchors.right: parent.right
+            s: root.s
             text: root.title
             color: Theme.cream
-            pixelSize: 17 * root.s
+            pixelSize: Theme.fs.title * root.s
             weight: Font.DemiBold
             active: root.active
         }
         Marquee {
             anchors.left: parent.left
             anchors.right: parent.right
+            s: root.s
             text: root.artist
-            color: Theme.dim
-            pixelSize: 11.5 * root.s
+            color: Theme.textFaint
+            pixelSize: Theme.fs.body * root.s
             active: root.active
             visible: text.length > 0
         }
@@ -308,22 +336,22 @@ PillSurface {
         anchors.left: parent.left
         anchors.leftMargin: root.textX
         anchors.right: root.picking ? parent.right : transport.left
-        anchors.rightMargin: root.picking ? root.edgePad : 10 * root.s
+        anchors.rightMargin: root.picking ? root.edgePad : Theme.sp.s * root.s
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 36 * root.s
         height: 34 * root.s
 
-        readonly property string tail: root.live
-            ? " - Live"
-            : " / " + root.fmt(root.dragging ? root.dragFrac * root.lengthSec : root.positionSec)
-                + " - " + root.fmt(root.lengthSec)
+        readonly property string lead: root.serviceLabel.length > 0 ? " · " : ""
+        readonly property string tail: !Players.has ? ""
+            : root.live ? lead + "Live"
+            : lead + root.fmt(root.dragging ? root.dragFrac * root.lengthSec : root.positionSec) + " / " + root.fmt(root.lengthSec)
 
         Item {
             id: infoRow
             anchors.fill: parent
             visible: opacity > 0.01
             opacity: root.picking ? 0 : 1
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
 
             Text {
                 id: plainSource
@@ -331,9 +359,9 @@ PillSurface {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: !root.canPick && root.serviceLabel.length > 0
                 text: root.serviceLabel
-                color: Theme.dim
+                color: Theme.textFaint
                 font.family: Theme.font
-                font.pixelSize: 9.5 * root.s
+                font.pixelSize: Theme.fs.meta * root.s
             }
 
             Rectangle {
@@ -341,16 +369,18 @@ PillSurface {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.canPick
-                height: 18 * root.s
+                height: 20 * root.s
                 width: bubbleRow.width + 14 * root.s
                 radius: height / 2
-                color: Qt.alpha(Theme.verm, 0.16)
+                scale: bubbleArea.pressed && !Motion.calm ? 0.97 : 1
+                Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
+                color: Qt.alpha(Theme.verm, bubbleArea.containsMouse ? 0.24 : 0.16)
                 border.width: 1
                 border.color: Qt.alpha(Theme.vermLit, 0.45 + 0.35 * glow)
 
                 property real glow: 0
                 SequentialAnimation on glow {
-                    running: srcBubble.visible && !root.picking
+                    running: srcBubble.visible && !root.picking && !Motion.calm
                     loops: Animation.Infinite
                     NumberAnimation { to: 1; duration: 1300; easing.type: Easing.InOutSine }
                     NumberAnimation { to: 0; duration: 1300; easing.type: Easing.InOutSine }
@@ -359,7 +389,7 @@ PillSurface {
                 Row {
                     id: bubbleRow
                     anchors.centerIn: parent
-                    spacing: 5 * root.s
+                    spacing: Theme.sp.xs * root.s
                     ArtDot {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 12 * root.s
@@ -371,18 +401,21 @@ PillSurface {
                         text: root.serviceLabel
                         color: Theme.cream
                         font.family: Theme.font
-                        font.pixelSize: 10 * root.s
+                        font.pixelSize: Theme.fs.meta * root.s
                         font.weight: Font.DemiBold
                     }
-                    Text {
+                    GlyphIcon {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "▾"
+                        width: 9 * root.s
+                        height: 9 * root.s
+                        name: "chevron-down"
                         color: Theme.vermLit
-                        font.pixelSize: 8 * root.s
+                        stroke: 2.4
                     }
                 }
 
                 MouseArea {
+                    id: bubbleArea
                     anchors.fill: parent
                     anchors.margins: -5 * root.s
                     hoverEnabled: true
@@ -393,14 +426,14 @@ PillSurface {
 
             Text {
                 anchors.left: root.canPick ? srcBubble.right : plainSource.right
-                anchors.leftMargin: 3 * root.s
+                anchors.leftMargin: Theme.sp.xxs * root.s
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 text: srcLine.tail
                 elide: Text.ElideRight
-                color: Theme.dim
+                color: Theme.textFaint
                 font.family: Theme.font
-                font.pixelSize: 9.5 * root.s
+                font.pixelSize: Theme.fs.meta * root.s
                 font.features: { "tnum": 1 }
             }
         }
@@ -411,7 +444,7 @@ PillSurface {
             clip: true
             visible: opacity > 0.01
             opacity: root.picking ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
             contentWidth: pickRow.width
             contentHeight: height
             flickableDirection: Flickable.HorizontalFlick
@@ -429,7 +462,7 @@ PillSurface {
             Row {
                 id: pickRow
                 height: pickFlick.height
-                spacing: 7 * root.s
+                spacing: Theme.sp.s * root.s
 
                 Repeater {
                     model: root.picking ? Players.pickable : []
@@ -440,15 +473,18 @@ PillSurface {
                         anchors.verticalCenter: parent.verticalCenter
                         height: 32 * root.s
                         width: bubInner.width + 18 * root.s
-                        radius: 11 * root.s
-                        color: isActive ? Qt.alpha(Theme.verm, 0.2) : Qt.alpha(Theme.cream, 0.045)
+                        radius: Theme.r.m * root.s
+                        color: isActive ? Qt.alpha(Theme.verm, 0.2) : (bubArea.containsMouse ? Theme.frameBg : Qt.alpha(Theme.cream, 0.045))
                         border.width: 1
-                        border.color: isActive ? Theme.vermLit : Qt.alpha(Theme.cream, 0.12)
+                        border.color: isActive ? Theme.vermLit : Theme.frameBorder
+                        scale: bubArea.pressed && !Motion.calm ? 0.97 : 1
+                        Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
+                        Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
                         Row {
                             id: bubInner
                             anchors.centerIn: parent
-                            spacing: 7 * root.s
+                            spacing: Theme.sp.s * root.s
                             ArtDot {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 16 * root.s
@@ -460,16 +496,16 @@ PillSurface {
                                 spacing: 0
                                 Text {
                                     text: Players.labelOf(bub.modelData)
-                                    color: bub.isActive ? Theme.bright : Theme.dim
+                                    color: bub.isActive ? Theme.bright : Theme.subtle
                                     font.family: Theme.font
-                                    font.pixelSize: 11 * root.s
+                                    font.pixelSize: Theme.fs.meta * root.s
                                     font.weight: Font.DemiBold
                                 }
                                 Text {
                                     text: Players.nowPlayingFor(bub.modelData)
-                                    color: bub.isActive ? Theme.subtle : Theme.faint
+                                    color: Theme.textFaint
                                     font.family: Theme.font
-                                    font.pixelSize: 8.5 * root.s
+                                    font.pixelSize: Theme.fs.meta * root.s
                                     elide: Text.ElideRight
                                     width: Math.min(implicitWidth, 150 * root.s)
                                 }
@@ -477,6 +513,7 @@ PillSurface {
                         }
 
                         MouseArea {
+                            id: bubArea
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
@@ -500,7 +537,7 @@ PillSurface {
         spacing: 14 * root.s
         opacity: root.picking ? 0 : 1
         enabled: !root.picking
-        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
 
         KanjiSkip {
             kanjiText: "前"
@@ -514,15 +551,18 @@ PillSurface {
             anchors.verticalCenter: parent.verticalCenter
             width: 30 * root.s
             height: 30 * root.s
-            radius: 7 * root.s
+            radius: Theme.r.s * root.s
             rotation: -1.5
-            scale: 1 + 0.08 * root.sealPulse
+            scale: 1 + 0.08 * root.sealPulse - 0.06 * press
+
+            property real press: sealArea.pressed && !Motion.calm ? 1 : 0
+            Behavior on press { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
             property real sat: root.playing ? 1 : 0
             Behavior on sat { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
             opacity: (sealArea.enabled ? 1 : 0.4) * (0.75 + 0.25 * sat)
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
 
             border.width: 1
             border.color: Qt.alpha(Theme.vermLit, 0.4 + 0.4 * root.sealPulse)
@@ -534,7 +574,7 @@ PillSurface {
             Text {
                 visible: Flags.showGlyphs
                 anchors.centerIn: parent
-                text: root.playing ? "奏" : "休"
+                text: root.playing ? "休" : "奏"
                 color: Theme.bright
                 font.family: Theme.fontJp
                 font.pixelSize: 16 * root.s
@@ -589,7 +629,7 @@ PillSurface {
 
         Behavior on drawF {
             enabled: Math.abs(root.frac - stroke.lastFrac) < 0.02
-            NumberAnimation { duration: Math.round(500 * Motion.mult); easing.type: Easing.Linear }
+            NumberAnimation { duration: 500; easing.type: Easing.Linear }
         }
         onTargetFChanged: Qt.callLater(() => { stroke.lastFrac = root.frac; })
 

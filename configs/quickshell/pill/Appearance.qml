@@ -6,16 +6,7 @@ import Quickshell.Io
 import "Singletons"
 
 /**
- * 相 APPEARANCE sub-surface: the clock format and seconds, the Japanese-glyph
- * toggle that gates every surface header, the palette mode (static flame, dynamic
- * per-wallpaper, or a manually chosen hue), whether GTK apps follow that palette,
- * the UI scale and a reduce-motion switch. Reached from the settings index and
- * morphs back to it on an empty click or the back chevron.
- *
- * Manual palette mode reveals a rainbow hue strip and a dark/light choice; moving
- * either rebuilds the rice colour set from that hue through wallcolors.py --hue
- * and reloads Hyprland and the terminal, debounced so a drag does not spawn a
- * build per pixel.
+ * 相 APPEARANCE: clock, glyphs, palette, app theme, wallpaper scope, UI scale, motion and font; Manual palette opens a hue editor debounced into wallcolors.py.
  */
 SettingsSurface {
     id: root
@@ -45,12 +36,10 @@ SettingsSurface {
         if (v === "manual")
             applyManual();
         else if (v === "dynamic")
-            dynamicProc.running = true;
+            dynamicProc.rerun();
         else if (Flags.appTheme)
             syncApps();
     }
-
-    property bool appsDirty: false
 
     function setAppTheme(v) {
         if (Flags.appTheme === v)
@@ -60,45 +49,36 @@ SettingsSurface {
     }
 
     function syncApps() {
-        if (appsProc.running)
-            appsDirty = true;
-        else
-            appsProc.running = true;
+        appsProc.rerun();
     }
 
     Timer {
         id: applyTimer
         interval: 260
         repeat: false
-        onTriggered: paletteProc.running = true
+        onTriggered: paletteProc.rerun()
     }
 
-    Process {
+    LatestProcess {
         id: appsProc
         environment: ({ RICELIN_PALETTE: Flags.paletteMode })
         command: ["sh", "-c", "python3 \"$HOME/.config/hypr/scripts/wallcolors.py\" --apps \"$1\"",
             "sh", Flags.appTheme ? "on" : "off"]
-        onExited: {
-            if (root.appsDirty) {
-                root.appsDirty = false;
-                running = true;
-            }
-        }
     }
 
-    Process {
+    LatestProcess {
         id: paletteProc
         environment: ({ RICELIN_PALETTE: Flags.paletteMode })
         command: ["sh", "-c",
-            "python3 \"$HOME/.config/hypr/scripts/wallcolors.py\" --hue \"$1\" \"$2\" \"$3\" && hyprctl reload >/dev/null 2>&1; busctl --user call com.mitchellh.ghostty /com/mitchellh/ghostty org.gtk.Actions Activate \"sava{sv}\" reload-config 0 0 >/dev/null 2>&1 || true",
+            "python3 \"$HOME/.config/hypr/scripts/wallcolors.py\" --hue \"$1\" \"$2\" \"$3\"; busctl --user call com.mitchellh.ghostty /com/mitchellh/ghostty org.gtk.Actions Activate \"sava{sv}\" reload-config 0 0 >/dev/null 2>&1 || true",
             "sh", root.hueArg, root.modeArg, root.satArg]
     }
 
-    Process {
+    LatestProcess {
         id: dynamicProc
         environment: ({ RICELIN_PALETTE: Flags.paletteMode })
         command: ["sh", "-c",
-            "f=\"${XDG_STATE_HOME:-$HOME/.local/state}/ricelin-wallpaper\"; pic=$(cat \"$f\" 2>/dev/null); case \"$pic\" in *.[Mm][Pp]4|*.[Ww][Ee][Bb][Mm]|*.[Mm][Kk][Vv]|*.[Mm][Oo][Vv]) pic=\"${XDG_STATE_HOME:-$HOME/.local/state}/ricelin-wallpaper-still.png\";; esac; [ -f \"$pic\" ] && python3 \"$HOME/.config/hypr/scripts/wallcolors.py\" \"$pic\" >/dev/null 2>&1; hyprctl reload >/dev/null 2>&1; busctl --user call com.mitchellh.ghostty /com/mitchellh/ghostty org.gtk.Actions Activate \"sava{sv}\" reload-config 0 0 >/dev/null 2>&1 || true"]
+            "f=\"${XDG_STATE_HOME:-$HOME/.local/state}/ricelin-wallpaper\"; pic=$(cat \"$f\" 2>/dev/null); case \"$pic\" in *.[Mm][Pp]4|*.[Ww][Ee][Bb][Mm]|*.[Mm][Kk][Vv]|*.[Mm][Oo][Vv]) pic=\"${XDG_STATE_HOME:-$HOME/.local/state}/ricelin-wallpaper-still.png\";; esac; [ -f \"$pic\" ] && python3 \"$HOME/.config/hypr/scripts/wallcolors.py\" \"$pic\" >/dev/null 2>&1; busctl --user call com.mitchellh.ghostty /com/mitchellh/ghostty org.gtk.Actions Activate \"sava{sv}\" reload-config 0 0 >/dev/null 2>&1 || true"]
     }
 
     Connections {
@@ -133,14 +113,14 @@ SettingsSurface {
         anchors.right: parent.right
         spacing: 0
 
-        SettingsHeader {
+        SurfaceHeader {
             s: root.s
             glyph: "相"
             title: "APPEARANCE"
-            showBack: true
+            canBack: true
         }
 
-        Item { width: 1; height: 12 * root.s }
+        Item { width: 1; height: Theme.sp.m * root.s }
 
         SettingsRow {
             id: timeRow
@@ -210,11 +190,7 @@ SettingsSurface {
         }
 
         /**
-         * Manual hue editor, folded shut unless the palette is on Manual. Holds a
-         * rainbow strip with a draggable thumb, then a single line pairing a live
-         * accent swatch and its hex caption with the dark/light choice, and a hex
-         * input that drives both hue and saturation. The strip is mouse-driven and
-         * stays out of the keyboard row registry.
+         * Manual hue editor, open only on the Manual palette; mouse-only, so it stays out of the row registry.
          */
         Item {
             id: manualSection
@@ -228,11 +204,11 @@ SettingsSurface {
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.leftMargin: 12 * root.s
-                anchors.rightMargin: 12 * root.s
-                topPadding: 4 * root.s
-                bottomPadding: 16 * root.s
-                spacing: 14 * root.s
+                anchors.leftMargin: Theme.sp.m * root.s
+                anchors.rightMargin: Theme.sp.m * root.s
+                topPadding: Theme.sp.xs * root.s
+                bottomPadding: Theme.sp.l * root.s
+                spacing: Theme.sp.m * root.s
 
                 Item {
                     width: parent.width
@@ -241,7 +217,7 @@ SettingsSurface {
                     Rectangle {
                         id: hueStrip
                         anchors.fill: parent
-                        radius: 7 * root.s
+                        radius: height / 2
                         gradient: Gradient {
                             orientation: Gradient.Horizontal
                             GradientStop { position: 0.0; color: Qt.hsla(0.0, 0.7, 0.5, 1) }
@@ -263,10 +239,15 @@ SettingsSurface {
                             color: root.accentColor
                             border.width: 2.5 * root.s
                             border.color: Theme.cream
+                            scale: hueArea.pressed && !Motion.calm ? 1.15 : 1
+                            Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
                         }
 
                         MouseArea {
+                            id: hueArea
                             anchors.fill: parent
+                            anchors.topMargin: -Theme.sp.xs * root.s
+                            anchors.bottomMargin: -Theme.sp.xs * root.s
                             cursorShape: Qt.PointingHandCursor
                             function setHue(mx) {
                                 if (Flags.manualSat < 0.05)
@@ -281,43 +262,39 @@ SettingsSurface {
 
                 Item {
                     width: parent.width
-                    height: Math.max(34 * root.s, toneSeg.implicitHeight)
-
-                    Rectangle {
-                        id: accentSwatch
-                        anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 34 * root.s
-                        height: 34 * root.s
-                        radius: 9 * root.s
-                        color: root.accentColor
-                        border.width: 1
-                        border.color: Theme.border
-                    }
+                    height: Math.max(36 * root.s, toneSeg.implicitHeight)
 
                     Column {
-                        anchors.left: accentSwatch.right
-                        anchors.leftMargin: 12 * root.s
+                        anchors.left: parent.left
                         anchors.right: toneSeg.left
-                        anchors.rightMargin: 12 * root.s
+                        anchors.rightMargin: Theme.sp.m * root.s
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 3 * root.s
+                        spacing: Theme.sp.xxs * root.s
 
                         Text {
                             text: "Accent hue"
                             color: Theme.cream
                             font.family: Theme.font
-                            font.pixelSize: 12 * root.s
-                            font.weight: Font.DemiBold
+                            font.pixelSize: Theme.fs.body * root.s
+                            font.weight: Font.Medium
                         }
-                        Text {
-                            text: root.currentHex + " · " + (Flags.manualDark ? "dark" : "light")
-                            color: Theme.faint
-                            font.family: Theme.font
-                            font.pixelSize: 10.5 * root.s
-                            font.features: { "tnum": 1 }
-                            elide: Text.ElideRight
-                            width: parent.width
+                        Row {
+                            spacing: Theme.sp.xs * root.s
+
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 8 * root.s
+                                height: 8 * root.s
+                                radius: height / 2
+                                color: root.accentColor
+                            }
+                            Text {
+                                text: root.currentHex + " · " + (Flags.manualDark ? "dark" : "light")
+                                color: Theme.textFaint
+                                font.family: Theme.font
+                                font.pixelSize: Theme.fs.meta * root.s
+                                font.features: { "tnum": 1 }
+                            }
                         }
                     }
 
@@ -339,30 +316,28 @@ SettingsSurface {
                     Text {
                         id: hexHint
                         anchors.left: parent.left
-                        anchors.leftMargin: 12 * root.s
                         anchors.verticalCenter: parent.verticalCenter
                         text: "#"
-                        color: Theme.faint
+                        color: Theme.textFaint
                         font.family: Theme.font
-                        font.pixelSize: 14 * root.s
+                        font.pixelSize: Theme.fs.body * root.s
                         font.weight: Font.DemiBold
                     }
 
                     TextField {
                         id: hexField
                         anchors.left: hexHint.right
-                        anchors.leftMargin: 6 * root.s
+                        anchors.leftMargin: Theme.sp.xs * root.s
                         anchors.right: parent.right
-                        anchors.rightMargin: 12 * root.s
                         anchors.verticalCenter: parent.verticalCenter
                         background: null
                         padding: 0
                         color: Theme.cream
                         font.family: Theme.font
-                        font.pixelSize: 13 * root.s
+                        font.pixelSize: Theme.fs.body * root.s
                         font.features: { "tnum": 1 }
-                        placeholderText: root.currentHex
-                        placeholderTextColor: Theme.faint
+                        placeholderText: root.currentHex.slice(1)
+                        placeholderTextColor: Theme.textFaint
                         selectByMouse: true
                         selectionColor: Theme.verm
                         maximumLength: 7
@@ -394,7 +369,7 @@ SettingsSurface {
                         anchors.left: hexField.left
                         anchors.right: hexField.right
                         anchors.top: hexField.bottom
-                        anchors.topMargin: 3 * root.s
+                        anchors.topMargin: Theme.sp.xs * root.s
                         height: 1
                         color: Theme.faint
                         opacity: hexField.activeFocus ? 0.7 : 0.18
@@ -449,7 +424,7 @@ SettingsSurface {
             id: motionRow
             surface: root
             name: "Reduce motion"
-            icon: "waves"
+            icon: "pause"
 
             LinkToggle {
                 s: root.s
@@ -470,8 +445,8 @@ SettingsSurface {
                 width: 16 * root.s
                 height: 16 * root.s
                 name: "chevron-right"
-                color: root.focusRowItem === fontRow ? Theme.cream : Theme.iconDim
-                stroke: 1.9
+                color: fontRow.lit ? Theme.cream : Theme.iconDim
+                stroke: 2
             }
         }
     }

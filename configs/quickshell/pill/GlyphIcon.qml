@@ -3,12 +3,7 @@ import QtQuick.Shapes
 import "Singletons"
 
 /**
- * Self-contained vector glyph drawn from baked SVG path data, so the pill never
- * depends on the system icon theme or external asset files. Set `name` to pick a
- * glyph, `color` to tint it; stroked glyphs use `stroke` width, filled glyphs
- * (media transport) paint solid. Paths live in a 24x24 space and scale to the
- * item's size. Each glyph's actual bounding box is centred within the item on
- * both axes, so glyphs with differing path extents share one optical baseline.
+ * Vector glyph from baked 24x24 SVG path data, centred by its real bounding box so differing glyphs share one optical baseline.
  */
 Item {
     id: root
@@ -42,6 +37,7 @@ Item {
         "mouse": { d: "M12 2a6 6 0 0 0-6 6v8a6 6 0 0 0 12 0V8a6 6 0 0 0-6-6z M12 6v3.5", fill: false },
         "keyboard": { d: "M2.5 6h19a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-19a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z M6 10h.01 M10 10h.01 M14 10h.01 M18 10h.01 M7.5 14h9", fill: false },
         "download": { d: "M12 3v12 M7.5 10.5l4.5 4.5 4.5-4.5 M5 21h14", fill: false },
+        "minimize": { d: "M4 6h16a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 4 6z M7.5 14.5h9", fill: false },
         "monitor": { d: "M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-16a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2z M8 21h8 M12 17v4 M7 13c1.5-4 3-4 5-1s3.5 2 5-2", fill: false },
         "speaker": { d: "M4 9v6h4l5 4V5L8 9z M16 9.5a3 3 0 0 1 0 5 M18.5 7.5a6 6 0 0 1 0 9", fill: false },
         "speaker-off": { d: "M4 9v6h4l5 4V5L8 9z M16.2 9.8l4.4 4.4 M20.6 9.8l-4.4 4.4", fill: false },
@@ -66,6 +62,8 @@ Item {
         "chevron-right": { d: "M10 6l6 6-6 6", fill: false },
         "chevron-down": { d: "M6 10l6 6 6-6", fill: false },
         "chevron-up": { d: "M6 14l6-6 6 6", fill: false },
+        "terminal": { d: "M5 7l5 5-5 5 M12 17h7", fill: false },
+        "search": { d: "M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14z M20.5 20.5l-4.5-4.5", fill: false },
         "close": { d: "M6 6l12 12 M18 6l-12 12", fill: false },
         "trash": { d: "M3 6h18 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M10 11v6 M14 11v6", fill: false },
         "return": { d: "M20 6v6a3 3 0 0 1-3 3H5 M9 11l-4 4 4 4", fill: false },

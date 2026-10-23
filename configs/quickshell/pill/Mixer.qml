@@ -1,65 +1,17 @@
 import QtQuick
-import Quickshell.Io
 import Quickshell.Services.Pipewire
 import "Singletons"
 
 /**
- * Mixer surface: header with DND / Keep-Awake chips and a row of four vertical
- * ink-faders wired to real hardware (brightness via ddcutil, vibrance via
- * nvibrant, volume and mic via Pipewire). Fills the lower body of the pill.
+ * Mixer surface: quick toggles in the header and a row of vertical faders for brightness, vibrance, volume and mic.
  */
 PillSurface {
     id: root
 
-    mTop: 13
-    mLeft: 14
-    mRight: 14
-    mBottom: 12
-
-    readonly property var sink: Pipewire.defaultAudioSink
-    readonly property var source: Pipewire.defaultAudioSource
-
-    /**
-     * Output devices the user can make default: real sinks only, never the
-     * per-app playback streams. Sorted by label so the list order stays stable
-     * as nodes appear and vanish.
-     */
-    readonly property var outputSinks: {
-        void Pipewire.nodes.values;
-        var out = [];
-        var all = Pipewire.nodes.values;
-        for (var i = 0; i < all.length; i++) {
-            var n = all[i];
-            if (n && n.isSink && !n.isStream && n.audio && n.name !== "ricelin_eq")
-                out.push(n);
-        }
-        out.sort((a, b) => root.deviceLabel(a).localeCompare(root.deviceLabel(b)));
-        return out;
-    }
-
-    /**
-     * Input devices the user can make default: real sources only. The sink
-     * monitors that Pipewire exposes alongside real mics also match isSink=false,
-     * so they are dropped by name to keep the list to actual capture devices.
-     */
-    readonly property var inputSources: {
-        void Pipewire.nodes.values;
-        var out = [];
-        var all = Pipewire.nodes.values;
-        for (var i = 0; i < all.length; i++) {
-            var n = all[i];
-            if (n && !n.isSink && !n.isStream && n.audio && !/monitor/i.test(n.name || "") && n.name !== "ricelin_mic")
-                out.push(n);
-        }
-        out.sort((a, b) => root.deviceLabel(a).localeCompare(root.deviceLabel(b)));
-        return out;
-    }
-
-    function deviceLabel(node) {
-        if (!node)
-            return "";
-        return node.description || node.nickname || node.name || "";
-    }
+    mTop: Theme.inset.top
+    mLeft: Theme.inset.side
+    mRight: Theme.inset.side
+    mBottom: Theme.inset.bottom
 
     /** Which device dropdown is open: "out", "in", or "" for none. */
     property string openPicker: ""
@@ -81,12 +33,9 @@ PillSurface {
         return out;
     }
     readonly property bool surfaceHovered: hoverTracker.hovered
+    readonly property bool multiMonitor: Devices.ddcMonitors.length > 1
 
-    /**
-     * Tick centre of the focused fader, mapped into this mixer's root so the
-     * bead glides as keyboard/hover focus moves across the row. Layout deps are
-     * voided before mapToItem so the binding re-evaluates on resize (else stale).
-     */
+    /** Tick centre of the focused fader in this surface; size deps are voided so it follows a resize. */
     readonly property point focusTickPoint: {
         void root.width;
         void root.height;
@@ -101,11 +50,7 @@ PillSurface {
     ameForm: "tick"
     amePoint: focusTickPoint
 
-    /**
-     * Pointer-driven fader targeting. MouseArea hover is flaky on this
-     * layer-shell surface, so a non-blocking HoverHandler is the only hover
-     * source. Its pointer x maps to a fader column and drives keyboard focus.
-     */
+    /** MouseArea hover is flaky on this layer, so one HoverHandler maps the pointer x to a fader column. */
     readonly property int hoverIndex: surfaceHovered && width > 0 && faders.length > 0
         && hoverTracker.point.position.y >= faderRow.y
         ? Math.max(0, Math.min(faders.length - 1, Math.floor(hoverTracker.point.position.x / (width / faders.length))))
@@ -116,11 +61,7 @@ PillSurface {
         id: hoverTracker
     }
 
-    /**
-     * Brief keyboard-nav precedence: an arrow keypress latches focus for
-     * Motion.standard so a stray pointer move doesn't yank the target away
-     * mid-navigation. Hover resumes driving focus once it lapses.
-     */
+    /** An arrow key holds focus briefly so a stray pointer move can't yank it mid-navigation. */
     Timer {
         id: keyLatch
         interval: Motion.standard
@@ -132,10 +73,23 @@ PillSurface {
             openPicker = "";
     }
 
-    /**
-     * Nudge the focused fader by `deltaPct` percent. Returns true when a fader
-     * handled the step.
-     */
+    function back() {
+        if (openPicker.length) {
+            openPicker = "";
+            return true;
+        }
+        return false;
+    }
+
+    function handleKey(e) {
+        if (e.key === Qt.Key_Up || e.key === Qt.Key_Down)
+            return stepFocused(e.key === Qt.Key_Up ? 1 : -1);
+        if (e.key !== Qt.Key_Left && e.key !== Qt.Key_Right)
+            return false;
+        moveFocus(e.key === Qt.Key_Left ? -1 : 1);
+        return true;
+    }
+
     function stepFocused(deltaPct) {
         if (focusIndex < 0)
             return false;
@@ -144,10 +98,6 @@ PillSurface {
         return true;
     }
 
-    /**
-     * Move keyboard focus across the fader row, wrapping at the ends. `dir` is +1
-     * (right) or -1 (left); a fresh focus lands on the first or last fader.
-     */
     function moveFocus(dir) {
         focusIndex = focusIndex < 0 ? (dir > 0 ? 0 : faders.length - 1)
                                     : (focusIndex + dir + faders.length) % faders.length;
@@ -178,39 +128,50 @@ PillSurface {
     }
 
     PwObjectTracker {
-        objects: [root.sink, root.source].concat(root.outputSinks).concat(root.inputSources).filter(Boolean)
+        objects: Sound.outputs.concat(Sound.inputs)
     }
 
-    component IconChip: Rectangle {
+    /** Header toggle or device picker; a picker reads as an open field while its list shows. */
+    component HeadChip: Rectangle {
         id: chip
         property string glyph: ""
         property bool on: false
+        property bool picker: false
         property string tipTitle: ""
         property string tipDesc: ""
-        signal toggled()
+        signal clicked()
 
         width: 26 * root.s
-        height: 26 * root.s
-        radius: 8 * root.s
-        color: chip.on ? Theme.frameBg : "transparent"
+        height: width
+        radius: Theme.r.s * root.s
+        color: chipArea.pressed ? Theme.pressBg
+            : chip.on ? (chip.picker ? Qt.alpha(Theme.onGlow, 0.14) : Theme.frameBg)
+            : (chipHover.hovered ? Theme.frameBg : "transparent")
         border.width: 1
-        border.color: chip.on ? Theme.frameBorder : Theme.border
+        border.color: chip.on ? (chip.picker ? Qt.alpha(Theme.onGlow, 0.5) : Theme.frameBorder)
+            : (chipHover.hovered ? Theme.vermDim : Theme.border)
+        scale: chipArea.pressed && !Motion.calm ? 0.97 : 1
+        Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
         GlyphIcon {
             anchors.centerIn: parent
             width: 15 * root.s
             height: 15 * root.s
             name: chip.glyph
-            color: chip.on ? Theme.vermLit : Theme.iconDim
+            color: chip.on ? Theme.vermLit : (chipHover.hovered ? Theme.cream : Theme.iconDim)
             stroke: 1.7
         }
+
         HoverHandler {
             id: chipHover
         }
+
         MouseArea {
+            id: chipArea
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: chip.toggled()
+            onClicked: chip.clicked()
         }
 
         Tooltip {
@@ -218,57 +179,11 @@ PillSurface {
             placement: "below"
             title: chip.tipTitle
             desc: chip.tipDesc
-            show: chipHover.hovered
+            show: chipHover.hovered && !(chip.picker && chip.on)
         }
     }
 
-    /**
-     * Header device picker: an icon-only button that toggles its dropdown. It
-     * reads as an open field (onGlow tint and border) while its list is showing,
-     * the same affordance the display surface uses, so no chevron is needed.
-     */
-    component DevicePickerChip: Rectangle {
-        id: dchip
-        property string glyph: ""
-        property bool open: false
-        property string tip: ""
-        signal toggled()
-
-        width: 26 * root.s
-        height: 26 * root.s
-        radius: 8 * root.s
-        color: dchip.open ? Qt.alpha(Theme.onGlow, 0.14)
-            : (dchipHover.hovered ? Theme.frameBg : "transparent")
-        border.width: 1
-        border.color: dchip.open ? Qt.alpha(Theme.onGlow, 0.5) : Theme.border
-        Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-        GlyphIcon {
-            anchors.centerIn: parent
-            width: 15 * root.s
-            height: 15 * root.s
-            name: dchip.glyph
-            color: dchip.open ? Theme.vermLit : Theme.iconDim
-            stroke: 1.7
-        }
-        HoverHandler {
-            id: dchipHover
-        }
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: dchip.toggled()
-        }
-
-        Tooltip {
-            s: root.s
-            placement: "below"
-            title: dchip.tip
-            show: dchipHover.hovered && !dchip.open
-        }
-    }
-
-    SettingsHeader {
+    SurfaceHeader {
         id: header
         z: 5
         anchors.top: parent.top
@@ -277,52 +192,64 @@ PillSurface {
         height: 24 * root.s
         s: root.s
         glyph: "調"
-        title: "MIXER"
-        showIcon: false
+        title: "Mixer"
 
         Row {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 6 * root.s
-            DevicePickerChip {
+            spacing: Theme.sp.xs * root.s
+
+            HeadChip {
                 glyph: "speaker"
-                open: root.openPicker === "out"
-                tip: "Output device"
-                onToggled: root.openPicker = root.openPicker === "out" ? "" : "out"
+                picker: true
+                on: root.openPicker === "out"
+                tipTitle: "Output device"
+                tipDesc: Sound.label(Sound.sink)
+                onClicked: root.openPicker = root.openPicker === "out" ? "" : "out"
             }
-            DevicePickerChip {
+            HeadChip {
                 glyph: "mic"
-                open: root.openPicker === "in"
-                tip: "Input device"
-                onToggled: root.openPicker = root.openPicker === "in" ? "" : "in"
+                picker: true
+                on: root.openPicker === "in"
+                tipTitle: "Input device"
+                tipDesc: Sound.label(Sound.source)
+                onClicked: root.openPicker = root.openPicker === "in" ? "" : "in"
             }
-            IconChip {
+
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 1
+                height: 16 * root.s
+                color: Theme.hair
+            }
+
+            HeadChip {
                 glyph: "dnd"
                 on: Flags.dnd
                 tipTitle: "Do not disturb"
-                tipDesc: "Silence notifications"
-                onToggled: Flags.dnd = !Flags.dnd
+                tipDesc: "Silences notifications"
+                onClicked: Flags.dnd = !Flags.dnd
             }
-            IconChip {
+            HeadChip {
                 glyph: "awake"
                 on: Flags.keepAwake
                 tipTitle: "Keep awake"
-                tipDesc: "Block sleep & screen-off"
-                onToggled: Flags.keepAwake = !Flags.keepAwake
+                tipDesc: "Blocks sleep and screen-off"
+                onClicked: Flags.keepAwake = !Flags.keepAwake
             }
-            IconChip {
-                glyph: "sun"
+            HeadChip {
+                glyph: "moon"
                 on: Flags.nightLightMode !== "off"
                 tipTitle: "Night light"
-                tipDesc: "Warm the screen"
-                onToggled: NightLight.setMode(Flags.nightLightMode === "off" ? "on" : "off")
+                tipDesc: "Warms the screen"
+                onClicked: NightLight.setMode(Flags.nightLightMode === "off" ? "on" : "off")
             }
-            IconChip {
+            HeadChip {
                 glyph: "gamepad"
                 on: Flags.gameMode
                 tipTitle: "Game mode"
-                tipDesc: "Strip effects, quiet the desktop"
-                onToggled: Flags.gameMode = !Flags.gameMode
+                tipDesc: "Strips effects and quiets the desktop"
+                onClicked: Flags.gameMode = !Flags.gameMode
             }
         }
     }
@@ -330,7 +257,7 @@ PillSurface {
     Rectangle {
         id: divider
         anchors.top: header.bottom
-        anchors.topMargin: 9 * root.s
+        anchors.topMargin: Theme.sp.s * root.s
         anchors.left: parent.left
         anchors.right: parent.right
         height: 1
@@ -341,10 +268,10 @@ PillSurface {
         s: root.s
         open: root.openPicker === "out"
         anchors.top: divider.bottom
-        anchors.topMargin: 6 * root.s
+        anchors.topMargin: Theme.sp.xs * root.s
         anchors.right: parent.right
-        model: root.outputSinks
-        current: root.sink
+        model: Sound.outputs
+        current: Sound.sink
         onPick: (node) => {
             Pipewire.preferredDefaultAudioSink = node;
             root.openPicker = "";
@@ -355,10 +282,10 @@ PillSurface {
         s: root.s
         open: root.openPicker === "in"
         anchors.top: divider.bottom
-        anchors.topMargin: 6 * root.s
+        anchors.topMargin: Theme.sp.xs * root.s
         anchors.right: parent.right
-        model: root.inputSources
-        current: root.source
+        model: Sound.inputs
+        current: Sound.source
         onPick: (node) => {
             Pipewire.preferredDefaultAudioSource = node;
             root.openPicker = "";
@@ -368,7 +295,7 @@ PillSurface {
     Row {
         id: faderRow
         anchors.top: divider.bottom
-        anchors.topMargin: 10 * root.s
+        anchors.topMargin: Theme.sp.s * root.s
         anchors.left: parent.left
         anchors.right: parent.right
         height: 142 * root.s
@@ -386,14 +313,13 @@ PillSurface {
                 required property var modelData
                 required property int index
 
-                property int pct: 75
+                property int pct: Devices.ddcPct[modelData.bus] !== undefined ? Devices.ddcPct[modelData.bus] : 75
                 property real pendingPct: -1
 
                 width: faderRow.colW
                 s: root.s
                 icon: "sun"
-                subLabel: "Brightness"
-                subPersistent: false
+                subLabel: root.multiMonitor ? modelData.label : "Brightness"
                 focused: root.focusIndex === index
                 value: pct / 100
                 valueLabel: pct + "%"
@@ -411,19 +337,6 @@ PillSurface {
                         brFader.pendingPct = -1;
                     }
                 }
-
-                Process {
-                    id: brRead
-                    command: ["timeout", "3", "ddcutil", "getvcp", "10", "--bus", brFader.modelData.bus, "--brief"]
-                    running: true
-                    stdout: StdioCollector {
-                        onStreamFinished: {
-                            var v = Devices.parseBrightness(this.text);
-                            if (v >= 0)
-                                brFader.pct = v;
-                        }
-                    }
-                }
             }
         }
 
@@ -437,8 +350,7 @@ PillSurface {
                 width: faderRow.colW
                 s: root.s
                 icon: "sun"
-                subLabel: "Brightness"
-                subPersistent: false
+                subLabel: brRep.count > 0 ? "Built-in" : "Brightness"
                 focused: root.focusIndex === brRep.count
                 value: Devices.backlightPct / 100
                 valueLabel: Devices.backlightPct + "%"
@@ -453,7 +365,6 @@ PillSurface {
             s: root.s
             icon: "monitor"
             subLabel: "Vibrance"
-            subPersistent: false
             focused: root.focusIndex === root.faderCount - 3
             value: Devices.vibrance / 100
             valueLabel: Devices.vibrance + "%"
@@ -462,29 +373,28 @@ PillSurface {
         }
         VFader {
             id: volFader
+            readonly property var sink: Sound.sink && Sound.sink.audio ? Sound.sink : null
             width: faderRow.colW
             s: root.s
             icon: "speaker"
             subLabel: "Volume"
-            subPersistent: false
             focused: root.focusIndex === root.faderCount - 2
-            value: root.sink && root.sink.audio ? root.sink.audio.volume / Sound.limit : 0
-            valueLabel: Math.round((root.sink && root.sink.audio ? root.sink.audio.volume : 0) * 100) + "%"
-            onMoved: (v) => { if (root.sink && root.sink.audio) root.sink.audio.volume = v * Sound.limit; }
+            value: volFader.sink ? volFader.sink.audio.volume / Sound.limit : 0
+            valueLabel: Math.round((volFader.sink ? volFader.sink.audio.volume : 0) * 100) + "%"
+            onMoved: (v) => { if (volFader.sink) volFader.sink.audio.volume = v * Sound.limit; }
         }
         VFader {
             id: micFader
+            readonly property var source: Sound.source && Sound.source.audio ? Sound.source : null
+            readonly property bool muted: micFader.source ? micFader.source.audio.muted : false
             width: faderRow.colW
             s: root.s
-            icon: (root.source && root.source.audio && root.source.audio.muted) ? "mic-off" : "mic"
+            icon: micFader.muted ? "mic-off" : "mic"
             subLabel: "Microphone"
-            subPersistent: false
             focused: root.focusIndex === root.faderCount - 1
-            value: root.source && root.source.audio ? root.source.audio.volume : 0
-            valueLabel: (root.source && root.source.audio && root.source.audio.muted)
-                ? "off"
-                : (Math.round((root.source && root.source.audio ? root.source.audio.volume : 0) * 100) + "%")
-            onMoved: (v) => { if (root.source && root.source.audio) root.source.audio.volume = v; }
+            value: micFader.source ? micFader.source.audio.volume : 0
+            valueLabel: micFader.muted ? "Muted" : Math.round((micFader.source ? micFader.source.audio.volume : 0) * 100) + "%"
+            onMoved: (v) => { if (micFader.source) micFader.source.audio.volume = v; }
 
             MouseArea {
                 id: micMute
@@ -493,7 +403,7 @@ PillSurface {
                 width: 24 * root.s
                 height: 22 * root.s
                 cursorShape: Qt.PointingHandCursor
-                onClicked: { if (root.source && root.source.audio) root.source.audio.muted = !root.source.audio.muted; }
+                onClicked: { if (micFader.source) micFader.source.audio.muted = !micFader.muted; }
             }
         }
     }

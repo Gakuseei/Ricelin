@@ -8,30 +8,21 @@ import "lib/fuzzy.js" as Fuzzy
 import "lib/calc.js" as Calc
 
 /**
- * Launcher surface: search field over a ranked application list, drawn as one
- * of the pill's surfaces. Desktop entries are ranked by fuzzy match and prior
- * launch frequency (usage file shared with the standalone launcher), the
- * chosen entry executes directly.
+ * Launcher: fuzzy app search ranked by launch frequency (usage file shared with the standalone launcher).
  */
 PillSurface {
     id: root
 
-    mTop: 15
-    mLeft: 11
-    mRight: 11
-    mBottom: 14
+    mTop: Theme.inset.top
+    mLeft: Theme.inset.side
+    mRight: Theme.inset.side
+    mBottom: Theme.inset.bottom
 
     property string query: ""
     property int selectedIndex: 0
     property var usage: ({})
 
-    /**
-     * Calc mode: when the whole query parses as a real calculation (an
-     * expression with at least one operation, so lone numbers and app names like
-     * i3 or python3 fall through to app search), a result row appears above the
-     * list and Enter copies the value. The parser in lib/calc.js never evals, so
-     * a query cannot run code.
-     */
+    /** A query that is a real calculation (not a lone number or "python3") shows a result row; lib/calc.js never evals. */
     readonly property var calc: Calc.evaluate(query)
     readonly property bool calcActive: calc.ok
     property bool calcCopied: false
@@ -50,11 +41,7 @@ PillSurface {
     readonly property string appimageScript: Quickshell.env("HOME") + "/.config/hypr/scripts/app-install.sh"
     readonly property string guardScript: Quickshell.env("HOME") + "/.config/hypr/scripts/launch-guard.sh"
 
-    /**
-     * entry.execute() is fire and forget, so an app that dies on startup fails
-     * silently. The guard watches the first seconds and toasts exit code plus
-     * stderr with a Copy action when it does.
-     */
+    /** execute() fails silently, so the guard script watches startup and toasts a crash with its stderr. */
     function launch(entry) {
         if (!entry.command || entry.command.length === 0) {
             entry.execute();
@@ -69,12 +56,7 @@ PillSurface {
 
     Process { id: appimageProc }
 
-    /**
-     * Window-coordinate position of the last hover event that was allowed to
-     * move the selection. Rows sliding under a stationary cursor during
-     * keyboard scrolling produce hover events at an unchanged window position,
-     * which must not steal the keyboard selection.
-     */
+    /** Last pointer position that moved the selection, so rows sliding under a still cursor never steal it. */
     property point lastPointer: Qt.point(-1, -1)
 
     readonly property point caretPoint: {
@@ -102,6 +84,16 @@ PillSurface {
     }
     readonly property int totalCount: allEntries.length
     readonly property var results: Fuzzy.rank(allEntries, query, usage)
+
+    readonly property real rowH: 38 * s
+    readonly property real rowGap: 5 * s
+
+    /** Whole rows that fit between the divider (or calc row) and the hint, so no row is ever cut. */
+    readonly property int rowsFit: {
+        var top = (calcActive ? calcRow.y + calcRow.height : divider.y + divider.height) + 6 * s;
+        var bottom = hint.visible ? hint.y - Theme.sp.s * s : height;
+        return Math.max(0, Math.floor((bottom - top + rowGap) / (rowH + rowGap)));
+    }
 
     function focusField() { search.input.forceActiveFocus(); }
 
@@ -215,13 +207,15 @@ PillSurface {
 
         Rectangle {
             anchors.fill: parent
-            radius: 9 * root.s
-            color: Theme.frameBg
+            radius: Theme.r.m * root.s
+            color: calcArea.pressed ? Theme.hair : Theme.frameBg
             border.width: 1
             border.color: Theme.frameBorder
+            Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
         }
 
         MouseArea {
+            id: calcArea
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
             onClicked: root.copyResult()
@@ -229,8 +223,8 @@ PillSurface {
 
         Item {
             anchors.fill: parent
-            anchors.leftMargin: 12 * root.s
-            anchors.rightMargin: 12 * root.s
+            anchors.leftMargin: Theme.sp.m * root.s
+            anchors.rightMargin: Theme.sp.m * root.s
 
             Column {
                 anchors.left: parent.left
@@ -244,16 +238,16 @@ PillSurface {
                     text: "= " + root.calc.display
                     color: Theme.bright
                     font.family: Theme.font
-                    font.pixelSize: 15 * root.s
+                    font.pixelSize: Theme.fs.title * root.s
                     font.weight: Font.DemiBold
                     elide: Text.ElideRight
                 }
                 Text {
                     width: parent.width
                     text: root.query
-                    color: Theme.faint
+                    color: Theme.textFaint
                     font.family: Theme.font
-                    font.pixelSize: 10.5 * root.s
+                    font.pixelSize: Theme.fs.meta * root.s
                     elide: Text.ElideRight
                 }
             }
@@ -262,21 +256,21 @@ PillSurface {
                 id: copyHint
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.calcCopied ? "copied" : "↵ copy"
-                color: root.calcCopied ? Theme.dim : Theme.vermLit
+                text: root.calcCopied ? "Copied" : "↵ Copy"
+                color: root.calcCopied ? Theme.textFaint : Theme.vermLit
                 font.family: Theme.font
-                font.pixelSize: 11 * root.s
+                font.pixelSize: Theme.fs.meta * root.s
             }
         }
     }
 
-    Text {
-        anchors.centerIn: list
+    EmptyState {
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: list.y + Theme.sp.l * root.s
         visible: root.results.length === 0 && !root.calcActive
+        s: root.s
+        glyph: "app-window"
         text: root.query.length ? "No matches" : "No apps found"
-        color: Theme.faint
-        font.family: Theme.font
-        font.pixelSize: 10.5 * root.s
     }
 
     ListView {
@@ -285,18 +279,18 @@ PillSurface {
         anchors.topMargin: 6 * root.s
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: hint.visible ? hint.top : parent.bottom
-        anchors.bottomMargin: hint.visible ? 4 * root.s : 0
-        spacing: 5 * root.s
+        height: root.rowsFit * root.rowH + Math.max(0, root.rowsFit - 1) * root.rowGap
+        spacing: root.rowGap
         clip: true
         boundsBehavior: Flickable.StopAtBounds
+        snapMode: ListView.SnapToItem
         model: root.results.length
 
         delegate: Item {
             id: appRow
             required property int index
             width: list.width
-            height: 38 * root.s
+            height: root.rowH
 
             readonly property var entry: root.results[index]
             readonly property bool selected: index === root.selectedIndex
@@ -317,9 +311,9 @@ PillSurface {
 
             Rectangle {
                 anchors.fill: parent
-                radius: 9 * root.s
+                radius: Theme.r.m * root.s
                 visible: appRow.selected || rowArea.containsMouse
-                color: appRow.selected ? Theme.frameBg : Qt.rgba(0.94, 0.88, 0.84, 0.03)
+                color: rowArea.pressed ? Theme.hair : (appRow.selected ? Theme.frameBg : Qt.alpha(Theme.cream, 0.03))
                 border.width: appRow.selected ? 1 : 0
                 border.color: Theme.frameBorder
             }
@@ -352,16 +346,16 @@ PillSurface {
 
             Item {
                 anchors.fill: parent
-                anchors.leftMargin: 11 * root.s
-                anchors.rightMargin: 11 * root.s
+                anchors.leftMargin: Theme.sp.m * root.s
+                anchors.rightMargin: Theme.sp.m * root.s
 
                 Rectangle {
                     id: iconBg
                     anchors.verticalCenter: parent.verticalCenter
                     width: 22 * root.s
-                    height: 22 * root.s
-                    radius: 5 * root.s
-                    color: Qt.rgba(1, 1, 1, 0.05)
+                    height: width
+                    radius: Theme.r.xs * root.s
+                    color: Theme.frameBg
                     visible: !(icon.status === Image.Ready && icon.source != "")
                 }
                 Image {
@@ -386,7 +380,7 @@ PillSurface {
                 TextMetrics {
                     id: retMetrics
                     font.family: Theme.font
-                    font.pixelSize: 12 * root.s
+                    font.pixelSize: Theme.fs.body * root.s
                     text: "↵"
                 }
                 Text {
@@ -396,7 +390,7 @@ PillSurface {
                     text: retMetrics.text
                     color: Theme.vermLit
                     font.family: Theme.font
-                    font.pixelSize: 12 * root.s
+                    font.pixelSize: Theme.fs.body * root.s
                     visible: appRow.selected && !appRow.editing
                     width: visible ? retMetrics.advanceWidth + 6 * root.s : 0
                     horizontalAlignment: Text.AlignRight
@@ -411,7 +405,7 @@ PillSurface {
                     visible: appRow.editing
                     stroke: 2
                     name: "trash"
-                    color: appRow.armed ? "#e0533f" : Theme.dim
+                    color: appRow.armed ? Theme.danger : Theme.iconDim
 
                     MouseArea {
                         anchors.fill: parent
@@ -433,12 +427,6 @@ PillSurface {
                     }
                 }
 
-                /**
-                 * Name over description, each clipped on its own line, so a long
-                 * comment can no longer bleed into the name the way one shared row
-                 * let it. The block centres on the icon whether it shows one line or
-                 * two, and an app with no description just reads as a centred name.
-                 */
                 Column {
                     anchors.left: iconBg.right
                     anchors.leftMargin: 10 * root.s
@@ -458,7 +446,7 @@ PillSurface {
                             text: appRow.entry ? appRow.entry.name : ""
                             color: Theme.cream
                             font.family: Theme.font
-                            font.pixelSize: 13 * root.s
+                            font.pixelSize: Theme.fs.body * root.s
                             font.weight: appRow.selected ? Font.DemiBold : Font.Normal
                             elide: Text.ElideRight
                         }
@@ -469,7 +457,7 @@ PillSurface {
                             text: appRow.entry ? appRow.entry.name : ""
                             color: Theme.bright
                             font.family: Theme.font
-                            font.pixelSize: 13 * root.s
+                            font.pixelSize: Theme.fs.body * root.s
                             selectByMouse: true
                             clip: true
                             onVisibleChanged: if (visible) {
@@ -492,9 +480,9 @@ PillSurface {
                         width: parent.width
                         visible: appRow.secondary.length > 0
                         text: appRow.secondary
-                        color: appRow.selected ? Theme.dim : Theme.faint
+                        color: appRow.selected ? Theme.subtle : Theme.textFaint
                         font.family: Theme.font
-                        font.pixelSize: 10.5 * root.s
+                        font.pixelSize: Theme.fs.meta * root.s
                         elide: Text.ElideRight
                     }
                 }
@@ -508,15 +496,14 @@ PillSurface {
         flick: list
     }
 
-    /** Faint nudge so the drag-to-install gesture is discoverable at all. */
+    /** Quiet nudge so the drag-to-install gesture is discoverable at all. */
     Row {
         id: hint
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 2 * root.s
+        anchors.bottomMargin: Theme.sp.xxs * root.s
         spacing: 5 * root.s
         visible: root.query.length === 0 && root.editIndex === -1
-        opacity: 0.6
 
         GlyphIcon {
             anchors.verticalCenter: parent.verticalCenter
@@ -524,14 +511,14 @@ PillSurface {
             height: 12 * root.s
             stroke: 1.7
             name: "download"
-            color: Theme.faint
+            color: Theme.textFaint
         }
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: "Drag an AppImage onto the pill"
-            color: Theme.faint
+            color: Theme.textFaint
             font.family: Theme.font
-            font.pixelSize: 10.5 * root.s
+            font.pixelSize: Theme.fs.meta * root.s
         }
     }
 }

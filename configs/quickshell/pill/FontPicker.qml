@@ -4,13 +4,7 @@ import QtQuick
 import "Singletons"
 
 /**
- * 字 FONT sub-surface: a searchable list of every installed family, each row
- * rendering its own name as a live preview so the user reads the shape before
- * picking. A click writes the family to Flags.uiFont, which Theme.font reads back
- * through a validated ternary so the whole shell re-renders at once; the leading
- * reset row writes "" to fall back to the bundled Inter. The current pick carries
- * the vermilion tint. Reached from Appearance and morphs back to it on the back
- * chevron or an empty click.
+ * 字 FONT: every installed family, each row previewing itself; a pick writes Flags.uiFont and the reset row clears it back to Inter.
  */
 SettingsSurface {
     id: root
@@ -22,27 +16,19 @@ SettingsSurface {
     property int focusIndex: 0
 
     /**
-     * Window position of the last hover event allowed to move the highlight.
-     * Rows sliding under a stationary cursor during keyboard scrolling repeat
-     * the same window point and must not steal the selection.
+     * Last pointer point that moved the highlight, so rows sliding under a still cursor never steal it.
      */
     property point lastPointer: Qt.point(-1, -1)
 
     readonly property string resetLabel: "System default (Inter)"
 
     /**
-     * The only Noto families kept in the list. Noto ships hundreds of per-script
-     * variants (Noto Sans Arabic, Noto Serif Devanagari and the like) that flood
-     * the picker and never serve as a UI font, so every other Noto family is
-     * dropped, trimming the list from ~690 entries to ~120.
+     * The only Noto families kept; the hundreds of per-script variants never serve as a UI font.
      */
     readonly property var notoKeep: ["Noto Sans", "Noto Serif", "Noto Sans Mono"]
 
     /**
-     * Deduped, sorted family list with the reset entry prepended, then narrowed by
-     * a case-insensitive substring on the live query. The reset row carries an
-     * empty family so a click clears Flags.uiFont; the search never hides it, so the
-     * fallback stays one tap away.
+     * Deduped, sorted, query-filtered families; the reset row always stays first.
      */
     readonly property var families: {
         var seen = {};
@@ -73,7 +59,6 @@ SettingsSurface {
         Flags.uiFont = family;
     }
 
-    /** Slide the keyboard highlight by dir (+1 down, -1 up), clamped and kept in view. */
     function move(dir) {
         if (root.families.length === 0)
             return;
@@ -104,14 +89,14 @@ SettingsSurface {
         anchors.right: parent.right
         spacing: 0
 
-        SettingsHeader {
+        SurfaceHeader {
             s: root.s
             glyph: "字"
             title: "FONT"
-            showBack: true
+            canBack: true
         }
 
-        Item { width: 1; height: 10 * root.s }
+        Item { width: 1; height: Theme.sp.s * root.s }
 
         SearchField {
             id: searchField
@@ -119,13 +104,13 @@ SettingsSurface {
             height: 28 * root.s
             s: root.s
             kanji: "探"
-            placeholder: "search fonts"
+            placeholder: "Search fonts"
             kanjiSize: 15
-            fontSize: 13
-            gap: 9
-            lead: 4
-            trail: 4
-            lineGap: 3
+            fontSize: Theme.fs.body
+            gap: Theme.sp.s
+            lead: Theme.sp.m
+            trail: Theme.sp.m
+            lineGap: Theme.sp.xs
             restOpacity: 0.18
             showCursor: true
             catchEscape: false
@@ -137,7 +122,7 @@ SettingsSurface {
             onAccepted: root.activate()
         }
 
-        Item { width: 1; height: 8 * root.s }
+        Item { width: 1; height: Theme.sp.s * root.s }
 
         Item {
             id: listFrame
@@ -182,39 +167,40 @@ SettingsSurface {
 
                     Rectangle {
                         anchors.fill: parent
-                        anchors.topMargin: 2 * root.s
-                        anchors.bottomMargin: 2 * root.s
-                        radius: 9 * root.s
-                        color: frow.selected
-                            ? Qt.alpha(Theme.vermLit, 0.14)
+                        anchors.topMargin: Theme.sp.xxs * root.s
+                        anchors.bottomMargin: Theme.sp.xxs * root.s
+                        radius: Theme.r.m * root.s
+                        color: rowArea.pressed ? Theme.pressBg
+                            : frow.selected ? Qt.alpha(Theme.vermLit, 0.14)
                             : (frow.focused ? Theme.frameBg : "transparent")
-                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                        Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
                     }
 
                     Text {
                         anchors.left: parent.left
-                        anchors.leftMargin: 12 * root.s
+                        anchors.leftMargin: Theme.sp.m * root.s
                         anchors.right: tick.left
-                        anchors.rightMargin: 10 * root.s
+                        anchors.rightMargin: Theme.sp.m * root.s
                         anchors.verticalCenter: parent.verticalCenter
                         text: frow.modelData.label
                         color: frow.selected ? Theme.vermLit : Theme.cream
                         font.family: frow.isReset ? Theme.font : frow.modelData.family
-                        font.pixelSize: 14 * root.s
+                        font.pixelSize: Theme.fs.title * root.s
                         font.weight: frow.selected ? Font.DemiBold : Font.Medium
                         elide: Text.ElideRight
                     }
 
-                    Rectangle {
+                    GlyphIcon {
                         id: tick
                         anchors.right: parent.right
-                        anchors.rightMargin: 14 * root.s
+                        anchors.rightMargin: Theme.sp.m * root.s
                         anchors.verticalCenter: parent.verticalCenter
                         visible: frow.selected
-                        width: 6 * root.s
-                        height: 6 * root.s
-                        radius: width / 2
+                        width: 14 * root.s
+                        height: 14 * root.s
+                        name: "check"
                         color: Theme.vermLit
+                        stroke: 2.2
                     }
                 }
             }

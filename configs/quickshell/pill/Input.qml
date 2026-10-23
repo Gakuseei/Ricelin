@@ -7,15 +7,7 @@ import "lib/setInput.js" as SetInput
 import "Singletons"
 
 /**
- * 操 INPUT sub-surface: edits the pointer, keyboard and cursor settings that live
- * in the Hyprland Lua modules, writing each change straight back to its source so
- * the choice survives a restart. Pointer and keyboard fields rewrite input.lua
- * and reload Hyprland; the layout row cycles a curated list of common layouts.
- * Cursor size and theme apply live through `hyprctl setcursor` with no reload,
- * and persist by rewriting the XCURSOR/HYPRCURSOR env lines and the autostart
- * setcursor call. The theme list is scanned from the installed icon themes that
- * carry a `cursors/` folder. Reached from the settings index; morphs back on the
- * back chevron.
+ * 操 INPUT: pointer and keyboard fields in input.lua, cursor size and theme applied live through hyprctl setcursor and persisted to env and autostart.
  */
 SettingsSurface {
     id: root
@@ -23,10 +15,7 @@ SettingsSurface {
     implicitHeight: content.implicitHeight
 
     /**
-     * Row registry; scrub rows expose a bump that steps their ScrubValue one
-     * increment. The layout row's vals gain the current layout at the end when it
-     * is not in the curated list, so an exotic layout shows as-is and a click
-     * wraps around to the start of the list.
+     * An exotic current layout joins the layout row's vals at the end, so a click wraps back to the curated list.
      */
     rows: [
         { item: sensRow, kind: "scrub", bump: function (d) { sensScrub.bump(d); } },
@@ -36,10 +25,10 @@ SettingsSurface {
         { item: delayRow, kind: "scrub", bump: function (d) { delayScrub.bump(d); } },
         { item: numlockRow, kind: "toggle", get: function () { return root.numlockOn; }, set: function (v) { root.numlockOn = v; root.writeInputField("numlock_by_default", v ? "true" : "false"); } },
         { item: sizeRow, kind: "scrub", bump: function (d) { sizeScrub.bump(d); } },
-        { item: themeRow, kind: "toggle", get: function () { return root.themeOpen; }, set: function (v) { root.themeOpen = v; } }
+        { item: themePick.row, kind: "scrub", bump: function (d) { root.bumpTheme(d); }, activate: function () { root.themeOpen = !root.themeOpen; } }
     ]
 
-    property string note: ""
+    readonly property string note: HyprReload.failed ? "Hyprland reload failed. The change is saved but not applied." : ""
 
     readonly property string inputPath: Quickshell.env("HOME") + "/.config/hypr/modules/input.lua"
     readonly property string envPath: Quickshell.env("HOME") + "/.config/hypr/modules/env.lua"
@@ -60,7 +49,9 @@ SettingsSurface {
     property string envText: ""
     property string autostartText: ""
 
-    /** Per-field values captured on each open; the ScrubValue undo glyphs revert to these. */
+    /**
+     * Per-field values captured on each open; the ScrubValue undo glyphs revert to these.
+     */
     property var base: ({})
 
     readonly property var accelOptions: [
@@ -69,6 +60,22 @@ SettingsSurface {
     ]
 
     readonly property var kbLayouts: ["de", "us", "gb", "fr", "es", "it", "tr"]
+
+    function cycleLayout() {
+        var i = root.kbLayoutVals.indexOf(root.kbLayout);
+        root.setKbLayout(root.kbLayoutVals[(i + 1) % root.kbLayoutVals.length]);
+    }
+
+    function bumpTheme(d) {
+        var n = root.cursorThemes.length;
+        if (n === 0)
+            return;
+        var i = Math.max(0, Math.min(n - 1, root.cursorThemes.indexOf(root.cursorTheme) + d));
+        if (root.cursorThemes[i] === root.cursorTheme)
+            return;
+        root.cursorTheme = root.cursorThemes[i];
+        root.applyCursor(root.cursorTheme, root.cursorSize);
+    }
     readonly property var kbLayoutVals: kbLayouts.indexOf(kbLayout) >= 0 ? kbLayouts : kbLayouts.concat([kbLayout])
 
     onActiveChanged: {
@@ -86,9 +93,7 @@ SettingsSurface {
     }
 
     /**
-     * Seeds every control from the live source files. Numbers fall back to the
-     * defaults when a field is missing so a partially hand-edited config never
-     * leaves a control blank.
+     * Seeds every control from the live files, falling back to defaults for missing fields.
      */
     function seed() {
         root.inputText = inputFile.text();
@@ -122,17 +127,12 @@ SettingsSurface {
         };
     }
 
-    /**
-     * Rewrites one input.lua field to `literal` (already formatted by the caller)
-     * and reloads Hyprland so the change takes effect at once.
-     */
     function writeInputField(name, literal) {
         var res = SetInput.setField(root.inputText, name, literal);
         if (!res.ok)
             return;
         root.inputText = res.text;
         inputWriter.setText(res.text);
-        reloadTimer.restart();
     }
 
     function setKbLayout(v) {
@@ -141,14 +141,12 @@ SettingsSurface {
     }
 
     /**
-     * Applies a cursor theme/size pair live via `hyprctl setcursor`, then persists
-     * it by rewriting the XCURSOR/HYPRCURSOR env lines and the autostart setcursor
-     * call. No Hyprland reload is needed for the cursor.
+     * Applies the cursor live via hyprctl setcursor, then persists it to env and autostart; no reload needed.
      */
     function applyCursor(theme, size) {
         setcursorProc.theme = theme;
         setcursorProc.size = size;
-        setcursorProc.running = true;
+        setcursorProc.rerun();
 
         var env = root.envText;
         var e1 = SetInput.setEnv(env, "XCURSOR_THEME", theme);
@@ -178,6 +176,7 @@ SettingsSurface {
         path: root.inputPath
         atomicWrites: true
         printErrors: false
+        onSaved: HyprReload.request()
     }
 
     FileView {
@@ -208,27 +207,7 @@ SettingsSurface {
         printErrors: false
     }
 
-    /**
-     * Reload is debounced so a scrub drag writes the file per step but reloads
-     * Hyprland once, and captured so a failed reload surfaces as the inline note
-     * instead of vanishing with a detached process.
-     */
-    Timer {
-        id: reloadTimer
-        interval: 250
-        repeat: false
-        onTriggered: reloadProc.running = true
-    }
-
-    Process {
-        id: reloadProc
-        command: ["sh", "-c", "sleep 0.3; hyprctl reload"]
-        onExited: function (exitCode) {
-            root.note = exitCode === 0 ? "" : "Hyprland reload failed. The change is saved but not applied.";
-        }
-    }
-
-    Process {
+    LatestProcess {
         id: setcursorProc
         property string theme: ""
         property int size: 24
@@ -246,9 +225,9 @@ SettingsSurface {
         }
     }
 
-    component GroupLabel: SettingsLabel { s: root.s }
+    component GroupLabel: SettingsLabel { s: root.s; leftPadding: Theme.sp.m * root.s }
 
-    component FieldRow: SettingsField { surface: root }
+    component FieldRow: SettingsRow { surface: root }
 
     Column {
         id: content
@@ -260,18 +239,16 @@ SettingsSurface {
         height: root.height + root.mBottom * root.s
         clip: true
 
-        SettingsHeader {
+        SurfaceHeader {
             s: root.s
             glyph: "操"
             title: "INPUT"
-            showBack: true
+            canBack: true
         }
 
         Column {
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: 12 * root.s
-            anchors.rightMargin: 12 * root.s
             spacing: 0
 
             GroupLabel { text: "Pointer" }
@@ -318,23 +295,11 @@ SettingsSurface {
                 caption: "Click to cycle common layouts"
                 icon: "language"
 
-                Rectangle {
-                    width: layoutLbl.implicitWidth + 20 * root.s
-                    height: 22 * root.s
-                    radius: 9 * root.s
-                    color: "transparent"
-                    border.width: 1
-                    border.color: Theme.hairSoft
-
-                    Text {
-                        id: layoutLbl
-                        anchors.centerIn: parent
-                        text: root.kbLayout
-                        color: Theme.cream
-                        font.family: Theme.font
-                        font.pixelSize: 11 * root.s
-                        font.weight: Font.DemiBold
-                    }
+                Button {
+                    s: root.s
+                    text: root.kbLayout
+                    lit: root.focusRowItem === layoutRow
+                    onClicked: root.cycleLayout()
                 }
             }
 
@@ -395,7 +360,7 @@ SettingsSurface {
                 id: sizeRow
                 label: "Size"
                 caption: "Cursor size in pixels"
-                icon: "cursor"
+                icon: "scaling"
                 ScrubValue {
                     id: sizeScrub
                     s: root.s
@@ -409,57 +374,37 @@ SettingsSurface {
                 }
             }
 
-            Item { width: 1; height: 8 * root.s }
-
-            /**
-             * DisplayPicker draws its own chip and dropdown, so the wrapper only
-             * adds what the registry needs: hover for the soul seam and a
-             * fall-through click that toggles the picker like the chip does.
-             */
-            Item {
-                id: themeRow
-                width: parent ? parent.width : 0
-                height: themePick.implicitHeight
-
-                HoverHandler {
-                    onHoveredChanged: root.reportRowHover(themeRow, hovered)
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: root.activateRow(themeRow)
-                }
-
-                DisplayPicker {
-                    id: themePick
-                    s: root.s
-                    label: "Theme"
-                    options: root.cursorThemes.map(function (t) { return { label: t, value: t }; })
-                    value: root.cursorTheme
-                    open: root.themeOpen
-                    onRequestToggle: root.themeOpen = !root.themeOpen
-                    onPicked: (v) => {
-                        root.cursorTheme = v;
-                        root.themeOpen = false;
-                        root.applyCursor(v, root.cursorSize);
-                    }
+            DisplayPicker {
+                id: themePick
+                surface: root
+                icon: "cursor"
+                name: "Theme"
+                last: true
+                chipWidth: 176
+                options: root.cursorThemes.map(function (t) { return { label: t, value: t }; })
+                value: root.cursorTheme
+                open: root.themeOpen
+                onRequestToggle: root.themeOpen = !root.themeOpen
+                onPicked: (v) => {
+                    root.cursorTheme = v;
+                    root.themeOpen = false;
+                    root.applyCursor(v, root.cursorSize);
                 }
             }
 
             Text {
                 width: parent.width
-                topPadding: 8 * root.s
+                topPadding: Theme.sp.s * root.s
+                leftPadding: Theme.sp.m * root.s
+                rightPadding: Theme.sp.m * root.s
                 visible: root.note.length > 0
                 text: root.note
-                color: Theme.subtle
+                color: Theme.danger
                 font.family: Theme.font
-                font.pixelSize: 10 * root.s
-                font.weight: Font.Medium
+                font.pixelSize: Theme.fs.meta * root.s
                 wrapMode: Text.WordWrap
                 lineHeight: 1.25
             }
-
-            Item { width: 1; height: 10 * root.s }
         }
     }
 }

@@ -1,38 +1,39 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Quickshell
 import "Singletons"
 
 /**
- * 報 INBOX surface: the notification center. Grouped per app with critical
- * entries pinned above the fold, an inline clear-all, and a silence empty
- * state; opening marks all notifications seen after a short beat so unread
- * embers register first. Exposes `desiredW` for the pill's morph and docks Ame
- * as a seam at the focused row.
+ * 報 Inbox: notifications grouped per app with criticals pinned on top; opening marks them seen after a beat.
  */
 PillSurface {
     id: root
 
-    mTop: 13
-    mLeft: 16
-    mRight: 16
-    mBottom: 13
+    mTop: Theme.inset.top
+    mLeft: Theme.inset.side
+    mRight: Theme.inset.side
+    mBottom: Theme.inset.bottom
 
     readonly property real desiredW: 330 * s
+    readonly property int collapseMs: 220
+    readonly property int fadeMs: 120
 
     /**
-     * Row-soul focus registry. Each hoverable row reports itself here; the bead
-     * docks as a glowing seam at the left edge of the focused row and hides
-     * when nothing is focused.
+     * Inbox rows are keyed by app, so a new notification updates its group in place instead of rebuilding the list.
+     */
+    readonly property var groupByApp: {
+        var m = {};
+        for (var i = 0; i < Notifs.groups.length; i++)
+            m[Notifs.groups[i].app] = Notifs.groups[i];
+        return m;
+    }
+    readonly property var noGroup: ({ app: "", count: 0, newest: {}, preview: { body: "", summary: "" }, criticals: [], entries: [] })
+
+    /**
+     * The seam stays parked on the last hovered row and glides to the next one; it clears when the surface closes.
      */
     property Item focusRowItem: null
-
-    /**
-     * Sticky: once a row has been focused the seam stays parked on it when the
-     * pointer leaves, gliding to the next focused row instead of re-waking
-     * from the pill centre on every hover. Cleared only when the surface
-     * closes.
-     */
     function reportRowHover(item, hovered) {
         if (hovered)
             focusRowItem = item;
@@ -71,10 +72,6 @@ PillSurface {
         onTriggered: Notifs.markAllSeen()
     }
 
-    /**
-     * Ember mark: a small flame-glow dot over a soft halo, the unread marker
-     * shared by the header badge and unread notification titles.
-     */
     component Ember: Item {
         id: ember
         property real size: 4 * root.s
@@ -101,9 +98,7 @@ PillSurface {
     }
 
     /**
-     * Single inbox entry: icon tile or diamond, body text, ×N coalesce badge,
-     * age label that cross-fades into a dismiss glyph on hover. Critical
-     * entries gain a vermilion left hairline and cream emphasis.
+     * One inbox entry; its age turns into a dismiss glyph on hover, and a dismissed row folds away before it is removed.
      */
     component NotifRow: Rectangle {
         id: nrow
@@ -111,11 +106,31 @@ PillSurface {
         required property var entry
         property bool critical: false
         readonly property var n: entry.n
+        property bool leaving: false
+
+        function dismiss() {
+            if (leaving)
+                return;
+            leaving = true;
+            leaveAnim.start();
+        }
 
         width: parent ? parent.width : 0
         height: 26 * root.s
-        radius: 7 * root.s
-        color: nrowHover.hovered ? Theme.frameBg : "transparent"
+        radius: Theme.r.s * root.s
+        clip: leaving
+        color: nrowPress.pressed ? Theme.pressBg : (nrowHover.hovered ? Theme.frameBg : "transparent")
+        Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
+
+        SequentialAnimation {
+            id: leaveAnim
+            ParallelAnimation {
+                NumberAnimation { target: nrow; property: "height"; to: 0; duration: root.collapseMs; easing.type: Easing.OutCubic }
+                NumberAnimation { target: nrow; property: "opacity"; to: 0; duration: root.fadeMs; easing.type: Easing.OutCubic }
+            }
+            ScriptAction { script: Notifs.dismissEntry(nrow.entry) }
+        }
+        Component.onDestruction: if (leaveAnim.running) Notifs.dismissEntry(entry)
 
         HoverHandler {
             id: nrowHover
@@ -123,7 +138,9 @@ PillSurface {
         }
 
         MouseArea {
+            id: nrowPress
             anchors.fill: parent
+            enabled: !nrow.leaving
             cursorShape: Qt.PointingHandCursor
             onClicked: {
                 Notifs.activateEntry(nrow.entry);
@@ -138,18 +155,18 @@ PillSurface {
             anchors.verticalCenter: parent.verticalCenter
             width: 2 * root.s
             height: parent.height - 10 * root.s
-            radius: 999
+            radius: Theme.r.full
             color: Theme.verm
         }
 
         Rectangle {
             id: nrowTile
             anchors.left: parent.left
-            anchors.leftMargin: 8 * root.s
+            anchors.leftMargin: Theme.sp.s * root.s
             anchors.verticalCenter: parent.verticalCenter
             width: 16 * root.s
             height: 16 * root.s
-            radius: 5 * root.s
+            radius: Theme.r.xs * root.s
             color: Theme.tileBg
             border.width: 1
             border.color: Theme.border
@@ -179,14 +196,14 @@ PillSurface {
 
         Text {
             anchors.left: nrowTile.right
-            anchors.leftMargin: 8 * root.s
+            anchors.leftMargin: Theme.sp.s * root.s
             anchors.right: nrowRight.left
-            anchors.rightMargin: 8 * root.s
+            anchors.rightMargin: Theme.sp.s * root.s
             anchors.verticalCenter: parent.verticalCenter
-            text: nrow.n.body.length > 0 ? nrow.n.body : nrow.n.summary
+            text: Notifs.plain(nrow.n.body.length > 0 ? nrow.n.body : nrow.n.summary)
             color: nrow.critical ? Theme.cream : Theme.subtle
             font.family: Theme.font
-            font.pixelSize: 10.5 * root.s
+            font.pixelSize: Theme.fs.meta * root.s
             font.weight: nrow.critical ? Font.DemiBold : Font.Medium
             elide: Text.ElideRight
             maximumLineCount: 1
@@ -196,9 +213,9 @@ PillSurface {
         Row {
             id: nrowRight
             anchors.right: parent.right
-            anchors.rightMargin: 8 * root.s
+            anchors.rightMargin: Theme.sp.s * root.s
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 6 * root.s
+            spacing: Theme.sp.s * root.s
 
             Text {
                 visible: nrow.entry.count > 1
@@ -206,8 +223,9 @@ PillSurface {
                 text: "×" + nrow.entry.count
                 color: nrow.critical ? Theme.vermLit : Theme.vermDim
                 font.family: Theme.font
-                font.pixelSize: 9 * root.s
+                font.pixelSize: Theme.fs.meta * root.s
                 font.weight: Font.Bold
+                font.features: { "tnum": 1 }
             }
 
             Item {
@@ -221,10 +239,11 @@ PillSurface {
                     anchors.verticalCenter: parent.verticalCenter
                     opacity: nrowHover.hovered ? 0 : 1
                     text: Notifs.ageLabel(nrow.n)
-                    color: Theme.faint
+                    color: Theme.textFaint
                     font.family: Theme.font
-                    font.pixelSize: 9 * root.s
-                    Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                    font.pixelSize: Theme.fs.meta * root.s
+                    font.features: { "tnum": 1 }
+                    Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
                 }
 
                 GlyphIcon {
@@ -234,19 +253,21 @@ PillSurface {
                     width: 11 * root.s
                     height: 11 * root.s
                     opacity: nrowHover.hovered ? 1 : 0
+                    scale: nrowXArea.pressed && !Motion.calm ? 0.85 : 1
                     name: "close"
-                    color: nrowXArea.containsMouse ? Theme.cream : Theme.dim
+                    color: nrowXArea.containsMouse ? Theme.cream : Theme.textFaint
                     stroke: 1.9
-                    Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                    Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
+                    Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
                     MouseArea {
                         id: nrowXArea
                         anchors.fill: parent
-                        anchors.margins: -6 * root.s
-                        enabled: nrowHover.hovered
+                        anchors.margins: -Theme.sp.s * root.s
+                        enabled: nrowHover.hovered && !nrow.leaving
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: Notifs.dismissEntry(nrow.entry)
+                        onClicked: nrow.dismiss()
                     }
                 }
             }
@@ -258,23 +279,21 @@ PillSurface {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        spacing: 4 * root.s
+        spacing: Theme.sp.s * root.s
 
-        SettingsHeader {
-            height: 24 * root.s
+        SurfaceHeader {
             s: root.s
             glyph: "報"
-            title: "INBOX"
-            showIcon: false
+            title: "Inbox"
 
             Row {
                 x: parent.width - width
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 10 * root.s
+                spacing: Theme.sp.s * root.s
 
                 Row {
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6 * root.s
+                    spacing: Theme.sp.xs * root.s
                     visible: Notifs.unread > 0
 
                     Ember {
@@ -283,74 +302,36 @@ PillSurface {
                         size: 6 * root.s
 
                         SequentialAnimation on opacity {
-                            running: headerEmber.visible
+                            running: headerEmber.visible && !Motion.calm
                             loops: Animation.Infinite
-                            NumberAnimation { from: 0.55; to: 1; duration: 1200; easing.type: Easing.InOutSine }
-                            NumberAnimation { from: 1; to: 0.55; duration: 1200; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: 0.55; to: 1; duration: Motion.heat; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: 1; to: 0.55; duration: Motion.heat; easing.type: Easing.InOutSine }
                         }
                     }
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Notifs.unread + " NEW"
-                        color: Theme.dim
+                        text: Notifs.unread + " new"
+                        color: Theme.textFaint
                         font.family: Theme.font
-                        font.pixelSize: 9.5 * root.s
+                        font.pixelSize: Theme.fs.label * root.s
                         font.weight: Font.Bold
-                        font.letterSpacing: 1.4 * root.s
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: Theme.labelTracking * root.s
                     }
                 }
 
-                Item {
-                    width: clearRow.implicitWidth
-                    height: clearRow.implicitHeight
+                Button {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: Notifs.count > 0
-
-                    Row {
-                        id: clearRow
-                        spacing: 4 * root.s
-
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: Flags.showGlyphs
-                            text: "払"
-                            color: clearArea.containsMouse ? Theme.vermLit : Theme.vermDim
-                            font.family: Theme.fontJp
-                            font.pixelSize: 9 * root.s
-                            font.weight: Font.Bold
-                        }
-                        GlyphIcon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: !Flags.showGlyphs
-                            width: 11 * root.s
-                            height: 11 * root.s
-                            name: "trash"
-                            color: clearArea.containsMouse ? Theme.vermLit : Theme.vermDim
-                            stroke: 1.8
-                        }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "CLEAR"
-                            color: clearArea.containsMouse ? Theme.vermLit : Theme.vermDim
-                            font.family: Theme.font
-                            font.pixelSize: 9 * root.s
-                            font.weight: Font.Bold
-                            font.letterSpacing: 1.4 * root.s
-                        }
-                    }
-
-                    MouseArea {
-                        id: clearArea
-                        anchors.fill: clearRow
-                        anchors.margins: -5 * root.s
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: Notifs.clearAll()
-                    }
+                    s: root.s
+                    kind: "ghost"
+                    text: "Clear all"
+                    onClicked: Notifs.clearAll()
                 }
             }
         }
+
         Rectangle {
             width: parent.width
             height: 1
@@ -374,20 +355,43 @@ PillSurface {
                 Column {
                     id: notifCol
                     width: notifFlick.width
-                    spacing: 6 * root.s
+                    spacing: Theme.sp.xs * root.s
 
                     Repeater {
-                        model: Notifs.groups
+                        model: ScriptModel {
+                            values: Notifs.groups.map(g => g.app)
+                        }
 
                         Column {
                             id: group
-                            required property var modelData
-                            readonly property bool expanded: Notifs.expandedApps[modelData.app] === true
+                            required property string modelData
+                            readonly property var g: root.groupByApp[modelData] || root.noGroup
+                            readonly property bool expanded: Notifs.expandedApps[modelData] === true
+                            property bool leaving: false
+
+                            function dismiss() {
+                                if (leaving)
+                                    return;
+                                leaving = true;
+                                groupLeave.start();
+                            }
+
                             width: notifCol.width
-                            spacing: 2 * root.s
+                            spacing: Theme.sp.xxs * root.s
+                            clip: leaving
+
+                            SequentialAnimation {
+                                id: groupLeave
+                                ParallelAnimation {
+                                    NumberAnimation { target: group; property: "height"; to: 0; duration: root.collapseMs; easing.type: Easing.OutCubic }
+                                    NumberAnimation { target: group; property: "opacity"; to: 0; duration: root.fadeMs; easing.type: Easing.OutCubic }
+                                }
+                                ScriptAction { script: Notifs.dismissApp(group.g.app) }
+                            }
+                            Component.onDestruction: if (groupLeave.running) Notifs.dismissApp(g.app)
 
                             Repeater {
-                                model: group.modelData.criticals
+                                model: group.g.criticals
 
                                 NotifRow {
                                     required property var modelData
@@ -400,8 +404,9 @@ PillSurface {
                                 id: groupHead
                                 width: parent.width
                                 height: 32 * root.s
-                                radius: 8 * root.s
-                                color: headHover.hovered ? Theme.frameBg : "transparent"
+                                radius: Theme.r.s * root.s
+                                color: headPress.pressed ? Theme.pressBg : (headHover.hovered ? Theme.frameBg : "transparent")
+                                Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
                                 HoverHandler {
                                     id: headHover
@@ -409,19 +414,21 @@ PillSurface {
                                 }
 
                                 MouseArea {
+                                    id: headPress
                                     anchors.fill: parent
+                                    enabled: !group.leaving
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: Notifs.toggleExpanded(group.modelData.app)
+                                    onClicked: Notifs.toggleExpanded(group.g.app)
                                 }
 
                                 Rectangle {
                                     id: headTile
                                     anchors.left: parent.left
-                                    anchors.leftMargin: 6 * root.s
+                                    anchors.leftMargin: Theme.sp.s * root.s
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 20 * root.s
                                     height: 20 * root.s
-                                    radius: 6 * root.s
+                                    radius: Theme.r.s * root.s
                                     color: Theme.tileBg
                                     border.width: 1
                                     border.color: Theme.border
@@ -429,8 +436,8 @@ PillSurface {
                                     Image {
                                         id: headImg
                                         anchors.fill: parent
-                                        anchors.margins: group.modelData.newest.image ? 0 : 3 * root.s
-                                        source: Notifs.iconFor(group.modelData.newest)
+                                        anchors.margins: group.g.newest.image ? 0 : 3 * root.s
+                                        source: Notifs.iconFor(group.g.newest)
                                         sourceSize.width: 40
                                         sourceSize.height: 40
                                         fillMode: Image.PreserveAspectCrop
@@ -452,16 +459,16 @@ PillSurface {
                                 Text {
                                     id: headName
                                     anchors.left: headTile.right
-                                    anchors.leftMargin: 8 * root.s
+                                    anchors.leftMargin: Theme.sp.s * root.s
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: Math.min(implicitWidth, 110 * root.s)
-                                    text: group.modelData.app
-                                    color: Theme.subtle
+                                    text: group.g.app
+                                    color: Theme.textFaint
                                     font.family: Theme.font
-                                    font.pixelSize: 9 * root.s
+                                    font.pixelSize: Theme.fs.label * root.s
                                     font.weight: Font.Bold
                                     font.capitalization: Font.AllUppercase
-                                    font.letterSpacing: 1.2 * root.s
+                                    font.letterSpacing: Theme.labelTracking * root.s
                                     elide: Text.ElideRight
                                     textFormat: Text.PlainText
                                 }
@@ -469,26 +476,26 @@ PillSurface {
                                 Text {
                                     id: headCount
                                     anchors.left: headName.right
-                                    anchors.leftMargin: 5 * root.s
+                                    anchors.leftMargin: Theme.sp.xs * root.s
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: "· " + group.modelData.count
-                                    color: Theme.faint
+                                    text: "· " + group.g.count
+                                    color: Theme.textFaint
                                     font.family: Theme.font
-                                    font.pixelSize: 9 * root.s
+                                    font.pixelSize: Theme.fs.label * root.s
+                                    font.weight: Font.Bold
+                                    font.features: { "tnum": 1 }
                                 }
 
                                 Text {
                                     anchors.left: headCount.right
-                                    anchors.leftMargin: 8 * root.s
+                                    anchors.leftMargin: Theme.sp.s * root.s
                                     anchors.right: headX.left
-                                    anchors.rightMargin: 8 * root.s
+                                    anchors.rightMargin: Theme.sp.s * root.s
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: group.modelData.preview.body.length > 0
-                                        ? group.modelData.preview.body
-                                        : group.modelData.preview.summary
-                                    color: Theme.dim
+                                    text: Notifs.plain(group.g.preview.body.length > 0 ? group.g.preview.body : group.g.preview.summary)
+                                    color: Theme.textFaint
                                     font.family: Theme.font
-                                    font.pixelSize: 10 * root.s
+                                    font.pixelSize: Theme.fs.meta * root.s
                                     elide: Text.ElideRight
                                     maximumLineCount: 1
                                     textFormat: Text.PlainText
@@ -497,51 +504,71 @@ PillSurface {
                                 GlyphIcon {
                                     id: headChev
                                     anchors.right: parent.right
-                                    anchors.rightMargin: 8 * root.s
+                                    anchors.rightMargin: Theme.sp.s * root.s
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 11 * root.s
                                     height: 11 * root.s
-                                    name: group.expanded ? "chevron-down" : "chevron-right"
+                                    name: "chevron-right"
+                                    rotation: group.expanded ? 90 : 0
                                     color: Theme.faint
                                     stroke: 2
+                                    Behavior on rotation {
+                                        enabled: !Motion.calm
+                                        NumberAnimation { duration: Motion.glide; easing.type: Easing.OutCubic }
+                                    }
                                 }
 
                                 GlyphIcon {
                                     id: headX
                                     anchors.right: headChev.left
-                                    anchors.rightMargin: 7 * root.s
+                                    anchors.rightMargin: Theme.sp.s * root.s
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 11 * root.s
                                     height: 11 * root.s
                                     opacity: headHover.hovered ? 1 : 0
+                                    scale: headXArea.pressed && !Motion.calm ? 0.85 : 1
                                     name: "close"
-                                    color: headXArea.containsMouse ? Theme.cream : Theme.dim
+                                    color: headXArea.containsMouse ? Theme.cream : Theme.textFaint
                                     stroke: 1.9
-                                    Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                                    Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
+                                    Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
                                     MouseArea {
                                         id: headXArea
                                         anchors.fill: parent
-                                        anchors.margins: -6 * root.s
-                                        enabled: headHover.hovered
+                                        anchors.margins: -Theme.sp.s * root.s
+                                        enabled: headHover.hovered && !group.leaving
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: Notifs.dismissApp(group.modelData.app)
+                                        onClicked: group.dismiss()
                                     }
                                 }
                             }
 
-                            Column {
-                                visible: group.expanded
+                            /**
+                             * The entries grow open with the list instead of jumping ahead of the pill's shape.
+                             */
+                            Item {
+                                id: entriesBox
+                                readonly property bool populated: group.expanded || height > 0.5
                                 width: parent.width
-                                spacing: 2 * root.s
+                                height: group.expanded ? entriesCol.implicitHeight : 0
+                                visible: height > 0.5
+                                clip: true
+                                Behavior on height { NumberAnimation { duration: Motion.glide; easing.type: Easing.OutCubic } }
 
-                                Repeater {
-                                    model: group.expanded ? group.modelData.entries : []
+                                Column {
+                                    id: entriesCol
+                                    width: parent.width
+                                    spacing: Theme.sp.xxs * root.s
 
-                                    NotifRow {
-                                        required property var modelData
-                                        entry: modelData
+                                    Repeater {
+                                        model: entriesBox.populated ? group.g.entries : []
+
+                                        NotifRow {
+                                            required property var modelData
+                                            entry: modelData
+                                        }
                                     }
                                 }
                             }
@@ -557,32 +584,12 @@ PillSurface {
             }
         }
 
-        Column {
+        EmptyState {
+            anchors.horizontalCenter: parent.horizontalCenter
             visible: Notifs.count === 0
-            width: parent.width
-            topPadding: 14 * root.s
-            bottomPadding: 14 * root.s
-            spacing: 4 * root.s
-
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: Flags.showGlyphs
-                text: "静"
-                color: Theme.ghost
-                opacity: 0.55
-                font.family: Theme.fontJp
-                font.weight: Font.Medium
-                font.pixelSize: 32 * root.s
-            }
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: Flags.showGlyphs ? "SILENCE" : "No notifications to display"
-                color: Theme.faint
-                font.family: Theme.font
-                font.pixelSize: 9 * root.s
-                font.weight: Font.Bold
-                font.letterSpacing: Flags.showGlyphs ? 2.2 * root.s : 0.8 * root.s
-            }
+            s: root.s
+            glyph: "inbox"
+            text: "No notifications"
         }
     }
 }

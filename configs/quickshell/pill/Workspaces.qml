@@ -6,17 +6,7 @@ import Quickshell.Hyprland
 import "Singletons"
 
 /**
- * Workspace dots for one monitor. No numbers, no icons. Active one is a larger
- * filled vermillion dot; the rest are small and dim, brightening on hover.
- * Clicking a dot focuses that workspace via the Hyprland-lua dispatcher. Active
- * marker tracks the monitor's live active workspace name from the Hyprland
- * model.
- *
- * The dot range unions this monitor's workspace rules ([[Workspacerules]]) with
- * the workspaces Hyprland currently has on it, so a rule-driven setup (e.g.
- * monitors.lua splitting 1-5 / 6-10 across two screens) always shows every
- * assigned dot while a workspace outside the rules (r+1 past the last ruled
- * one) still appears instead of vanishing from the strip.
+ * Workspace dots for one monitor: this monitor's ruled workspaces plus any live ones outside the rules; the active one is a stick.
  */
 Item {
     id: workspaces
@@ -55,23 +45,14 @@ Item {
         return out;
     }
 
-    readonly property string activeName: {
-        var mons = Hyprland.monitors.values;
-        for (var i = 0; i < mons.length; i++)
-            if (mons[i].name === screenName)
-                return mons[i].activeWorkspace ? mons[i].activeWorkspace.name : "";
-        return "";
-    }
+    readonly property var monitor: Hyprland.monitors.values.find(m => m.name === screenName) || null
+    readonly property string activeName: monitor && monitor.activeWorkspace ? monitor.activeWorkspace.name : ""
 
     property int hoverIndex: -1
 
     readonly property int activeIndex: range.indexOf(parseInt(activeName))
 
-    /**
-     * Centre x of a dot slot from target layout widths (active stick is wider).
-     * Uses the animation end values, so a focus marker aimed here lands where
-     * the dot settles and doesn't chase the width Behavior.
-     */
+    /** Centre x of a slot from end-state widths, so a marker aimed here lands where the dot settles. */
     function slotCenterX(idx) {
         let x = 0;
         for (let i = 0; i < idx; i++)
@@ -116,8 +97,8 @@ Item {
                     height: workspaces.dotW
                     radius: height / 2
                     color: slot.isActive ? Theme.vermLit : Theme.cream
-                    opacity: slot.isActive ? 1.0 : (area.containsMouse ? 0.7 : 0.3)
-                    Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                    opacity: slot.isActive ? 1.0 : (area.pressed ? 0.9 : (area.containsMouse ? 0.7 : 0.3))
+                    Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
                 }
 
                 MouseArea {

@@ -3,7 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-/** One in-process backlight reader for every Osd; sysfs has no inotify, so a 1s timer rereads it. */
+/** One in-process backlight reader for every Osd; sysfs has no inotify, so udev change events trigger the reread. */
 Singleton {
     id: root
 
@@ -49,10 +49,11 @@ Singleton {
         }
     }
 
-    Timer {
+    Process {
         running: root.dev !== ""
-        interval: 1000
-        repeat: true
-        onTriggered: level.reload()
+        command: ["udevadm", "monitor", "--udev", "--subsystem-match=backlight"]
+        stdout: SplitParser {
+            onRead: level.reload()
+        }
     }
 }

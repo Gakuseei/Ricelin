@@ -9,22 +9,7 @@ import Quickshell.Widgets
 import "Singletons"
 
 /**
- * Wallpaper surface: a filmstrip over the wallpaper directory, rendered as one
- * of the pill's surfaces. Thumbs come from the Walls singleton snapshot, newest
- * first. The focused thumb is large and fully lit; neighbours shrink, dim and
- * desaturate as they slide under it, so the strip reads as depth. Arrow keys
- * and wheel move focus, clicking a neighbour glides to it, Enter or a tap on
- * the focused thumb applies it via wallpaper.sh (strip stays open so you can
- * keep trying picks). Hold the focused thumb for the heat duration to trash the
- * file (press-and-hold confirm, same as the clipboard wipe); progress sweeps
- * along the thumb's lower edge and drains on early release.
- *
- * Typing any printable character while the strip is open drops it into a
- * DuckDuckGo image search: a search field reveals at the top, the strip swaps
- * its model from local files to remote results (debounced fetch through
- * wallpaper-search.sh), and selecting a result downloads it, applies it and
- * returns to the local strip. Escape, an emptied query or a finished pick all
- * fall back to the local view.
+ * Wallpaper filmstrip: click or Enter applies, holding the focused thumb trashes it, typing searches DuckDuckGo images.
  */
 PillSurface {
     id: root
@@ -32,9 +17,7 @@ PillSurface {
     property int focusIndex: 0
 
     /**
-     * Search mode. While off the strip browses local files and bare keys are
-     * watched for the first printable character; while on the search field is
-     * shown, holds focus and the strip renders remote results for `query`.
+     * While on, the search field holds focus and the strip shows remote results for `query`, otherwise bare keys are watched for the first printable character.
      */
     property bool searching: false
     property string query: ""
@@ -44,10 +27,7 @@ PillSurface {
     property bool editingDir: false
 
     /**
-     * Kind filter shared by both views: "all", "still" or "motion". Locally it
-     * splits the snapshot by extension (gif and video files count as motion);
-     * in search mode it steers the DDG request (gif type filter) so the chips
-     * act as one control everywhere.
+     * Kind filter "all", "still" or "motion", splitting local files by extension and steering the DDG gif filter in search mode.
      */
     property string kindFilter: "all"
 
@@ -55,12 +35,17 @@ PillSurface {
         return /\.(gif|mp4|webm|mkv|mov)$/i.test(path);
     }
 
-    /**
-     * Miniature of the physical monitor arrangement, shown on the focused tile
-     * when more than one screen is connected. Logical rects are fitted into a
-     * small box, keeping their real positions; clicking one sends the pick to
-     * that output only, while a tap on the tile itself keeps meaning all.
-     */
+    readonly property string home: Quickshell.env("HOME")
+
+    /** "/home/erik/Ricelin/wallpapers/" reads "~/Ricelin/wallpapers". */
+    function shortPath(p) {
+        var out = String(p);
+        if (home.length > 0 && out.indexOf(home) === 0)
+            out = "~" + out.slice(home.length);
+        return out.length > 1 ? out.replace(/\/+$/, "") : out;
+    }
+
+    /** Monitor layout in miniature for the focused tile (2+ screens); a rect sets that output only. */
     readonly property var monMap: {
         var scr = Quickshell.screens;
         if (scr.length < 2)
@@ -97,10 +82,7 @@ PillSurface {
     }
 
     /**
-     * Re-centre after a filter switch. Deferred with callLater because this
-     * handler fires before dependent bindings refresh, so a direct call would
-     * still see the previous filter's list and park the strip on an index the
-     * new list does not have.
+     * Re-centring is deferred with callLater because this handler fires before dependent bindings refresh.
      */
     onKindFilterChanged: {
         if (searching && query.length > 0)
@@ -110,18 +92,13 @@ PillSurface {
     }
 
     /**
-     * Active model and its select handler. The strip, navigation and empty
-     * states all read these so the local and search views share one code path:
-     * a populated query in search mode shows remote results, anything else the
-     * local snapshot.
+     * Active model shared by strip, navigation and empty states: remote results for a non-empty search, else the local snapshot.
      */
     readonly property var items: (searching && query.length > 0) ? ddgResults : localItems
     readonly property int itemCount: items.length
 
     /**
-     * Gesture hint visibility. Hidden while the focus is moving so paging
-     * through wallpapers stays clean; the dwell timer reveals it only once the
-     * pick has been held still, so it reads as a quiet caption, not a nag.
+     * Gesture hint, hidden while focus moves and revealed by the dwell timer once the pick is held still.
      */
     property bool hintShown: false
 
@@ -129,9 +106,7 @@ PillSurface {
     property string monHover: ""
 
     /**
-     * Preview arming: playback and the dimension probe only start once the
-     * focus has rested for a beat, so wheeling through the strip never churns
-     * decoders or process spawns per step.
+     * Playback and the dimension probe wait until focus rests, so wheeling through the strip never churns decoders or processes.
      */
     property bool previewArmed: true
 
@@ -157,10 +132,7 @@ PillSurface {
     }
 
     /**
-     * Continuous view position chasing focusIndex. The strip renders from this
-     * single value, so any input rate (40Hz key autorepeat, wheel bursts) stays
-     * coherent: lag is bounded by the chase time constant, not piled up across
-     * per-tile retargeting animations.
+     * Single continuous position chasing focusIndex, so fast input (40Hz key repeat, wheel bursts) stays bounded by one chase instead of piling up per-tile animations.
      */
     property real pos: 0
 
@@ -186,6 +158,21 @@ PillSurface {
         return (off < 0 ? -cx : cx) * s;
     }
 
+    holdsFocus: searching
+
+    function handleKey(e) {
+        if (!searching && e.text.length === 1 && e.text > " ")
+            startSearch(e.text);
+        else if (e.key === Qt.Key_Left || e.key === Qt.Key_Right)
+            move(e.key === Qt.Key_Left ? -1 : 1);
+        else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) {
+            if (!e.isAutoRepeat)
+                activate();
+        } else
+            return false;
+        return true;
+    }
+
     function move(delta) {
         if (itemCount === 0)
             return;
@@ -195,6 +182,10 @@ PillSurface {
     FrameAnimation {
         running: root.active && root.pos !== root.focusIndex
         onTriggered: {
+            if (Motion.calm) {
+                root.pos = root.focusIndex;
+                return;
+            }
             var k = 1 - Math.exp(-frameTime / 0.07);
             var next = root.pos + (root.focusIndex - root.pos) * k;
             root.pos = Math.abs(next - root.focusIndex) < 0.001 ? root.focusIndex : next;
@@ -228,9 +219,7 @@ PillSurface {
     }
 
     /**
-     * Leave search mode and fall back to the local strip, re-centring on the
-     * wallpaper currently on screen. Used by Escape, an emptied query and a
-     * completed download.
+     * Leaves search and re-centres on the wallpaper on screen, used by Escape, an emptied query and a finished download.
      */
     function exitSearch() {
         searching = false;
@@ -241,9 +230,7 @@ PillSurface {
     }
 
     /**
-     * Begin a search seeded with the first typed character and move keyboard
-     * focus to the field so the rest of the query lands there. shell.qml routes
-     * the opening keystroke here and hands focus back when the search ends.
+     * shell.qml routes the opening keystroke here, so focus moves to the field for the rest of the query and returns when search ends.
      */
     function startSearch(ch) {
         searching = true;
@@ -276,11 +263,7 @@ PillSurface {
     readonly property string searchScript: Quickshell.env("HOME") + "/.config/hypr/scripts/wallpaper-search.sh"
 
     /**
-     * Remote video previews. Qt's MediaPlayer chokes on streaming https, so
-     * the focused result's preview clip (small webm) is pulled into /tmp by
-     * curl and played from disk. The fetch is debounced behind the focus and
-     * keyed by url hash, so paging back to a seen result replays instantly and
-     * a stale download can never attach to the wrong tile.
+     * Qt's MediaPlayer chokes on streaming https, so curl pulls the focused result's webm preview into /tmp, keyed by url hash.
      */
     property string previewFile: ""
 
@@ -323,9 +306,7 @@ PillSurface {
     }
 
     /**
-     * Local resolution badge. Dimensions are probed lazily for the focused
-     * tile only (ffprobe reads images and videos alike) and cached per path,
-     * so browsing stays cheap and revisits are instant.
+     * Resolution badge dims, probed with ffprobe for the focused tile only and cached per path.
      */
     property var dimsCache: ({})
 
@@ -429,9 +410,9 @@ PillSurface {
         anchors.top: parent.top
         anchors.topMargin: 6 * root.s
         anchors.left: parent.left
-        anchors.leftMargin: 20 * root.s
-        anchors.right: parent.right
-        anchors.rightMargin: filterRow.width + 30 * root.s
+        anchors.leftMargin: Theme.inset.side * root.s
+        anchors.right: filterRow.left
+        anchors.rightMargin: Theme.sp.m * root.s
         s: root.s
         kanji: "探"
         placeholder: "Search wallpapers"
@@ -454,94 +435,46 @@ PillSurface {
         }
     }
 
-    component FilterChip: Item {
-        id: fchip
-
-        property string kind: ""
-        property string label: ""
-
-        width: fchipText.implicitWidth + 17 * root.s
-        height: parent ? parent.height : 0
-
-        Text {
-            id: fchipText
-            anchors.centerIn: parent
-            text: fchip.label
-            color: root.kindFilter === fchip.kind ? Theme.cream : Theme.faint
-            font.family: Theme.font
-            font.pixelSize: 9.5 * root.s
-            font.weight: Font.DemiBold
-            font.letterSpacing: 0.4 * root.s
-            Behavior on color { ColorAnimation { duration: Motion.fast } }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.kindFilter = fchip.kind
-        }
-    }
-
-    /**
-     * Kind filter as one inset capsule with a sliding highlight, matching the
-     * pill's segmented controls instead of three loose outlined chips.
-     */
-    Rectangle {
+    SettingsSeg {
         id: filterRow
         anchors.top: parent.top
-        anchors.topMargin: 9 * root.s
+        anchors.topMargin: 7 * root.s
         anchors.right: parent.right
-        anchors.rightMargin: 14 * root.s
+        anchors.rightMargin: Theme.inset.side * root.s
         z: 40
-        width: segRow.implicitWidth + 6 * root.s
-        height: 22 * root.s
-        radius: height / 2
-        color: Theme.frameBg
-        border.width: 1
-        border.color: Theme.hairSoft
-
-        readonly property Item currentChip: root.kindFilter === "all" ? chipAll : (root.kindFilter === "still" ? chipStill : chipLive)
-
-        Rectangle {
-            anchors.verticalCenter: parent.verticalCenter
-            height: parent.height - 4 * root.s
-            radius: height / 2
-            x: segRow.x + filterRow.currentChip.x + 2 * root.s
-            width: filterRow.currentChip.width - 4 * root.s
-            color: Qt.alpha(Theme.onGlow, 0.18)
-            border.width: 1
-            border.color: Qt.alpha(Theme.onGlow, 0.45)
-            Behavior on x { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-            Behavior on width { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-        }
-
-        Row {
-            id: segRow
-            anchors.left: parent.left
-            anchors.leftMargin: 3 * root.s
-            height: parent.height
-
-            FilterChip { id: chipAll; kind: "all"; label: "all" }
-            FilterChip { id: chipStill; kind: "still"; label: "still" }
-            FilterChip { id: chipLive; kind: "motion"; label: "live" }
-        }
+        s: root.s
+        options: [
+            { label: "All", value: "all" },
+            { label: "Still", value: "still" },
+            { label: "Live", value: "motion" }
+        ]
+        value: root.kindFilter
+        onPicked: (v) => root.kindFilter = v
     }
 
-    /**
-     * Current wallpaper folder as a quiet header caption. A click swaps the
-     * label for an inline path edit seeded from flags.json: Return commits the
-     * override (empty restores autodetect), Escape cancels. The field holds
-     * focus while editing, so its keys never reach the strip's type-to-search.
-     */
+    SurfaceHeader {
+        id: header
+        anchors.top: parent.top
+        anchors.topMargin: filterRow.anchors.topMargin + (filterRow.height - height) / 2
+        anchors.left: parent.left
+        anchors.leftMargin: Theme.inset.side * root.s
+        width: childrenRect.width
+        visible: !root.searching
+        z: 30
+        s: root.s
+        glyph: "壁"
+        title: "Wallpaper"
+    }
+
+    /** Folder caption beside the title; a click edits it in place (Enter saves, empty restores autodetect, Esc cancels). */
     Item {
         id: folderRow
-        anchors.top: parent.top
-        anchors.topMargin: 6 * root.s
-        anchors.left: parent.left
-        anchors.leftMargin: 20 * root.s
+        anchors.verticalCenter: header.verticalCenter
+        anchors.left: header.left
+        anchors.leftMargin: header.childrenRect.width + Theme.sp.m * root.s
         anchors.right: filterRow.left
-        anchors.rightMargin: 12 * root.s
-        height: 30 * root.s
+        anchors.rightMargin: Theme.sp.m * root.s
+        height: 22 * root.s
         visible: !root.searching
         z: 30
 
@@ -550,12 +483,12 @@ PillSurface {
             anchors.left: parent.left
             anchors.right: parent.right
             visible: !root.editingDir
-            text: Walls.wpDir
+            text: root.shortPath(Walls.wpDir)
             elide: Text.ElideMiddle
-            color: folderHover.hovered ? Theme.subtle : Theme.faint
+            color: folderHover.hovered ? Theme.subtle : Theme.textFaint
             font.family: Theme.font
-            font.pixelSize: 9.5 * root.s
-            Behavior on color { ColorAnimation { duration: Motion.fast } }
+            font.pixelSize: Theme.fs.meta * root.s
+            Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
         }
 
         TextInput {
@@ -568,7 +501,7 @@ PillSurface {
             clip: true
             color: Theme.cream
             font.family: Theme.font
-            font.pixelSize: 11 * root.s
+            font.pixelSize: Theme.fs.meta * root.s
             selectByMouse: true
             selectionColor: Theme.verm
             Keys.onPressed: (e) => {
@@ -586,11 +519,11 @@ PillSurface {
                 anchors.fill: parent
                 verticalAlignment: Text.AlignVCenter
                 visible: dirField.text.length === 0
-                text: Walls.wpDir
+                text: root.shortPath(Walls.wpDir)
                 elide: Text.ElideMiddle
-                color: Theme.faint
+                color: Theme.textFaint
                 font.family: Theme.font
-                font.pixelSize: 11 * root.s
+                font.pixelSize: Theme.fs.meta * root.s
             }
         }
 
@@ -610,39 +543,40 @@ PillSurface {
         }
     }
 
-    Text {
-        anchors.left: parent.left
-        anchors.leftMargin: 20 * root.s
-        anchors.verticalCenter: parent.verticalCenter
-        z: 0
-        visible: Flags.showGlyphs && !root.searching
-        text: "壁"
-        color: Theme.ghost
-        opacity: 0.55
-        font.family: Theme.fontJp
-        font.weight: Font.Medium
-        font.pixelSize: 30 * root.s
-    }
+    /**
+     * Only tiles within six of the focus or the gliding view exist; every other slot stays an empty Loader.
+     */
+    readonly property int winLo: Math.floor(Math.min(pos, focusIndex)) - 6
+    readonly property int winHi: Math.ceil(Math.max(pos, focusIndex)) + 6
 
     Repeater {
         model: root.items
 
-        delegate: Item {
-            id: tile
-
+        delegate: Loader {
             required property int index
             required property var modelData
+
+            active: index >= root.winLo && index <= root.winHi
+            z: item ? item.z : 0
+            sourceComponent: tileComp
+        }
+    }
+
+    Component {
+        id: tileComp
+
+        Item {
+            id: tile
+
+            readonly property int index: parent ? parent.index : -1
+            readonly property var modelData: parent ? parent.modelData : ({})
 
             readonly property string thumb: modelData.thumb !== undefined ? modelData.thumb : ""
             readonly property bool remote: modelData.image !== undefined
             readonly property string thumbSource: remote ? thumb : ("file://" + thumb)
 
             /**
-             * Live preview gating: only the focused tile plays, and only once
-             * the strip has settled on it, so paging never spins up decoders.
-             * Gifs play in place (remote ones stream the full file), videos
-             * loop muted through the ffmpeg backend; everything else keeps the
-             * static thumb, which also stays underneath as the loading frame.
+             * Only the focused, settled tile plays (gifs in place, videos muted via ffmpeg), while the static thumb stays underneath as the loading frame.
              */
             readonly property bool isGif: /\.gif(\?|$)/i.test(remote ? (modelData.image || "") : modelData.path)
             readonly property string videoSource: remote
@@ -668,9 +602,7 @@ PillSurface {
             readonly property real commitProgress: Math.max(0, (trashHeat.hold - trashHeat.tapThreshold) / (1 - trashHeat.tapThreshold))
 
             /**
-             * Fade a tile out as its outer edge nears the clipped strip
-             * boundary, so the strip ends soften instead of getting hard-cut by
-             * the pill's clip.
+             * Fades a tile near the clipped strip edge so the ends soften instead of hard-cutting at the pill's clip.
              */
             readonly property real edgeFade: {
                 var soft = 70 * root.s;
@@ -698,7 +630,7 @@ PillSurface {
                 layer.effect: MultiEffect {
                     saturation: tile.sat - 1
                     shadowEnabled: tile.focused
-                    shadowColor: Qt.rgba(0, 0, 0, Theme.shadowOpacity)
+                    shadowColor: Qt.alpha(Theme.shadow, Theme.shadowOpacity)
                     shadowBlur: 0.7
                     shadowVerticalOffset: 4 * root.s
                 }
@@ -754,7 +686,7 @@ PillSurface {
 
                 Rectangle {
                     anchors.fill: parent
-                    color: Qt.rgba(0, 0, 0, 1)
+                    color: Qt.alpha(Theme.shadow, 1)
                     opacity: 1 - tile.bright
                 }
 
@@ -791,28 +723,27 @@ PillSurface {
                     anchors.left: parent.left
                     anchors.margins: 5 * root.s
                     visible: tile.motion
-                    width: motionText.implicitWidth + 9 * root.s
-                    height: motionText.implicitHeight + 4 * root.s
+                    width: 18 * root.s
+                    height: 14 * root.s
                     radius: height / 2
-                    color: Qt.rgba(0, 0, 0, 0.55)
+                    color: Qt.alpha(Theme.shadow, 0.55)
 
-                    Text {
-                        id: motionText
+                    GlyphIcon {
                         anchors.centerIn: parent
-                        text: "▶"
+                        width: 8 * root.s
+                        height: 8 * root.s
+                        name: "play"
                         color: Theme.cream
-                        font.family: Theme.font
-                        font.pixelSize: 7.5 * root.s
                     }
                 }
 
                 Text {
                     anchors.centerIn: parent
                     visible: tile.focused && tile.remote && dlProc.running && dlProc.target === tile.modelData.image
-                    text: "saving…"
+                    text: "Saving…"
                     color: Theme.cream
                     font.family: Theme.font
-                    font.pixelSize: 11 * root.s
+                    font.pixelSize: Theme.fs.meta * root.s
                 }
 
                 Rectangle {
@@ -823,14 +754,14 @@ PillSurface {
                     width: resText.implicitWidth + 12 * root.s
                     height: resText.implicitHeight + 5 * root.s
                     radius: height / 2
-                    color: Qt.rgba(0, 0, 0, 0.55)
+                    color: Qt.alpha(Theme.shadow, 0.55)
                     Text {
                         id: resText
                         anchors.centerIn: parent
                         text: tile.resLabel.replace("x", "×")
                         color: Theme.bright
                         font.family: Theme.font
-                        font.pixelSize: 9.5 * root.s
+                        font.pixelSize: Theme.fs.meta * root.s
                         font.features: { "tnum": 1 }
                     }
                 }
@@ -846,7 +777,7 @@ PillSurface {
                         return Theme.vermLit;
                     return tile.committing ? Theme.vermLit : Theme.border;
                 }
-                Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+                Behavior on border.color { ColorAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
             }
 
             HeatHold {
@@ -874,13 +805,7 @@ PillSurface {
                 onClicked: if (!tile.focused) root.focusIndex = tile.index
             }
 
-            /**
-             * Per-screen picker riding the focused tile's upper right corner.
-             * Hovering a screen rect names it in the backing pill and lights
-             * it, so the miniature reads as "send this pick to that monitor"
-             * without a legend. Sits above the tile's press area, so a click
-             * here never reaches the trash HeatHold underneath.
-             */
+            /** Per-screen picker on the focused tile; sits above the press area so a click never reaches the trash hold. */
             Rectangle {
                 id: monPick
 
@@ -894,10 +819,10 @@ PillSurface {
                 anchors.margins: 5 * root.s
                 width: hoverLabel.width + screenRects.width + 12 * root.s
                 height: screenRects.height + 8 * root.s
-                radius: 6 * root.s
-                color: Qt.rgba(0, 0, 0, 0.62)
+                radius: Theme.r.s * root.s
+                color: Qt.alpha(Theme.shadow, 0.62)
 
-                Behavior on width { NumberAnimation { duration: Motion.fast } }
+                Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
 
                 Text {
                     id: hoverLabel
@@ -909,9 +834,8 @@ PillSurface {
                     text: monPick.hoverOut
                     color: Theme.cream
                     font.family: Theme.font
-                    font.pixelSize: 9 * root.s
+                    font.pixelSize: Theme.fs.meta * root.s
                     font.weight: Font.DemiBold
-                    font.letterSpacing: 0.3 * root.s
                 }
 
                 Item {
@@ -933,13 +857,13 @@ PillSurface {
                             y: mrect.modelData.y + 0.75 * root.s
                             width: Math.max(2, mrect.modelData.w - 1.5 * root.s)
                             height: Math.max(2, mrect.modelData.h - 1.5 * root.s)
-                            radius: 3 * root.s
-                            color: monHover.hovered ? Qt.alpha(Theme.vermLit, 0.45) : Qt.rgba(1, 1, 1, 0.10)
+                            radius: Theme.r.xs * root.s
+                            color: monArea.pressed ? Theme.vermLit : (monHover.hovered ? Qt.alpha(Theme.vermLit, 0.45) : Qt.alpha(Theme.bright, 0.10))
                             border.width: 1
-                            border.color: monHover.hovered ? Theme.vermLit : Qt.rgba(1, 1, 1, 0.35)
+                            border.color: monHover.hovered ? Theme.vermLit : Qt.alpha(Theme.bright, 0.35)
 
-                            Behavior on color { ColorAnimation { duration: Motion.fast } }
-                            Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+                            Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
+                            Behavior on border.color { ColorAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
 
                             HoverHandler {
                                 id: monHover
@@ -947,6 +871,7 @@ PillSurface {
                             }
 
                             MouseArea {
+                                id: monArea
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: Walls.apply(tile.modelData.path, mrect.modelData.name)
@@ -958,30 +883,29 @@ PillSurface {
         }
     }
 
-    Text {
+    EmptyState {
         anchors.centerIn: parent
         visible: root.itemCount === 0 && !searchProc.running
+        s: root.s
+        glyph: root.searching && root.query.length ? "" : "palette"
         text: {
             if (root.searching && root.query.length)
-                return "no results";
+                return "No results";
             if (root.kindFilter === "motion")
-                return "no live wallpapers yet";
+                return "No live wallpapers yet";
             if (root.kindFilter === "still")
-                return "no still wallpapers";
-            return "No wallpapers in " + Walls.wpDir;
+                return "No still wallpapers";
+            return "No wallpapers in " + root.shortPath(Walls.wpDir);
         }
-        color: Theme.faint
-        font.family: Theme.font
-        font.pixelSize: 10.5 * root.s
     }
 
     Text {
         anchors.centerIn: parent
         visible: searchProc.running
-        text: "searching…"
-        color: Theme.faint
+        text: "Searching…"
+        color: Theme.textFaint
         font.family: Theme.font
-        font.pixelSize: 10.5 * root.s
+        font.pixelSize: Theme.fs.meta * root.s
     }
 
     component HintKey: Row {
@@ -990,75 +914,53 @@ PillSurface {
         property string key: ""
         property string caption: ""
 
-        spacing: 5 * root.s
+        spacing: 6 * root.s
 
-        Rectangle {
+        KeyCap {
             anchors.verticalCenter: parent.verticalCenter
-            width: keyText.implicitWidth + 11 * root.s
-            height: keyText.implicitHeight + 6 * root.s
-            radius: 5 * root.s
-            color: Theme.frameBg
-            border.width: 1
-            border.color: Theme.hairSoft
-
-            Text {
-                id: keyText
-                anchors.centerIn: parent
-                text: hk.key
-                color: Theme.cream
-                font.family: Theme.font
-                font.pixelSize: 8.5 * root.s
-                font.weight: Font.DemiBold
-                font.letterSpacing: 0.5 * root.s
-            }
+            s: root.s
+            combo: hk.key
         }
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: hk.caption
-            color: Theme.faint
+            color: Theme.textFaint
             font.family: Theme.font
-            font.pixelSize: 9.5 * root.s
+            font.pixelSize: Theme.fs.meta * root.s
             font.weight: Font.Medium
-            font.letterSpacing: 0.3 * root.s
         }
     }
 
-    /**
-     * Gesture legend: keycap chips for tap / corner / hold instead of one grey
-     * text line. Hovering a screen rect swaps the whole legend for a single
-     * "set on <output> only" caption, so the corner action explains itself the
-     * moment it is about to happen.
-     */
+    /** Gesture legend; hovering a screen rect swaps it for "Set on <output> only". */
     Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 9 * root.s
+        anchors.bottomMargin: Theme.sp.s * root.s
         width: hintLegend.width
         height: hintLegend.height
         visible: root.itemCount > 0 && !root.searching
         opacity: (root.hintShown || root.monHover.length > 0) ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: Motion.standard } }
+        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Easing.OutCubic } }
 
         Row {
             id: hintLegend
-            spacing: 14 * root.s
+            spacing: Theme.sp.l * root.s
             visible: root.monHover.length === 0
 
-            HintKey { key: "tap"; caption: root.monMap.tiles.length > 0 ? "set all" : "set" }
-            HintKey { visible: root.monMap.tiles.length > 0; key: "corner"; caption: "one screen" }
-            HintKey { key: "hold"; caption: "delete" }
+            HintKey { key: "Click"; caption: root.monMap.tiles.length > 0 ? "Set on all" : "Set" }
+            HintKey { visible: root.monMap.tiles.length > 0; key: "Corner"; caption: "One screen" }
+            HintKey { key: "Hold"; caption: "Delete" }
         }
 
         Text {
             anchors.centerIn: parent
             visible: root.monHover.length > 0
-            text: "set on " + root.monHover + " only"
+            text: "Set on " + root.monHover + " only"
             color: Theme.cream
             font.family: Theme.font
-            font.pixelSize: 10 * root.s
+            font.pixelSize: Theme.fs.meta * root.s
             font.weight: Font.DemiBold
-            font.letterSpacing: 0.4 * root.s
         }
     }
 

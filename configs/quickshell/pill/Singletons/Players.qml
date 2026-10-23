@@ -6,11 +6,7 @@ import Quickshell.Services.Mpris
 import Quickshell.Hyprland
 
 /**
- * The one now-playing source the pill views read: the media surface, the source
- * switcher and the OSD. Selection is by player object so the
- * pick survives metadata churn and falls away when that player's process dies.
- * `active` is the player you last picked by hand, else the one auto-tracked by
- * playback, which holds against a background tab that autoplays.
+ * Single now-playing source for the media surface, source switcher and OSD, preferring the player last picked by hand.
  */
 Singleton {
     id: root
@@ -69,10 +65,7 @@ Singleton {
     }
 
     /**
-     * A playing player always wins, with the recently-played one preferred while
-     * it plays. Only when nothing is playing do we hold the paused preferred, so
-     * pausing your music doesn't hand the surface to a paused background tab, yet
-     * actually starting another player switches to it.
+     * A playing player always wins, and only when nothing plays is the paused preferred held, so a paused background tab never takes the surface.
      */
     readonly property var autoPick: {
         var l = root.list;
@@ -117,9 +110,7 @@ Singleton {
                 }
             }
             /**
-             * Browser DRM players (Netflix in Brave) often land their title while
-             * isPlaying still reads false and never cleanly toggle it, so the
-             * active player announces on any real title, not only mid-playback.
+             * Browser DRM players (Netflix in Brave) set the title while isPlaying still reads false, so any real title announces.
              */
             onTitleChanged: {
                 if (Players.ready && title.length > 0 && (playing || modelData === Players.active))
@@ -149,9 +140,7 @@ Singleton {
     readonly property string trackKey: has ? keyFor(active) : ""
 
     /**
-     * Fired when a player starts, pauses or changes track in a way worth a flash.
-     * The OSD listens and announces that player, even one that is not the active
-     * surface source, so starting a video over your music still tells you.
+     * Fires for any player, not only the active one, so starting a video over your music still flashes the OSD.
      */
     signal announce(var player)
 
@@ -183,9 +172,7 @@ Singleton {
     }
 
     /**
-     * The player's own themed app icon, matched off its desktop entry so any
-     * source carries its real logo. Matching is the same window-to-entry pass the
-     * tray uses, with a direct icon-theme lookup as the fallback.
+     * Matches the player to its desktop entry with the tray's window-to-entry pass, falling back to a direct icon-theme lookup.
      */
     function appIconFor(p) {
         if (!p)
@@ -267,10 +254,7 @@ Singleton {
     }
 
     /**
-     * Netflix MPRIS is a stub: xesam:title is the literal page title "Netflix"
-     * and there is no art. The public title page still ships og:title/og:image
-     * for any video id, so resolve the real show name and its cover async and
-     * swap them in wherever the raw metadata would just say "Netflix".
+     * Netflix MPRIS only reports the title "Netflix" with no art, so the real name and cover come from the public title page's og:title and og:image.
      */
     property string netflixName: ""
     property string netflixArt: ""

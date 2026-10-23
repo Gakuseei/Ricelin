@@ -4,12 +4,7 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * Live wallpaper-derived palette. matugen writes a small colour JSON on every
- * wallpaper change (via wallcolors.py) and this singleton watches it, so the
- * tokens update the moment the wallpaper does. Theme reads these only while the
- * dynamic-palette flag is on; otherwise the curated washi hex wins. Defaults are
- * a warm fallback so a missing file still yields a usable scheme. Surfaces and
- * the accent ramp come from here; text stays locked in Theme for contrast.
+ * Live wallpaper palette (surfaces and accents only) from the matugen JSON wallcolors.py writes, used by Theme only while the dynamic-palette flag is on.
  */
 Singleton {
     id: root

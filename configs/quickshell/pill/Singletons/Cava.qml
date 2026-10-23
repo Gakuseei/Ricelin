@@ -3,20 +3,10 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 
 /**
- * Live audio spectrum for the rest-pill visualizer. A headless cava captures the
- * default sink monitor, so the bars answer to any system sound (music, a
- * background video, a game) instead of one MPRIS player. cava runs the FFT and
- * smoothing; we only parse its raw ascii frames into normalized 0..1 levels.
- *
- * Silence arrives as an all-zero frame every tick, which `active` debounces into
- * a clean play/stop signal so the glyph morph does not flap between tracks.
- *
- * cava is an optional dependency: the in-app updater only merges config files and
- * never installs packages, so a machine that pulled an update without cava on it
- * must degrade cleanly. We probe for the binary once and only ever spawn it when
- * it is actually present, which keeps the plain clock on those machines.
+ * Live audio spectrum from a headless cava, spawned only when the binary exists because the updater never installs packages.
  */
 Singleton {
     id: root
@@ -25,17 +15,24 @@ Singleton {
     property var levels: []
     property bool active: false
 
+    /**
+     * Counted, not a bool: each open EQ view holds one and gets the 40-band `spectrum`.
+     */
+    property int consumers: 0
+    property var spectrum: []
+    readonly property int bands: consumers > 0 ? 40 : bars
+
+    readonly property bool playing: Players.list.some(p => p.isPlaying)
+    readonly property bool restShown: Hyprland.monitors.values.some(m => !(m.activeWorkspace && m.activeWorkspace.lastIpcObject.hasfullscreen))
+
     property bool available: false
-    readonly property bool wanted: Flags.musicViz && available
+    readonly property bool wanted: available && (consumers > 0 || (Flags.musicViz && playing && restShown))
 
     /**
-     * autosens is off so a silent browser holding the sink stays at zero bars
-     * instead of autosens amplifying the noise floor up to full range and tripping
-     * the visualizer on dead silence. The trade is a fixed gain, tuned so real
-     * music fills the bars while silence stays under the activate threshold.
+     * autosens is off so silence stays at zero bars, with a fixed sensitivity tuned so real music fills the bars.
      */
     readonly property string config: "[general]\n"
-        + "bars = " + bars + "\nframerate = 60\nautosens = 0\nsensitivity = 5500\n"
+        + "bars = " + bands + "\nframerate = 60\nautosens = 0\nsensitivity = 5500\nsleep_timer = 1\n"
         + "[input]\nmethod = pipewire\nsource = auto\n"
         + "[output]\nmethod = raw\nraw_target = /dev/stdout\ndata_format = ascii\n"
         + "ascii_max_range = 1000\nbar_delimiter = 59\nframe_delimiter = 10\n"
@@ -43,6 +40,13 @@ Singleton {
         + "[smoothing]\nnoise_reduction = 0.77\n"
 
     onWantedChanged: cavaProc.running = wanted
+    onBandsChanged: {
+        spectrum = [];
+        if (cavaProc.running) {
+            cavaProc.running = false;
+            cavaProc.running = wanted;
+        }
+    }
     Component.onCompleted: cavaProc.running = wanted
 
     Process {
@@ -59,18 +63,26 @@ Singleton {
                 if (!line)
                     return;
                 const parts = line.split(";");
+                const n = root.bands;
+                const k = n / root.bars;
+                const all = [];
+                for (let i = 0; i < n; i++)
+                    all.push((parseInt(parts[i]) || 0) / 1000);
                 const out = [];
                 let peak = 0;
-                for (let i = 0; i < root.bars; i++) {
-                    const v = (parseInt(parts[i]) || 0) / 1000;
+                for (let b = 0; b < root.bars; b++) {
+                    let v = 0;
+                    for (let j = 0; j < k; j++)
+                        v += all[b * k + j];
+                    v /= k;
                     out.push(v);
                     if (v > peak)
                         peak = v;
                 }
+                if (n > root.bars)
+                    root.spectrum = all;
                 /**
-                 * Silence frames stop mattering once the morph has settled back
-                 * to the clock, so skip the 60Hz levels churn while both the
-                 * frame and the stored levels are already flat.
+                 * Skips the 60Hz levels update while the frame and the stored levels are already flat.
                  */
                 const flat = peak <= 0.001 && !root.active;
                 if (!flat)

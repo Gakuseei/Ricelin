@@ -14,19 +14,20 @@ Item {
     property var current
     signal pick(var node)
 
-    function label(node) {
-        return node ? (node.description || node.nickname || node.name || "") : "";
-    }
-
     z: 7
-    visible: open
+    visible: opacity > 0.01
+    enabled: open
+    opacity: open ? 1 : 0
+    scale: open || Motion.calm ? 1 : 0.97
+    transformOrigin: Item.Top
+    Behavior on opacity { NumberAnimation { duration: menu.open ? 180 : 100; easing.type: Easing.OutCubic } }
+    Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
     width: 300 * s
     height: panel.height
 
     /** The halo lives on a textless backing rect; a layer over the labels would rasterise and soften them. */
     Rectangle {
         anchors.fill: panel
-        visible: menu.open
         radius: panel.radius
         color: Theme.cardBot
         layer.enabled: true
@@ -45,7 +46,7 @@ Item {
         anchors.right: parent.right
         height: Math.min(menu.model.length * 24 * menu.s + 4 * menu.s, 150 * menu.s)
         clip: true
-        radius: 9 * menu.s
+        radius: Theme.r.m * menu.s
         gradient: Gradient {
             GradientStop { position: 0.0; color: Theme.cardTop }
             GradientStop { position: 1.0; color: Theme.cardBot }
@@ -67,27 +68,30 @@ Item {
 
                 width: ListView.view.width
                 height: 24 * menu.s
-                radius: 7 * menu.s
-                color: devRowHover.hovered ? Theme.frameBg
+                radius: Theme.r.s * menu.s
+                color: devPress.pressed ? Theme.pressBg
+                    : devRowHover.hovered ? Theme.frameBg
                     : (devRow.current ? Qt.alpha(Theme.onGlow, 0.16) : "transparent")
+                Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
                 HoverHandler { id: devRowHover }
 
                 Text {
                     anchors.left: parent.left
-                    anchors.leftMargin: 9 * menu.s
+                    anchors.leftMargin: Theme.sp.s * menu.s
                     anchors.right: parent.right
-                    anchors.rightMargin: 9 * menu.s
+                    anchors.rightMargin: Theme.sp.s * menu.s
                     anchors.verticalCenter: parent.verticalCenter
-                    text: menu.label(devRow.modelData)
+                    text: Sound.label(devRow.modelData)
                     elide: Text.ElideRight
                     color: devRow.current ? Theme.cream : Theme.subtle
                     font.family: Theme.font
-                    font.pixelSize: 10.5 * menu.s
+                    font.pixelSize: Theme.fs.meta * menu.s
                     font.weight: devRow.current ? Font.Bold : Font.Medium
                 }
 
                 MouseArea {
+                    id: devPress
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     onClicked: menu.pick(devRow.modelData)

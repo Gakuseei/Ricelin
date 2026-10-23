@@ -2,10 +2,7 @@ import QtQuick
 import "Singletons"
 
 /**
- * Vertical filament fader. A thin matte thread with a rising fill and a flat
- * tick marker. Dim at rest; saturates and reveals its readout when focused.
- * Hover targeting is owned by the parent surface, which maps pointer position
- * to a fader column and drives `focused`. No knob, no glow. Value is 0..1.
+ * Vertical thread fader with a flat tick, readout and label always shown; the host drives `focused`, value is 0..1.
  */
 Item {
     id: root
@@ -15,7 +12,6 @@ Item {
     property real value: 0.5
     property string valueLabel: ""
     property string subLabel: ""
-    property bool subPersistent: true
     property bool focused: false
 
     signal moved(real v)
@@ -25,13 +21,7 @@ Item {
 
     readonly property real trackH: 86 * s
 
-    /**
-     * Live tick centre in this fader's coordinates. tick.y and root.width are
-     * voided because mapToItem creates no QML dependency on the source item's
-     * transform; without them the binding snapshots the tick where it first
-     * rendered and the bead docks at a stale height after a value change and a
-     * stale x after the mixer resizes.
-     */
+    /** Live tick centre; tick.y and width are voided because mapToItem alone never re-runs on a move. */
     readonly property point tickCenter: {
         void tick.y;
         void root.width;
@@ -41,10 +31,7 @@ Item {
     implicitWidth: 54 * s
     implicitHeight: trackH + (subLabel.length ? 56 : 44) * s
 
-    /**
-     * Nudge the value by a signed percentage (e.g. +1 / -1), clamped to 0..100%,
-     * emitting `moved` and `committed` so live hardware updates on each step.
-     */
+    /** Nudge by a signed percentage, clamped, emitting both signals so hardware follows each step. */
     function step(deltaPct) {
         const v = Math.max(0, Math.min(1, root.value + deltaPct / 100));
         root.moved(v);
@@ -77,8 +64,9 @@ Item {
                     GradientStop { position: 0.0; color: root.lit ? Theme.vermLit : Theme.vermDim }
                     GradientStop { position: 1.0; color: root.lit ? Theme.vermBurn : Theme.vermDimDeep }
                 }
-                Behavior on height { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast } }
+                Behavior on height { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
             }
+
         }
 
         Rectangle {
@@ -91,8 +79,8 @@ Item {
             radius: 2 * root.s
             color: Theme.tickRest
             opacity: root.focused ? 0 : 1
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
-            Behavior on y { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
+            Behavior on y { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
         }
 
         MouseArea {
@@ -116,18 +104,18 @@ Item {
         anchors.topMargin: 7 * root.s
         anchors.horizontalCenter: parent.horizontalCenter
         text: root.valueLabel
-        color: root.lit ? Theme.cream : Theme.dim
-        opacity: root.lit ? 1 : 0
+        color: root.lit ? Theme.cream : Theme.subtle
         font.family: Theme.font
-        font.pixelSize: 9 * root.s
+        font.pixelSize: Theme.fs.meta * root.s
         font.weight: Font.DemiBold
-        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+        font.features: { "tnum": 1 }
+        Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
     }
 
     Item {
         id: iconBox
         anchors.top: readout.bottom
-        anchors.topMargin: 3 * root.s
+        anchors.topMargin: Theme.sp.xxs * root.s
         anchors.horizontalCenter: parent.horizontalCenter
         width: 18 * root.s
         height: 18 * root.s
@@ -142,16 +130,17 @@ Item {
 
     Text {
         visible: root.subLabel.length > 0
-        opacity: root.subPersistent || root.lit ? 1 : 0
         anchors.top: iconBox.bottom
         anchors.topMargin: 1 * root.s
         anchors.horizontalCenter: parent.horizontalCenter
+        width: Math.min(implicitWidth, root.width - Theme.sp.xs * root.s)
+        horizontalAlignment: Text.AlignHCenter
+        elide: Text.ElideRight
         text: root.subLabel
-        color: root.lit ? Theme.cream : Theme.faint
+        color: root.lit ? Theme.cream : Theme.textFaint
         font.family: Theme.font
-        font.pixelSize: 9 * root.s
+        font.pixelSize: Theme.fs.meta * root.s
         font.weight: Font.DemiBold
-        font.letterSpacing: 0.3 * root.s
-        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+        Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
     }
 }

@@ -1,7 +1,8 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import Quickshell.Widgets
 import Quickshell.Hyprland
-import Quickshell.Services.Pipewire
 import "Singletons"
 
 Item {
@@ -19,9 +20,7 @@ Item {
     property int holdExtends: 0
 
     /**
-     * The player the current flash speaks for. Normally the active source, but an
-     * announce can point it at another player that just started, so a video over
-     * your music still gets its own flash without stealing the surface.
+     * The player this flash speaks for: an announce can point it at a newly started player without stealing the surface.
      */
     property var pendingSubject: null
     readonly property var subject: pendingSubject ? pendingSubject : Players.active
@@ -31,7 +30,9 @@ Item {
     readonly property string subjectArtist: subjectHas ? Theme.joinArtists(subject.trackArtists, subject.trackArtist) : ""
     readonly property string subjectIcon: subjectHas ? Players.appIconFor(subject) : ""
 
-    /** Subject art, live so a cover that lands a beat after the title still resolves; the key forces a reload when a browser reuses one file path. */
+    /**
+     * Live so a cover that lands after the title still resolves; the key reloads a browser's reused file path.
+     */
     readonly property string liveArt: {
         if (!subjectHas)
             return "";
@@ -44,43 +45,75 @@ Item {
     readonly property real brightness: Backlight.brightness
     property bool recordStarted: false
 
-    readonly property var sink: Pipewire.defaultAudioSink
+    readonly property var sink: Sound.sink
     readonly property bool muted: sink && sink.audio ? sink.audio.muted : false
     readonly property real volume: sink && sink.audio ? Math.max(0, Math.min(Sound.limit, sink.audio.volume)) : 0
 
-    readonly property real desiredW: kind === "workspace" ? Math.max(120 * s, wsIndicator.implicitWidth + 40 * s)
+    readonly property real desiredW: kind === "workspace" ? Math.max(120 * s, wsWidth + 40 * s)
         : (kind === "track" ? 344 * s : (kind === "record" ? 256 * s : 248 * s))
     readonly property real desiredH: kind === "track" ? 64 * s : 44 * s
 
+    readonly property int leaveMs: 100
+    readonly property int swapDelay: 60
+    readonly property int clockGap: 80
+
+    readonly property var monitor: Hyprland.monitors.values.find(m => m.name === screenName) || null
+    readonly property string activeWsName: monitor && monitor.activeWorkspace ? monitor.activeWorkspace.name : ""
+
     /**
-     * Active workspace name on this monitor. Any switch (Super+arrow,
-     * Super+wheel, clicking a dot) changes it, so flashing the workspace OSD
-     * here briefly morphs the pill open to show where you landed. The arm timer
-     * swallows the initial populate, so login doesn't flash. Skipped while the
-     * pill is expanded: the hover/surface pill already shows the live dots with
-     * the active one marked, so the OSD would only be a redundant morph.
+     * Skipped while expanded: the hover pill already shows the live dots.
      */
-    readonly property string activeWsName: {
-        var mons = Hyprland.monitors.values;
-        for (var i = 0; i < mons.length; i++)
-            if (mons[i].name === screenName)
-                return mons[i].activeWorkspace ? mons[i].activeWorkspace.name : "";
-        return "";
-    }
     onActiveWsNameChanged: if (activeWsName.length > 0 && !expanded) flash("workspace");
 
     /**
-     * Wait for the track to settle before flashing. Hovering the YouTube grid
-     * autoplays a preview per thumbnail, so the active player's metadata churns
-     * as the cursor moves; the settle timer collapses that storm into the one
-     * track that actually sticks.
+     * This monitor's rule-assigned workspaces plus the ones Hyprland has on it, as in Workspaces.qml.
      */
+    readonly property var wsRange: {
+        const seen = {};
+        const out = [];
+        const add = id => {
+            if (id >= 1 && !seen[id]) {
+                seen[id] = true;
+                out.push(id);
+            }
+        };
+        (Workspacerules.byMonitor[screenName] || []).forEach(add);
+        Hyprland.workspaces.values.forEach(w => {
+            if (w.monitor && w.monitor.name === screenName)
+                add(w.id);
+        });
+        add(parseInt(activeWsName));
+        return out.sort((a, b) => a - b);
+    }
+    readonly property int wsActive: wsRange.indexOf(parseInt(activeWsName))
+    readonly property real dotW: 5 * s
+    readonly property real stickW: 17 * s
+    readonly property real wsPitch: dotW + Theme.sp.s * s
+    readonly property real wsWidth: wsRange.length > 0 ? wsRange.length * wsPitch - Theme.sp.s * s + stickW - dotW : 0
+
     /**
-     * Leading-edge throttle. The first change flashes at once so a real track
-     * switch feels instant, then the cooldown mutes the burst that hovering the
-     * YouTube grid throws off. Anything that lands during the cooldown, or while
-     * the OSD is suppressed (a surface open, the pill pinned), stays `dirty` and
-     * fires when the gate opens, so the stashed-player flash still replays.
+     * The stick waits for the clock to clear on a fresh flash, then travels from where it last sat.
+     */
+    property bool stickHeld: false
+    onWsActiveChanged: Qt.callLater(moveStick)
+    function moveStick() {
+        const x = Math.max(0, wsActive) * wsPitch;
+        if (!flashing || kind !== "workspace" || Motion.calm) {
+            stick.target = x;
+            stick.snap(x);
+        } else if (!stickHeld) {
+            stick.target = x;
+        }
+    }
+
+    Spring {
+        id: stick
+        response: 0.28
+        damping: 0.9
+    }
+
+    /**
+     * Leading-edge throttle: the first track change flashes at once, a burst during the cooldown or suppression replays once the gate opens.
      */
     function tryShow() {
         if (cooling)
@@ -93,12 +126,11 @@ Item {
     }
 
     /**
-     * Every pill carries its own Osd but the volume/track/battery signals are
-     * global, so without this gate one keypress flashes every monitor at once.
-     * Workspace flashes skip it: those are already keyed to this screen's own
-     * active workspace.
+     * Global signals flash only the focused monitor; workspace flashes are already keyed to this screen.
      */
     readonly property bool onFocusedMonitor: !Hyprland.focusedMonitor || Hyprland.focusedMonitor.name === screenName
+
+    readonly property var views: [volView, brightView, battView, trackView, wsView, recView]
 
     function flash(which) {
         if (!armed || suppressed)
@@ -109,11 +141,29 @@ Item {
             return false;
         if (which === "track")
             holdExtends = 0;
+        const fresh = !flashing;
+        if (fresh || which !== kind)
+            present(which, fresh);
         kind = which;
         flashing = true;
-        hideTimer.interval = (which === "battery" || which === "record") ? 2000 : 1800;
+        hideTimer.interval = (which === "battery" || which === "record") ? 2000 : (which === "workspace" ? 1000 : 1800);
         hideTimer.restart();
         return true;
+    }
+
+    /**
+     * Old content leaves fast and the new starts entering only once it is mostly gone, so two rows never sit at half strength.
+     */
+    function present(which, fresh) {
+        stickHeld = which === "workspace" && fresh;
+        for (const v of views) {
+            if (v.k !== which)
+                v.hide(!fresh);
+            else if (!fresh)
+                v.show(swapDelay);
+            else
+                v.show(which === "workspace" ? clockGap : -1);
+        }
     }
 
     onSuppressedChanged: {
@@ -125,7 +175,9 @@ Item {
         }
     }
 
-    /** A track announce that lost to live hardware feedback replays once the bar clears. */
+    /**
+     * A track announce that lost to live hardware feedback replays once the bar clears.
+     */
     onFlashingChanged: if (!flashing && dirty) tryShow()
 
     Timer {
@@ -145,9 +197,7 @@ Item {
     }
 
     /**
-     * Hold a track flash open until its cover decodes, so a cold remote thumbnail
-     * that arrives after the base window still gets seen. Capped so a dead art url
-     * never pins the OSD.
+     * Holds a track flash until its cover decodes, capped so a dead art url never pins the OSD.
      */
     Timer {
         id: hideTimer
@@ -161,10 +211,6 @@ Item {
                 root.flashing = false;
             }
         }
-    }
-
-    PwObjectTracker {
-        objects: [root.sink].filter(Boolean)
     }
 
     Connections {
@@ -206,67 +252,58 @@ Item {
         }
     }
 
-    Item {
-        id: volRow
-        anchors.fill: parent
-        opacity: root.kind === "volume" ? 1 : 0
-        visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 150 } }
+    OsdSlide {
+        id: volView
+        k: "volume"
+        current: root.kind === "volume"
+        leaveMs: root.leaveMs
 
-        GlyphIcon {
-            id: volGlyph
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            width: 17 * root.s
-            height: 17 * root.s
-            name: root.muted ? "speaker-off" : "speaker"
-            color: root.muted ? Theme.dim : Theme.iconDim
-            stroke: 1.7
-        }
-
-        Text {
-            id: volPct
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            width: 32 * root.s
-            horizontalAlignment: Text.AlignRight
-            text: Math.round(root.volume * 100) + "%"
-            color: root.muted ? Theme.dim : Theme.cream
-            font.family: Theme.font
-            font.pixelSize: 11 * root.s
-            font.weight: Font.DemiBold
-            font.features: { "tnum": 1 }
-        }
-
-        Rectangle {
-            anchors.left: volGlyph.right
-            anchors.leftMargin: 12 * root.s
-            anchors.right: volPct.left
-            anchors.rightMargin: 12 * root.s
-            anchors.verticalCenter: parent.verticalCenter
-            height: 4 * root.s
-            radius: 2 * root.s
-            color: Theme.threadBg
-
-            Rectangle {
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                width: parent.width * root.volume / Sound.limit
-                radius: parent.radius
-                color: root.muted ? Theme.vermDim : Theme.vermLit
-                Behavior on width { NumberAnimation { duration: Motion.fast } }
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
-            }
+        OsdLevel {
+            s: root.s
+            icon: root.muted ? "speaker-off" : "speaker"
+            iconColor: root.muted ? Theme.dim : Theme.iconDim
+            frac: root.volume / Sound.limit
+            readout: Math.round(root.volume * 100) + "%"
+            muted: root.muted
         }
     }
 
-    Item {
-        id: trackRow
-        anchors.fill: parent
-        opacity: root.kind === "track" ? 1 : 0
-        visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 150 } }
+    OsdSlide {
+        id: brightView
+        k: "brightness"
+        current: root.kind === "brightness"
+        leaveMs: root.leaveMs
+
+        OsdLevel {
+            s: root.s
+            icon: "sun"
+            frac: root.brightness
+            readout: Math.round(root.brightness * 100) + "%"
+        }
+    }
+
+    OsdSlide {
+        id: battView
+        k: "battery"
+        current: root.kind === "battery"
+        leaveMs: root.leaveMs
+
+        OsdLevel {
+            s: root.s
+            icon: "bolt"
+            iconColor: Theme.flameGlow
+            frac: Battery.frac
+            readout: Battery.pct + "%"
+            ember: true
+            shimmer: Battery.charging
+        }
+    }
+
+    OsdSlide {
+        id: trackView
+        k: "track"
+        current: root.kind === "track"
+        leaveMs: root.leaveMs
 
         ClippingRectangle {
             id: coverBox
@@ -274,7 +311,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             width: 44 * root.s
             height: 44 * root.s
-            radius: 9 * root.s
+            radius: Theme.r.m * root.s
             color: Theme.tileBg
 
             Image {
@@ -286,8 +323,11 @@ Item {
                 asynchronous: true
                 cache: String(source).indexOf("file:") !== 0
                 opacity: status === Image.Ready ? 1 : 0
-                /** Art that arrives late still earns a moment on screen, so a cover
-                 *  decoded near the end of the flash is actually seen. */
+                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
+
+                /**
+                 * Art decoded near the end of the flash still earns a moment on screen.
+                 */
                 onStatusChanged: if (status === Image.Ready && root.flashing && root.kind === "track") {
                     hideTimer.interval = 1300;
                     hideTimer.restart();
@@ -302,11 +342,10 @@ Item {
                 visible: cover.status !== Image.Ready
             }
 
-            /** The source's own app icon, sat as a small badge on the art corner. */
             Rectangle {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
-                anchors.margins: 3 * root.s
+                anchors.margins: Theme.sp.xxs * root.s
                 width: 18 * root.s
                 height: 18 * root.s
                 radius: width / 2
@@ -339,18 +378,18 @@ Item {
 
         Column {
             anchors.left: coverBox.right
-            anchors.leftMargin: 12 * root.s
+            anchors.leftMargin: Theme.sp.m * root.s
             anchors.right: trackCtrl.left
-            anchors.rightMargin: 12 * root.s
+            anchors.rightMargin: Theme.sp.m * root.s
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 3 * root.s
+            spacing: Theme.sp.xxs * root.s
 
             Text {
                 width: parent.width
                 text: root.subjectHas ? root.subjectTitle : "Nothing playing"
                 color: Theme.cream
                 font.family: Theme.font
-                font.pixelSize: 14 * root.s
+                font.pixelSize: Theme.fs.title * root.s
                 font.weight: Font.DemiBold
                 maximumLineCount: 1
                 elide: Text.ElideRight
@@ -359,9 +398,9 @@ Item {
             Text {
                 width: parent.width
                 text: root.subjectArtist
-                color: Theme.dim
+                color: Theme.textFaint
                 font.family: Theme.font
-                font.pixelSize: 11 * root.s
+                font.pixelSize: Theme.fs.meta * root.s
                 maximumLineCount: 1
                 elide: Text.ElideRight
                 visible: text.length > 0
@@ -369,164 +408,60 @@ Item {
         }
     }
 
-    Item {
-        id: brightRow
-        anchors.fill: parent
-        opacity: root.kind === "brightness" ? 1 : 0
-        visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 150 } }
-
-        GlyphIcon {
-            id: brightGlyph
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            width: 17 * root.s
-            height: 17 * root.s
-            name: "sun"
-            color: Theme.iconDim
-            stroke: 1.7
+    OsdSlide {
+        id: wsView
+        k: "workspace"
+        current: root.kind === "workspace"
+        leaveMs: root.leaveMs
+        onEntering: {
+            root.stickHeld = false;
+            root.moveStick();
         }
 
-        Text {
-            id: brightPct
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            width: 32 * root.s
-            horizontalAlignment: Text.AlignRight
-            text: Math.round(root.brightness * 100) + "%"
-            color: Theme.cream
-            font.family: Theme.font
-            font.pixelSize: 11 * root.s
-            font.weight: Font.DemiBold
-            font.features: { "tnum": 1 }
-        }
+        /**
+         * One stick travels between the dots on a spring and stretches with its speed; its neighbours make room as it passes.
+         */
+        Item {
+            id: strip
+            anchors.centerIn: parent
+            width: root.wsWidth
+            height: root.dotW
 
-        Rectangle {
-            anchors.left: brightGlyph.right
-            anchors.leftMargin: 12 * root.s
-            anchors.right: brightPct.left
-            anchors.rightMargin: 12 * root.s
-            anchors.verticalCenter: parent.verticalCenter
-            height: 4 * root.s
-            radius: 2 * root.s
-            color: Theme.threadBg
+            readonly property real p: stick.value / root.wsPitch
+            readonly property real extra: root.stickW - root.dotW
 
-            Rectangle {
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                width: parent.width * root.brightness
-                radius: parent.radius
-                color: Theme.vermLit
-                Behavior on width { NumberAnimation { duration: Motion.fast } }
-            }
-        }
-    }
-
-    Item {
-        id: batteryRow
-        anchors.fill: parent
-        opacity: root.kind === "battery" ? 1 : 0
-        visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 150 } }
-
-        GlyphIcon {
-            id: battGlyph
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            width: 17 * root.s
-            height: 17 * root.s
-            name: "bolt"
-            color: Theme.flameGlow
-            stroke: 1.7
-        }
-
-        Text {
-            id: battPct
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            width: 40 * root.s
-            horizontalAlignment: Text.AlignRight
-            text: Battery.pct + "%"
-            color: Theme.cream
-            font.family: Theme.font
-            font.pixelSize: 11 * root.s
-            font.weight: Font.DemiBold
-            font.features: { "tnum": 1 }
-        }
-
-        Rectangle {
-            anchors.left: battGlyph.right
-            anchors.leftMargin: 12 * root.s
-            anchors.right: battPct.left
-            anchors.rightMargin: 12 * root.s
-            anchors.verticalCenter: parent.verticalCenter
-            height: 4 * root.s
-            radius: 2 * root.s
-            color: Theme.threadBg
-            clip: true
-
-            Rectangle {
-                id: battFill
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                width: parent.width * Battery.frac
-                radius: parent.radius
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
-                    GradientStop { position: 0.0; color: Theme.vermDeep }
-                    GradientStop { position: 1.0; color: Theme.flameGlow }
-                }
-                Behavior on width { NumberAnimation { duration: Motion.fast } }
+            Repeater {
+                model: root.wsRange.length
 
                 Rectangle {
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: 34 * root.s
-                    color: "transparent"
-                    gradient: Gradient {
-                        orientation: Gradient.Horizontal
-                        GradientStop { position: 0.0; color: "#00ffffff" }
-                        GradientStop { position: 0.5; color: "#55ffe6d6" }
-                        GradientStop { position: 1.0; color: "#00ffffff" }
-                    }
-
-                    NumberAnimation on x {
-                        from: -34 * root.s
-                        to: battFill.width
-                        duration: 1200
-                        loops: Animation.Infinite
-                        running: root.kind === "battery" && Battery.charging
-                    }
+                    required property int index
+                    readonly property real weight: Math.max(0, 1 - Math.abs(strip.p - index))
+                    x: index * root.wsPitch + strip.extra * (Math.max(0, Math.min(1, index - strip.p)) + weight / 2)
+                    width: root.dotW
+                    height: root.dotW
+                    radius: height / 2
+                    color: Theme.cream
+                    opacity: 0.3 * (1 - weight)
                 }
+            }
+
+            Rectangle {
+                readonly property real stretch: Math.min(0.3 * root.stickW, Math.abs(stick.velocity) * 0.05)
+                visible: root.wsActive >= 0
+                x: stick.value - stretch / 2
+                width: root.stickW + stretch
+                height: root.dotW
+                radius: height / 2
+                color: Theme.vermLit
             }
         }
     }
 
-    Item {
-        id: workspaceRow
-        anchors.fill: parent
-        opacity: root.kind === "workspace" ? 1 : 0
-        visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 150 } }
-
-        Workspaces {
-            id: wsIndicator
-            anchors.centerIn: parent
-            screenName: root.screenName
-            s: root.s
-            gap: 8 * root.s
-            enabled: false
-        }
-    }
-
-    Item {
-        id: recordRow
-        anchors.fill: parent
-        opacity: root.kind === "record" ? 1 : 0
-        visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 150 } }
+    OsdSlide {
+        id: recView
+        k: "record"
+        current: root.kind === "record"
+        leaveMs: root.leaveMs
 
         Rectangle {
             id: recGlyph
@@ -538,22 +473,22 @@ Item {
             color: root.recordStarted ? Theme.verm : Theme.dim
 
             SequentialAnimation on opacity {
-                running: root.recordStarted && root.kind === "record"
+                running: root.visible && recView.visible && root.recordStarted && !Motion.calm
                 loops: Animation.Infinite
-                NumberAnimation { to: 0.4; duration: 500; easing.type: Easing.InOutSine }
-                NumberAnimation { to: 1; duration: 500; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 0.4; duration: Motion.pulse; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 1; duration: Motion.pulse; easing.type: Easing.InOutSine }
             }
         }
 
         Text {
             anchors.left: recGlyph.right
-            anchors.leftMargin: 13 * root.s
+            anchors.leftMargin: Theme.sp.m * root.s
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             text: root.recordStarted ? "Recording started" : "Recording stopped"
             color: Theme.cream
             font.family: Theme.font
-            font.pixelSize: 11.5 * root.s
+            font.pixelSize: Theme.fs.body * root.s
             font.weight: Font.DemiBold
             elide: Text.ElideRight
             maximumLineCount: 1

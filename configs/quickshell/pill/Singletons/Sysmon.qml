@@ -4,36 +4,14 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * System-vitals backend for the 系 SYSTEM surface. Polls CPU, memory, swap,
- * network, disk and (when a discrete GPU is present) GPU load, temperature and
- * VRAM, exposing them as live properties the surface binds to. Polling only runs
- * while `open` is true, on three decoupled cadences so a slow source never
- * stalls the dials: the cheap /proc and hwmon reads refresh every 500ms, the GPU
- * query every 1s, and disk plus uptime every 5s. Opening the surface primes all
- * three at once so the dials are populated immediately.
- *
- * CPU load is a two-sample delta of /proc/stat (busy vs total jiffies); network
- * rates are a two-sample delta of /proc/net/dev summed over every interface but
- * loopback, divided by the fast interval. CPU temperature resolves once to the
- * most accurate hwmon sensor available: AMD Tdie, else Intel "Package id 0",
- * else AMD Tctl, else the first temp1_input. The GPU path resolves once to
- * nvidia (nvidia-smi), AMD (sysfs gpu_busy_percent), Intel (i915 or xe) or
- * none; a GPU-less machine reports `hasGpu` false so the surface drops to two
- * dials and hides the VRAM cell. Disk is the root filesystem's used percent.
- *
- * Intel exposes no busy percent in sysfs and the PMU needs CAP_PERFMON, so
- * load is summed from the DRM fdinfo of every process the user can read (the
- * same numbers nvtop shows per process): i915 reports render busy time in ns,
- * xe reports render cycles against a GT timestamp. Both are cumulative, so the
- * dial is the delta between two polls; clients sharing one file description
- * are deduped by `drm-client-id`. Package temperature comes from the card's
- * hwmon (i915 temp1, xe temp2), absent on iGPUs and kernels before 6.12/6.15.
- * VRAM has no sysfs total on Intel, so the cell stays hidden.
+ * Vitals for the 系 SYSTEM surface, polled only while it is open: /proc and hwmon every 500 ms, GPU every 1 s, disk and uptime every 5 s.
  */
 Singleton {
     id: root
 
-    property bool open: false
+    /** Counted, not a bool: two monitors' surfaces open and close in any order. */
+    property int openCount: 0
+    readonly property bool open: openCount > 0
 
     property int cpu: 0
     property int cpuTemp: -1
@@ -68,11 +46,7 @@ Singleton {
     property real prevTx: 0
     property real prevNetTime: 0
 
-    /**
-     * Turns a cumulative fdinfo sample into a percent: i915 render ns against
-     * wall time, xe render cycles against the GT timestamp delta. The first
-     * sample after opening only seeds the baseline.
-     */
+    /** Intel load from cumulative fdinfo: i915 ns against wall time, xe cycles against the GT clock; the first sample seeds. */
     function fdinfoLoad(ns, cyc, tot) {
         var now = Date.now();
         var prev = root.gpuPrev;
@@ -94,10 +68,18 @@ Singleton {
         prevRx = 0;
         prevNetTime = 0;
         gpuPrev = null;
-        fastProc.running = true;
-        if (hasGpu)
+        readFast();
+        if (hasGpu && gpuVendor !== "nvidia")
             gpuProc.running = true;
         slowProc.running = true;
+    }
+
+    function readFast() {
+        statFile.reload();
+        memFile.reload();
+        netFile.reload();
+        if (tempPath.length > 0)
+            tempFile.reload();
     }
 
     onOpenChanged: if (open) primeAll()
@@ -106,9 +88,11 @@ Singleton {
         var d = Math.floor(sec / 86400);
         var h = Math.floor((sec % 86400) / 3600);
         var m = Math.floor((sec % 3600) / 60);
-        var hh = h < 10 ? "0" + h : "" + h;
-        var mm = m < 10 ? "0" + m : "" + m;
-        return "UP " + d + "D " + hh + ":" + mm;
+        if (d > 0)
+            return "Up " + d + "d " + h + "h";
+        if (h > 0)
+            return "Up " + h + "h " + (m < 10 ? "0" + m : m) + "m";
+        return "Up " + m + "m";
     }
 
     Component.onCompleted: detectProc.running = true
@@ -156,63 +140,103 @@ Singleton {
         }
     }
 
-    Process {
-        id: fastProc
-        command: ["sh", "-c",
-            "read -r _ a b c d e f g h _ < /proc/stat; echo \"CPU $((a+b+c+d+e+f+g+h)) $((d+e))\"; "
-            + "awk '/^MemTotal:/{mt=$2}/^MemAvailable:/{ma=$2}/^SwapTotal:/{st=$2}/^SwapFree:/{sf=$2}END{print \"MEM\",mt,ma,st,sf}' /proc/meminfo; "
-            + "awk 'NR>2{gsub(\":\",\" \");if($1!=\"lo\"){rx+=$2;tx+=$10}}END{print \"NET\",rx+0,tx+0}' /proc/net/dev; "
-            + "if [ -n \"$1\" ] && [ -r \"$1\" ]; then echo \"TMP $(cat \"$1\")\"; else echo 'TMP -'; fi",
-            "_", root.tempPath]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var lines = this.text.split("\n");
-                for (var i = 0; i < lines.length; i++) {
-                    var p = lines[i].trim().split(/\s+/);
-                    if (p[0] === "CPU") {
-                        var total = parseFloat(p[1]);
-                        var idle = parseFloat(p[2]);
-                        if (root.prevCpuTotal > 0) {
-                            var dt = total - root.prevCpuTotal;
-                            var di = idle - root.prevCpuIdle;
-                            root.cpu = dt > 0 ? Math.max(0, Math.min(100, Math.round(100 * (dt - di) / dt))) : 0;
-                        }
-                        root.prevCpuTotal = total;
-                        root.prevCpuIdle = idle;
-                    } else if (p[0] === "MEM") {
-                        var mt = parseFloat(p[1]);
-                        var ma = parseFloat(p[2]);
-                        var st = parseFloat(p[3]);
-                        var sf = parseFloat(p[4]);
-                        root.memTotalGb = mt / 1048576;
-                        root.memUsedGb = (mt - ma) / 1048576;
-                        root.memPct = mt > 0 ? Math.round(100 * (mt - ma) / mt) : 0;
-                        root.swapUsedGb = (st - sf) / 1048576;
-                    } else if (p[0] === "NET") {
-                        var rx = parseFloat(p[1]);
-                        var tx = parseFloat(p[2]);
-                        var now = Date.now();
-                        var dt = (now - root.prevNetTime) / 1000;
-                        if (root.prevNetTime > 0 && dt > 0) {
-                            root.netDown = Math.max(0, (rx - root.prevRx) / dt / 1048576);
-                            root.netUp = Math.max(0, (tx - root.prevTx) / dt / 1048576);
-                        }
-                        root.prevRx = rx;
-                        root.prevTx = tx;
-                        root.prevNetTime = now;
-                    } else if (p[0] === "TMP") {
-                        root.cpuTemp = p[1] === "-" ? -1 : Math.round(parseFloat(p[1]) / 1000);
-                    }
+    FileView {
+        id: statFile
+        path: "/proc/stat"
+        onLoaded: {
+            var t = text();
+            var p = t.substring(0, t.indexOf("\n")).trim().split(/\s+/);
+            var total = 0;
+            for (var i = 1; i <= 8; i++)
+                total += parseFloat(p[i]) || 0;
+            var idle = (parseFloat(p[4]) || 0) + (parseFloat(p[5]) || 0);
+            if (root.prevCpuTotal > 0) {
+                var dt = total - root.prevCpuTotal;
+                var di = idle - root.prevCpuIdle;
+                root.cpu = dt > 0 ? Math.max(0, Math.min(100, Math.round(100 * (dt - di) / dt))) : 0;
+            }
+            root.prevCpuTotal = total;
+            root.prevCpuIdle = idle;
+        }
+    }
+
+    FileView {
+        id: memFile
+        path: "/proc/meminfo"
+        onLoaded: {
+            var kb = {};
+            var lines = text().split("\n");
+            for (var i = 0; i < lines.length; i++) {
+                var p = lines[i].split(/:\s+/);
+                kb[p[0]] = parseFloat(p[1]) || 0;
+            }
+            var mt = kb.MemTotal || 0;
+            var ma = kb.MemAvailable || 0;
+            root.memTotalGb = mt / 1048576;
+            root.memUsedGb = (mt - ma) / 1048576;
+            root.memPct = mt > 0 ? Math.round(100 * (mt - ma) / mt) : 0;
+            root.swapUsedGb = ((kb.SwapTotal || 0) - (kb.SwapFree || 0)) / 1048576;
+        }
+    }
+
+    FileView {
+        id: netFile
+        path: "/proc/net/dev"
+        onLoaded: {
+            var rx = 0;
+            var tx = 0;
+            var lines = text().split("\n");
+            for (var i = 2; i < lines.length; i++) {
+                var p = lines[i].replace(/:/g, " ").trim().split(/\s+/);
+                if (p.length > 9 && p[0] !== "lo") {
+                    rx += parseFloat(p[1]) || 0;
+                    tx += parseFloat(p[9]) || 0;
                 }
+            }
+            var now = Date.now();
+            var dt = (now - root.prevNetTime) / 1000;
+            if (root.prevNetTime > 0 && dt > 0) {
+                root.netDown = Math.max(0, (rx - root.prevRx) / dt / 1048576);
+                root.netUp = Math.max(0, (tx - root.prevTx) / dt / 1048576);
+            }
+            root.prevRx = rx;
+            root.prevTx = tx;
+            root.prevNetTime = now;
+        }
+    }
+
+    FileView {
+        id: tempFile
+        path: root.tempPath
+        printErrors: false
+        onLoaded: root.cpuTemp = Math.round(parseFloat(text()) / 1000)
+        onLoadFailed: root.cpuTemp = -1
+    }
+
+    /**
+     * One long-lived nvidia-smi samples every second while open instead of a fresh spawn per tick.
+     */
+    Process {
+        id: nvidiaProc
+        running: root.open && root.gpuVendor === "nvidia"
+        command: ["nvidia-smi", "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total",
+            "--format=csv,noheader,nounits", "-i", "0", "-lms", "1000"]
+        stdout: SplitParser {
+            onRead: (line) => {
+                var c = line.split(",");
+                if (c.length < 4)
+                    return;
+                root.gpu = Math.max(0, Math.min(100, Math.round(parseFloat(c[0]) || 0)));
+                root.gpuTemp = Math.round(parseFloat(c[1]) || 0);
+                root.vramUsedGb = (parseFloat(c[2]) || 0) / 1024;
+                root.vramTotalGb = (parseFloat(c[3]) || 0) / 1024;
             }
         }
     }
 
     Process {
         id: gpuProc
-        command: root.gpuVendor === "nvidia"
-            ? ["sh", "-c", "nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total --format=csv,noheader,nounits | head -1"]
-            : root.gpuVendor === "intel"
+        command: root.gpuVendor === "intel"
             ? ["sh", "-c",
                 "d=\"$1\"; t=$( { cat \"$d\"/hwmon/hwmon*/temp2_input || cat \"$d\"/hwmon/hwmon*/temp1_input; } 2>/dev/null | head -1); echo \"TEMP ${t:--1000}\"; "
                 + "for f in $(find /proc/[0-9]*/fd -lname '/dev/dri/*' 2>/dev/null); do cat \"${f%/fd/*}/fdinfo/${f##*/}\"; done 2>/dev/null | awk -v pdev=\"$2\" "
@@ -227,16 +251,6 @@ Singleton {
                 "_", root.gpuDev]
         stdout: StdioCollector {
             onStreamFinished: {
-                if (root.gpuVendor === "nvidia") {
-                    var c = this.text.trim().split(",");
-                    if (c.length >= 4) {
-                        root.gpu = Math.max(0, Math.min(100, Math.round(parseFloat(c[0]) || 0)));
-                        root.gpuTemp = Math.round(parseFloat(c[1]) || 0);
-                        root.vramUsedGb = (parseFloat(c[2]) || 0) / 1024;
-                        root.vramTotalGb = (parseFloat(c[3]) || 0) / 1024;
-                    }
-                    return;
-                }
                 var lines = this.text.split("\n");
                 for (var i = 0; i < lines.length; i++) {
                     var p = lines[i].trim().split(/\s+/);
@@ -277,12 +291,12 @@ Singleton {
         interval: 500
         running: root.open
         repeat: true
-        onTriggered: if (!fastProc.running) fastProc.running = true
+        onTriggered: root.readFast()
     }
 
     Timer {
         interval: 1000
-        running: root.open && root.hasGpu
+        running: root.open && root.hasGpu && root.gpuVendor !== "nvidia"
         repeat: true
         onTriggered: if (!gpuProc.running) gpuProc.running = true
     }

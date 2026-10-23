@@ -4,14 +4,7 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * 灯 Night-light controller over hyprsunset, the Hyprland blue-light filter.
- * Off and On push straight to the running daemon over its IPC, so the screen
- * warms or clears at once with no service flicker. Scheduled mode writes a
- * two-profile hyprsunset.conf and restarts the service, handing the clock to the
- * daemon so the tint flips at the set times on its own and survives a logout.
- * The mode, warmth and the two times all live in Flags, so the pill and a fresh
- * login restore the same state. The service is enabled once at install, which is
- * why nothing here ever starts it; it is already up under the graphical session.
+ * 灯 Night-light controller over hyprsunset that pushes Off and On live over IPC and hands scheduled mode to the daemon via hyprsunset.conf.
  */
 Singleton {
     id: root
@@ -68,9 +61,7 @@ Singleton {
     }
 
     /**
-     * Pushes the resolved state to the live daemon at once. A scrub tick that
-     * lands while the prior hyprctl is still running is folded into the trailing
-     * re-push in the process exit handler, so the final value always arrives.
+     * A scrub tick that lands while hyprctl is still running is folded into the re-push on exit, so the final value always arrives.
      */
     function pushLive() {
         if (ipc.running)
@@ -82,9 +73,7 @@ Singleton {
     property bool pendingRestart: false
 
     /**
-     * Persists conf for the next login and pushes live now. The conf write and
-     * the daemon re-arm are both debounced, so a scrub flurry collapses into one
-     * write and one restart.
+     * The conf write and daemon restart are debounced so a scrub flurry collapses into one write and one restart.
      */
     function commit(restart) {
         if (restart)
@@ -94,20 +83,16 @@ Singleton {
     }
 
     /**
-     * Re-arm is needed whenever scheduled sits on either side of the change, so
-     * the daemon never holds stale profiles that would override the new choice at
-     * the next clock boundary. Pure off↔on rides the IPC push alone, since its
-     * conf is a single all-day profile that only fires at 0:00.
+     * Every mode change re-arms the daemon, or its stale 0:00 profile flips the choice back at midnight.
      */
     function setMode(m) {
-        var was = Flags.nightLightMode;
         Flags.nightLightMode = m;
-        root.commit(was === "scheduled" || m === "scheduled");
+        root.commit(true);
     }
 
     function setTemp(t) {
         Flags.nightLightTemp = root.clampTemp(t);
-        root.commit(Flags.nightLightMode === "scheduled");
+        root.commit(Flags.nightLightMode !== "off");
     }
 
     function setOnMin(v) {

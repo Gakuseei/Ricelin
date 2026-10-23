@@ -1,9 +1,9 @@
 import QtQuick
+import QtQuick.Effects
 import "Singletons"
 
 /**
- * Toggle switch: tile bg off, terracotta fill on, cream knob slides on the
- * fast motion token. Shared by the wifi, bluetooth and hotspot controls.
+ * Toggle switch: tile bg off, terracotta fill on; the knob slides on and stretches while pressed.
  */
 Rectangle {
     id: toggle
@@ -12,25 +12,36 @@ Rectangle {
     property bool on: false
     signal toggled()
 
+    readonly property real knob: 10 * s
+    readonly property real knobW: area.pressed ? knob + 3 * s : knob
+    readonly property real inset: 3 * s
+
     width: 28 * s
     height: 16 * s
-    radius: 999
-    color: on ? Theme.verm : Theme.tileBg
+    radius: height / 2
+    color: on ? (area.containsMouse ? Theme.vermLit : Theme.verm) : (area.containsMouse ? Theme.cardTop : Theme.tileBg)
     border.width: on ? 0 : 1
-    border.color: Theme.border
+    border.color: area.containsMouse ? Theme.vermDim : Theme.border
+    Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
     Rectangle {
+        id: knobRect
         anchors.verticalCenter: parent.verticalCenter
-        width: 10 * toggle.s
-        height: 10 * toggle.s
-        radius: width / 2
+        width: toggle.knobW
+        height: toggle.knob
+        radius: height / 2
         color: Theme.cream
-        x: toggle.on ? toggle.width - width - 3 * toggle.s : 3 * toggle.s
-        Behavior on x { NumberAnimation { duration: Motion.fast } }
+        Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        x: toggle.on ? toggle.width - width - toggle.inset : toggle.inset
+        Behavior on x { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
+        Behavior on width { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
     }
 
     MouseArea {
+        id: area
         anchors.fill: parent
+        anchors.margins: -4 * toggle.s
+        hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: toggle.toggled()
     }

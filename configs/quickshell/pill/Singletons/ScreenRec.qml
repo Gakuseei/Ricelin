@@ -4,42 +4,7 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * Screen-recorder backend, shared by the 録 RECORD surface, the pill's hover
- * cluster record indicator and the record OSD. gpu-screen-recorder is the
- * encoder (cross-vendor nvenc/vaapi/vulkan/cpu); this singleton owns the capture
- * settings, builds the argv from them, starts and stops the recorder and keeps
- * a live `recording` flag polled from the real process so an externally started
- * or stopped recorder is reflected too.
- *
- * The capture target is chosen at leisure BEFORE any countdown, so the user
- * picks WHAT to record with no recording running yet. The surface calls one of
- * two resolvers, each emitting `targetReady(token)` on a valid pick or
- * `targetAborted()` on cancel: `prepareScreen(name)` resolves synchronously to a
- * monitor connector name (`-w DP-1`, falling back to `-w screen`);
- * `prepareWindow()` feeds the Hyprland client rectangles to `slurp` for one
- * combined Window / Region pick — clicking a window snaps to it, dragging draws
- * a freeform region — and resolves to that `WxH+X+Y` geometry. Only after
- * `targetReady` does the surface run its countdown and call `start(token)`, so
- * the order is pick → countdown → record. Audio uses gsr's device aliases (`default_output` for desktop,
- * `default_input` for the mic) so no device id is ever hardcoded; the surface's
- * faders set the captured level by driving the default sink/source through
- * Pipewire. Stop sends SIGINT, which makes gsr finalise and save the file, then
- * notify-send announces the saved file; a recorder that exits non-zero before it
- * ever started reports its stderr and resets. The on-pill record OSD shows the
- * started/stopped state, so the start is not also pushed as a notification.
- *
- * The output directory is the Flags-persisted `recordDir`, falling back to
- * `$HOME/Videos/Recordings`; `pickDir()` runs a native folder picker (kdialog
- * or zenity) and writes the chosen path back to Flags so the displayed path,
- * Open action and recent list all follow it. A `recording` poll reconciles an
- * externally started or stopped recorder so the state is never stale.
- *
- * The recent list carries a cover thumbnail per clip: `refreshRecent()` first
- * runs the thumb script (ffmpeg extracts a single frame into a cache dir under
- * `$XDG_CACHE_HOME/ricelin/rec-thumbs`, skipping clips already cached) and only
- * then re-reads the list, so each entry's `thumb` path is on disk by the time
- * the filmstrip binds to it. Entries are `{ path, name, mtime, sizeLabel,
- * thumb }`.
+ * Screen-recorder backend over gpu-screen-recorder for the 録 RECORD surface, hover cluster and OSD, which picks the target before any countdown starts.
  */
 Singleton {
     id: root
@@ -53,7 +18,7 @@ Singleton {
         return d && d.length > 0 ? d : defaultDir;
     }
 
-    onOutDirChanged: refreshRecent()
+    onOutDirChanged: if (recorderOpen) refreshRecent()
 
     property int fps: Flags.recordFps
     onFpsChanged: Flags.recordFps = fps
@@ -67,28 +32,24 @@ Singleton {
     onDesktopOnChanged: Flags.recordDesktop = desktopOn
 
     property bool recording: false
-    property bool recorderOpen: false
+    /**
+     * Counted, not a bool: two monitors' surfaces open and close in any order.
+     */
+    property int recorderOpenCount: 0
+    readonly property bool recorderOpen: recorderOpenCount > 0
     property string currentFile: ""
     property var recent: []
     readonly property int recentCount: recent.length
 
     /**
-     * Pre-roll countdown, owned here rather than in the surface so the quick-record
-     * keybind flow gets it for free with no surface open. `beginCountdown(token)`
-     * runs after any target resolves; at zero the recorder starts. `pendingTarget`
-     * holds the resolved capture token across the tick-down. `counting` gates the
-     * countdown UI in both the surface action bar and the standalone top toast.
+     * The pre-roll countdown lives here and not in the surface, so the quick-record keybind gets it with no surface open.
      */
     property int countdown: 0
     readonly property bool counting: countdown > 0
     property string pendingTarget: ""
 
     /**
-     * Standalone quick-capture state, read by both pills. `quickMon` is the focused
-     * monitor's connector name the keybind targeted, so only that pill renders the
-     * chooser and the countdown toast. `quickChoosing` shows the source chooser;
-     * `quickScreenChoosing` the monitor sub-choice. The recorder surface stays out
-     * of this entirely.
+     * Quick-capture state read by both pills, where `quickMon` picks the one pill that renders the chooser and countdown toast.
      */
     property bool quickChoosing: false
     property bool quickScreenChoosing: false
@@ -98,10 +59,7 @@ Singleton {
     signal targetAborted()
 
     /**
-     * Run the pre-roll for a freshly resolved capture token. Zero countdown starts
-     * gsr at once; otherwise the token is parked and the timer ticks it down to the
-     * start. Fired from this singleton's own `targetReady`, so every caller — the
-     * recorder surface or the quick-record keybind — counts down the same way.
+     * Fired from this singleton's own `targetReady` so the surface and the quick-record keybind count down the same way.
      */
     function beginCountdown(token) {
         pendingTarget = token;
@@ -117,10 +75,6 @@ Singleton {
         }
     }
 
-    /**
-     * Abort an in-flight pre-roll: stop the timer, clear the countdown and the
-     * parked token. Used by a cancelled pick and the surface's tap-to-cancel.
-     */
     function cancel() {
         cdTimer.stop();
         countdown = 0;
@@ -152,17 +106,22 @@ Singleton {
         }
     }
 
-    onRecordingChanged: if (recording) {
-        cancel();
-        quickChoosing = false;
-        quickScreenChoosing = false;
+    /**
+     * Start of the running recording in ms, so every view shows the same elapsed time.
+     */
+    property double startedAt: 0
+
+    onRecordingChanged: {
+        startedAt = recording ? Date.now() : 0;
+        if (recording) {
+            cancel();
+            quickChoosing = false;
+            quickScreenChoosing = false;
+        }
     }
 
     /**
-     * Connected monitors as `{ name, w, h, label }` for the Screen sub-chooser.
-     * gsr's `-w <name>` records a monitor by its connector name, so the chooser
-     * passes the chosen `name` straight into `prepareScreen()`. A single screen
-     * needs no chooser; the surface uses the lone entry directly.
+     * Connected monitors as `{ name, w, h, label }`, where `name` is the connector that gsr's `-w` takes directly.
      */
     readonly property var monitors: {
         var out = [];
@@ -175,10 +134,7 @@ Singleton {
     }
 
     /**
-     * gsr quality preset for the surface's quality value. The UI labels Ultra and
-     * Lossless above gsr's named presets, so Ultra maps to gsr `very_high` and
-     * Lossless to gsr `ultra` (its highest QP quality); gsr has no literal
-     * lossless preset.
+     * UI labels sit one step above gsr's presets, so Ultra maps to `very_high` and Lossless to `ultra` because gsr has no lossless preset.
      */
     readonly property var qualityPreset: ({
         medium: "medium",
@@ -201,17 +157,11 @@ Singleton {
     }
 
     /**
-     * True while a recording is live or a region/window picker is still up, so
-     * the surface and the resolvers never stack a second pick on a busy backend.
+     * busy also covers an open picker so a second pick never stacks on the backend.
      */
     readonly property bool picking: windowProc.running
     readonly property bool busy: recording || recProc.running || picking
 
-    /**
-     * Resolve a whole-screen target synchronously to a monitor connector name
-     * (or `screen` when none was passed) and announce it. No picker runs; the
-     * surface chose the screen at leisure already, so the countdown follows.
-     */
     function prepareScreen(name) {
         if (busy)
             return;
@@ -219,11 +169,7 @@ Singleton {
     }
 
     /**
-     * Feed the Hyprland client rectangles to `slurp` so the user picks at
-     * leisure with nothing recording yet: clicking a window snaps to that
-     * window, dragging draws a freeform region (one combined Window / Region
-     * pick, like a screenshot tool). Announces the chosen `WxH+X+Y` geometry, or
-     * aborts on cancel / non-zero exit (the user pressed Escape).
+     * Starts the combined Window / Region pick, which resolves to a `WxH+X+Y` geometry.
      */
     function prepareWindow() {
         if (busy)
@@ -232,15 +178,30 @@ Singleton {
     }
 
     /**
-     * Codec override from the `--info` probe: empty keeps gsr's native nvenc/vaapi pick,
-     * `h264_vulkan` covers drivers the system FFmpeg's nvenc refuses (nvidia 580xx on FFmpeg 9).
+     * Codec override from the `--info` probe, where `h264_vulkan` covers nvenc failures like nvidia 580xx on FFmpeg 9 and empty keeps gsr's own pick.
      */
     property var codecArgs: []
+
+    /**
+     * The probe runs once, the first time the recorder surface or the quick chooser opens.
+     */
+    property bool probed: false
+    function probe() {
+        if (probed)
+            return;
+        probed = true;
+        infoProc.running = true;
+    }
+
+    onRecorderOpenChanged: if (recorderOpen) {
+        probe();
+        refreshRecent();
+    }
+    onQuickChoosingChanged: if (quickChoosing) probe()
 
     Process {
         id: infoProc
         command: ["gpu-screen-recorder", "--info"]
-        running: true
         stdout: StdioCollector {
             onStreamFinished: {
                 var m = this.text.match(/section=video_codecs\n([\s\S]*?)(\nsection=|$)/);
@@ -264,9 +225,7 @@ Singleton {
     }
 
     /**
-     * Begin recording the already-resolved capture token (a monitor name,
-     * `screen` or a WxH+X+Y geometry). Builds the output path, ensures the
-     * directory exists, then launches gsr.
+     * Starts gsr on an already resolved token, which is a monitor name, `screen` or a `WxH+X+Y` geometry.
      */
     function start(captureToken) {
         if (recording || recProc.running)
@@ -286,11 +245,7 @@ Singleton {
     }
 
     /**
-     * Re-read the recent list, regenerating any missing cover thumbnails first.
-     * The thumb script extracts a frame per clip with ffmpeg into the cache dir
-     * (skipping clips whose thumb already exists and is newer) and only then does
-     * the list land, so filmstrip delegates never bind to a not-yet-written jpg;
-     * a thumb run already in flight is left to finish rather than stacked.
+     * Thumbnails are generated before the list lands so filmstrip delegates never bind to a not-yet-written jpg.
      */
     function refreshRecent() {
         if (thumbProc.running)
@@ -299,10 +254,7 @@ Singleton {
     }
 
     /**
-     * Hide every current clip from the recent list without touching the files:
-     * the newest clip's mtime is parked as a persisted watermark and the list is
-     * emptied, so refreshes filter out anything at or before it while later
-     * recordings still surface. The clips stay on disk in the save folder.
+     * Hides clips through a persisted mtime watermark without deleting any files.
      */
     function clearRecent() {
         var newest = 0;
@@ -323,10 +275,7 @@ Singleton {
     }
 
     /**
-     * Run a native folder picker (kdialog, else zenity) seeded at the current
-     * directory and write the chosen path to Flags so the surface, Open action
-     * and recent list all follow it. A cancelled pick prints nothing and leaves
-     * the directory unchanged.
+     * Runs kdialog, else zenity, and writes the chosen folder to Flags so the surface, Open action and recent list follow it.
      */
     function pickDir() {
         pickProc.command = ["sh", "-c",
@@ -351,11 +300,7 @@ Singleton {
     }
 
     /**
-     * Combined Window / Region picker: feeds each Hyprland client's current
-     * rectangle to `slurp`, so clicking a window snaps to its `WxH+X+Y` geometry
-     * while dragging draws a freeform region. The rectangle is captured
-     * statically, so a window moved or resized after the pick is not followed.
-     * Empty pick or non-zero exit (Escape) aborts.
+     * Window rectangles are captured once, so a window moved or resized after the pick is not followed.
      */
     Process {
         id: windowProc
@@ -387,12 +332,7 @@ Singleton {
     }
 
     /**
-     * The live recorder. Its own lifecycle drives `recording` so start/stop UI is
-     * immediate instead of waiting up to a poll cycle: onStarted marks running,
-     * onExited marks stopped. The poll stays an external reconciler. A clean stop
-     * (SIGINT) finalises and exits zero and the saved file is announced; a
-     * non-zero exit before it ever reached the recording state means gsr failed to
-     * start, so its stderr is surfaced and no save is announced.
+     * Its own lifecycle drives `recording` for instant UI, and a non-zero exit before recording means gsr failed to start, so stderr is shown instead of a save.
      */
     Process {
         id: recProc
@@ -476,9 +416,7 @@ Singleton {
     }
 
     /**
-     * Poll the real recorder process so the flag tracks gsr started or stopped
-     * from anywhere, not just this surface. On a save the recent list re-reads so
-     * the new file appears.
+     * Polls the real gsr process so a recorder started or stopped from anywhere is reflected.
      */
     Process {
         id: pollProc
@@ -486,7 +424,10 @@ Singleton {
         stdout: StdioCollector {
             onStreamFinished: {
                 var running = this.text.trim().length > 0;
-                if (running !== root.recording) {
+                /**
+                 * Our own recProc owns the flag; the poll only tracks a gsr started elsewhere.
+                 */
+                if (!recProc.running && running !== root.recording) {
                     root.recording = running;
                     if (!running)
                         Qt.callLater(root.refreshRecent);
@@ -501,6 +442,4 @@ Singleton {
         repeat: true
         onTriggered: if (!pollProc.running) pollProc.running = true
     }
-
-    Component.onCompleted: refreshRecent()
 }

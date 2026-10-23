@@ -7,25 +7,15 @@ import Quickshell.Widgets
 import "Singletons"
 
 /**
- * Power surface: a row of hand-drawn session glyphs split by a hairline into a
- * safe group (lock, logout, sleep; fire on tap) and a destructive group
- * (restart, shutdown; press-and-hold). Holding a destructive tile ramps a
- * bottom-up heat fill, releasing early drains it, so a stray click can never
- * reboot the machine. Only the hovered, focused or held action shows its label.
- *
- * Arrow keys move a keyboard focus across the tiles; the focused tile lights and
- * docks the soul bead exactly like a hovered one. Enter fires a safe tile at
- * once; on a destructive tile a held Enter drives the same heat fill as a
- * pointer hold (release before it completes drains), so the keyboard path can
- * never reboot on a single keystroke either.
+ * Power surface: click actions (lock, sleep) left of the hairline, hold actions (log out, restart, shut down) right of it.
  */
 PillSurface {
     id: root
 
-    mTop: 15
-    mLeft: 17
-    mRight: 17
-    mBottom: 14
+    mTop: Theme.inset.top
+    mLeft: Theme.inset.side
+    mRight: Theme.inset.side
+    mBottom: Theme.inset.bottom
 
     property string hovered: ""
     property int focusIndex: -1
@@ -48,14 +38,15 @@ PillSurface {
     amePoint: Qt.point(heatX, heatY)
 
     readonly property var actions: [
-        { key: "lock",     glyph: "lock",     label: "Lock",     confirm: false, dispatch: "",             argv: [Quickshell.env("HOME") + "/.config/hypr/scripts/lock.sh"] },
-        { key: "logout",   glyph: "logout",   label: "Logout",   confirm: true,  dispatch: "hl.dsp.exit()", argv: [] },
-        { key: "suspend",  glyph: "suspend",  label: "Sleep",    confirm: false, dispatch: "",             argv: ["systemctl", "suspend"] },
-        { key: "reboot",   glyph: "reboot",   label: "Restart",  confirm: true,  dispatch: "",             argv: ["systemctl", "reboot"] },
-        { key: "shutdown", glyph: "shutdown", label: "Shutdown", confirm: true,  dispatch: "",             argv: ["systemctl", "poweroff"] }
+        { key: "lock",     glyph: "lock",     label: "Lock",      confirm: false, dispatch: "",             argv: [Quickshell.env("HOME") + "/.config/hypr/scripts/lock.sh"] },
+        { key: "suspend",  glyph: "suspend",  label: "Sleep",     confirm: false, dispatch: "",             argv: ["systemctl", "suspend"] },
+        { key: "logout",   glyph: "logout",   label: "log out",   confirm: true,  dispatch: "hl.dsp.exit()", argv: [] },
+        { key: "reboot",   glyph: "reboot",   label: "restart",   confirm: true,  dispatch: "",             argv: ["systemctl", "reboot"] },
+        { key: "shutdown", glyph: "shutdown", label: "shut down", confirm: true,  dispatch: "",             argv: ["systemctl", "poweroff"] }
     ]
 
     readonly property int splitAfter: 2
+    readonly property real tileSize: 50 * s
 
     function run(a) {
         if (a.dispatch && a.dispatch.length)
@@ -65,10 +56,25 @@ PillSurface {
         root.requestClose();
     }
 
-    /**
-     * Slide keyboard focus across the tiles; `dir` is +1 (right) or -1 (left).
-     * Releases any held heat so focus never drags a half-filled tile with it.
-     */
+    /** Arrows move focus across the tiles; Enter fires a click tile and drives the heat fill on a hold tile. */
+    function handleKey(e) {
+        if (e.key === Qt.Key_Left || e.key === Qt.Key_Right)
+            move(e.key === Qt.Key_Left ? -1 : 1);
+        else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) {
+            if (!e.isAutoRepeat)
+                pressFocused();
+        } else
+            return false;
+        return true;
+    }
+
+    function handleRelease(e) {
+        if (e.isAutoRepeat || (e.key !== Qt.Key_Return && e.key !== Qt.Key_Enter && e.key !== Qt.Key_Space))
+            return false;
+        releaseFocused();
+        return true;
+    }
+
     function move(dir) {
         keyHeld = false;
         if (focusIndex < 0)
@@ -77,11 +83,6 @@ PillSurface {
             focusIndex = Math.max(0, Math.min(actions.length - 1, focusIndex + dir));
     }
 
-    /**
-     * Enter pressed on the focused tile. A safe tile fires at once; a destructive
-     * tile latches keyHeld so its delegate ramps the heat fill, mirroring a
-     * pointer hold. Returns true when a tile consumed the key.
-     */
     function pressFocused() {
         if (focusIndex < 0 || focusIndex >= actions.length)
             return false;
@@ -93,10 +94,6 @@ PillSurface {
         return true;
     }
 
-    /**
-     * Enter released: drop the destructive hold so an early release drains the
-     * heat instead of confirming.
-     */
     function releaseFocused() {
         keyHeld = false;
     }
@@ -110,7 +107,7 @@ PillSurface {
         holdProgress = 0;
     }
 
-    SettingsHeader {
+    SurfaceHeader {
         id: header
         anchors.top: parent.top
         anchors.left: parent.left
@@ -118,15 +115,14 @@ PillSurface {
         s: root.s
         glyph: "電"
         title: "POWER"
-        showIcon: false
     }
 
     Row {
         id: tiles
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: header.bottom
-        anchors.topMargin: 14 * root.s
-        spacing: 12 * root.s
+        anchors.topMargin: Theme.sp.m * root.s
+        spacing: Theme.sp.m * root.s
 
         Repeater {
             model: root.actions
@@ -135,7 +131,7 @@ PillSurface {
                 id: cell
                 required property int index
                 required property var modelData
-                spacing: 12 * root.s
+                spacing: Theme.sp.m * root.s
 
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
@@ -147,8 +143,8 @@ PillSurface {
 
                 Item {
                     id: tile
-                    width: 50 * root.s
-                    height: 50 * root.s
+                    width: root.tileSize
+                    height: root.tileSize
 
                     readonly property real hold: heat.hold
                     readonly property bool kbFocus: root.focusIndex === cell.index
@@ -156,6 +152,9 @@ PillSurface {
                     readonly property bool holding: heat.holding
                     readonly property bool lit: isHover || tile.holding
                     readonly property color accent: cell.modelData.confirm ? Theme.vermLit : Theme.cream
+
+                    scale: tileArea.pressed && !Motion.calm ? 0.97 : 1
+                    Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
                     onKbFocusChanged: {
                         if (!tile.kbFocus)
@@ -167,10 +166,7 @@ PillSurface {
                         root.hoverY = c.y - 9 * root.s;
                     }
 
-                    /**
-                     * A held Enter on the focused destructive tile drives the same
-                     * heat fill as a pointer hold; dropping the key drains it.
-                     */
+                    /** A held Enter drives the same heat fill as a pointer hold; dropping the key drains it. */
                     readonly property bool keyDriving: tile.kbFocus && root.keyHeld && cell.modelData.confirm
                     onKeyDrivingChanged: {
                         if (tile.keyDriving)
@@ -194,24 +190,18 @@ PillSurface {
 
                     Rectangle {
                         anchors.fill: parent
-                        radius: Motion.rTile * root.s
-                        color: tile.isHover ? Theme.frameBg : "transparent"
+                        radius: Theme.r.l * root.s
+                        color: tileArea.pressed ? Theme.pressBg : (tile.isHover ? Theme.frameBg : "transparent")
                         border.width: 1
                         border.color: tile.isHover ? Theme.frameBorder : Theme.border
-                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                        Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
                     }
 
-                    /**
-                     * Heat fill lives in a ClippingRectangle that carries the
-                     * tile's corner radius. A plain Rectangle with its own radius
-                     * gets it clamped to height/2 while the fill is still flat,
-                     * so corners poked outside the tile outline on the first beat
-                     * of every hold.
-                     */
+                    /** A plain Rectangle clamps its radius while the fill is flat, so the clip carries the corners. */
                     ClippingRectangle {
                         anchors.fill: parent
                         anchors.margins: 1
-                        radius: (Motion.rTile - 1) * root.s
+                        radius: (Theme.r.l - 1) * root.s
                         color: "transparent"
 
                         Rectangle {
@@ -221,8 +211,8 @@ PillSurface {
                             height: tile.height * tile.hold
                             visible: tile.holding
                             gradient: Gradient {
-                                GradientStop { position: 0.0; color: Qt.alpha(Theme.verm, 0.7) }
-                                GradientStop { position: 1.0; color: Qt.alpha(Theme.vermLit, 0.15) }
+                                GradientStop { position: 0.0; color: Qt.alpha(Theme.verm, 0.7)}
+                                GradientStop { position: 1.0; color: Qt.alpha(Theme.vermLit, 0.15)}
                             }
                         }
                     }
@@ -230,7 +220,7 @@ PillSurface {
                     GlyphIcon {
                         anchors.centerIn: parent
                         width: 22 * root.s
-                        height: 22 * root.s
+                        height: width
                         name: cell.modelData.glyph
                         color: tile.holding ? Theme.flameCore : (tile.lit ? tile.accent : Theme.iconDim)
                         stroke: 1.9
@@ -242,6 +232,7 @@ PillSurface {
                     }
 
                     MouseArea {
+                        id: tileArea
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
@@ -274,7 +265,7 @@ PillSurface {
         id: label
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: tiles.bottom
-        anchors.topMargin: 12 * root.s
+        anchors.topMargin: Theme.sp.m * root.s
         readonly property string focusKey: root.holdingIndex >= 0
             ? root.actions[root.holdingIndex].key : root.hovered
         readonly property var act: {
@@ -283,13 +274,12 @@ PillSurface {
                     return root.actions[i];
             return null;
         }
-        text: act ? (act.confirm ? act.label + " — hold" : act.label) : ""
-        color: act && act.confirm ? Theme.vermLit : Theme.subtle
+        text: !act ? "Hold to log out, restart or shut down"
+            : act.confirm ? "Hold to " + act.label : act.label
+        color: !act ? Theme.textFaint : act.confirm ? Theme.vermLit : Theme.cream
         font.family: Theme.font
-        font.pixelSize: 11 * root.s
+        font.pixelSize: Theme.fs.meta * root.s
         font.weight: Font.Medium
-        font.letterSpacing: 0.4 * root.s
-        opacity: text.length > 0 ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+        Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
     }
 }

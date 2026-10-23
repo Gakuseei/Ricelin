@@ -2,13 +2,7 @@ import QtQuick
 import "Singletons"
 
 /**
- * Shared morph-surface base for the pill's standard surfaces. Each surface fills
- * the pill body inset by its own margins (scaled by `s`), fades in with the morph
- * as it nears full openness, and is only enabled while open. The host sets `open`,
- * `s` and `morphCloseness`; the surface sets its own `mTop`/`mLeft`/`mRight`/
- * `mBottom` insets. `active` mirrors `open` for the older `onActiveChanged` hooks.
- * `requestClose()` asks the pill to dismiss. Osd and Toast use a different
- * lifecycle and do not derive from this base.
+ * Base of every morphing surface: the pill sets s, open, morphCloseness and screenName, and routes keys, Esc and focus through the hooks below.
  */
 Item {
     id: surface
@@ -16,6 +10,12 @@ Item {
     property real s: 1
     property bool open: false
     property real morphCloseness: 1
+    property string screenName: ""
+
+    /**
+     * True while a field inside owns the keyboard; the shell takes focus back when it drops.
+     */
+    property bool holdsFocus: false
 
     property real mTop: 0
     property real mLeft: 0
@@ -23,12 +23,17 @@ Item {
     property real mBottom: 0
 
     signal requestClose()
+    signal requestSurface(string name)
 
     /**
-     * Ame anchor. Each surface declares the flame's form and dock point (in
-     * surface-local coords) for its open state; the host maps the point into
-     * pill space and feeds the active surface's pair to Ame. Left non-readonly
-     * so a deriving surface can re-bind. Base default is off at the centre.
+     * Esc and the header step back through these: return true when a nested form closed.
+     */
+    function back() { return false; }
+    function handleKey(e) { return false; }
+    function handleRelease(e) { return false; }
+
+    /**
+     * Where Ame docks while this surface is open, in surface coordinates; off at the centre by default.
      */
     property string ameForm: "off"
     property point amePoint: Qt.point(width / 2, height / 2)
@@ -36,18 +41,34 @@ Item {
     readonly property bool active: open
 
     /**
-     * Latched true once the open morph has first settled. The morphCloseness gate
-     * is only there for the rest-to-surface open fade. A relayout inside an open
-     * surface (a collapsible dropdown snapping its height into implicitHeight) also
-     * jumps the pill's target geometry, so closeness craters and the whole surface
-     * dims for one frame until the body height Behavior catches up. That one frame
-     * is the flicker on the Display, Recorder and Appearance collapsibles. After
-     * the surface has settled, hold full opacity and let the body morph alone do
-     * the reveal. Reset on close so the next open still fades in.
+     * Holds full opacity once the open morph has settled, so a relayout inside never dims the surface.
      */
     property bool settled: false
-    onOpenChanged: if (!open) settled = false
     onMorphClosenessChanged: if (open && morphCloseness > 0.92) settled = true
+
+    readonly property real enter: settled ? 1 : Math.min(gate, Motion.reveal(morphCloseness))
+    readonly property real lift: open ? enter : 1
+    property real exitFade: 0
+    property real lastShown: 0
+
+    /**
+     * Set by the pill on every switch: slide is the side content moves toward, gate holds a swap-in until the old one is mostly gone.
+     */
+    property real slide: 0
+    property real gate: 1
+    function arrive(dir, swap) {
+        slide = dir;
+        gateIn.stop();
+        gate = swap ? 0 : 1;
+        if (swap)
+            gateIn.start();
+    }
+
+    SequentialAnimation {
+        id: gateIn
+        PauseAnimation { duration: 90 }
+        NumberAnimation { target: surface; property: "gate"; to: 1; duration: 150; easing.type: Easing.OutCubic }
+    }
 
     anchors.fill: parent
     anchors.topMargin: mTop * s
@@ -56,10 +77,44 @@ Item {
     anchors.bottomMargin: mBottom * s
 
     enabled: open
-    opacity: open ? (settled ? 1 : Math.pow(morphCloseness, 1.3)) : 0
-    visible: opacity > 0.01
 
-    Behavior on opacity {
-        NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+    /**
+     * Visible for as long as it is open: sizes inside read visibility, and tying it to the fade loops the morph.
+     */
+    opacity: open ? enter : exitFade
+    visible: open || opacity > 0.01
+
+    onOpacityChanged: if (open) lastShown = opacity
+    onOpenChanged: {
+        if (open) {
+            fadeOut.stop();
+        } else {
+            settled = false;
+            exitFade = lastShown;
+            fadeOut.restart();
+        }
+    }
+
+    transform: [
+        Scale {
+            readonly property bool closing: !surface.open && surface.slide === 0 && !Motion.calm
+            origin.x: surface.width / 2
+            origin.y: closing ? 0 : surface.height / 2
+            xScale: closing ? 0.95 + 0.05 * surface.exitFade / Math.max(0.01, surface.lastShown) : 0.97 + 0.03 * surface.lift
+            yScale: xScale
+        },
+        Translate {
+            x: Motion.calm ? 0 : 12 * surface.s * surface.slide * (surface.open ? 1 - surface.lift : 1 - surface.exitFade / Math.max(0.01, surface.lastShown))
+            y: Motion.calm ? 0 : -6 * surface.s * (1 - surface.lift)
+        }
+    ]
+
+    NumberAnimation {
+        id: fadeOut
+        target: surface
+        property: "exitFade"
+        to: 0
+        duration: 150
+        easing.type: Easing.OutCubic
     }
 }

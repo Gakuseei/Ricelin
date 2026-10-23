@@ -5,18 +5,7 @@ import Quickshell.Io
 import "../lib/binds.js" as Binds
 
 /**
- * 場 SPACES store: the single read/writer of ~/.config/hypr/modules/spaces.lua,
- * the user-defined special workspaces the Workspaces settings page creates. Each
- * entry is { id, name, desc, key, glyph, apps[] }: id is the special-workspace
- * name (a slug of the display name), key a single Super-prefixed letter, glyph an
- * optional GlyphIcon name shown beside the row, apps the window classes that
- * auto-route in. `editing` names the space the SpaceApps surface is currently
- * routing apps into.
- *
- * Every change regenerates the whole lua file through an atomic writer; the write
- * fires a debounced `hyprctl reload` so the new spaces, binds and routing take
- * effect, the same path Stash and the keybinds editor use. The reload only runs
- * when the user edits in-app, never on plain load.
+ * Only reader and writer of ~/.config/hypr/modules/spaces.lua, the user-defined special workspaces, reloading Hyprland after in-app edits but never on plain load.
  */
 Singleton {
     id: root
@@ -78,9 +67,7 @@ Singleton {
     }
 
     /**
-     * Walk the `return { ... }` table brace by brace, slicing every top-level
-     * entry block (depth 2) and parsing it. The nested apps `{ ... }` sits at
-     * depth 3 so it never opens a spurious entry.
+     * Entry blocks sit at depth 2 and the nested apps table at depth 3, so apps never opens a spurious entry.
      */
     function parse(text) {
         var ri = text.indexOf("return");
@@ -157,13 +144,7 @@ Singleton {
     }
 
     /**
-     * Rename a space and set its glyph in place; id, key and apps stay, so the
-     * binds and routing spaces-apply regenerates on reload are untouched and the
-     * pill's active-space label picks the new name up on the next list refresh.
-     * A built-in (stash/private/minimized) has no entry of its own: the first
-     * edit creates one holding display data only. Its empty key and apps keep
-     * spaces-apply inert for it, so the built-in's own config stays the only
-     * source of binds and rules.
+     * Keeps id, key and apps so binds and routing stay untouched, and a built-in gets a display-only entry whose empty key and apps leave spaces-apply inert.
      */
     function updateSpace(id, name, glyph) {
         name = root.clean(name);
@@ -184,11 +165,7 @@ Singleton {
     }
 
     /**
-     * Rebind a custom space's trigger letter; spaces-apply regenerates both the
-     * toggle and the send/retrieve bind from it on the reload commit fires.
-     * Built-ins are refused: their binds live in binds.lua (the Keybinds surface
-     * owns those), and writing a key onto a display-only override would add a
-     * second toggle instead of moving the first.
+     * Built-ins are refused since their binds live in binds.lua, and a key on a display-only override would add a second toggle.
      */
     function updateKey(id, key) {
         key = root.clean(key).toUpperCase();
@@ -236,9 +213,7 @@ Singleton {
     }
 
     /**
-     * True when SUPER+key would clash: another space already holds it, it is one
-     * of the built-in special keys (S/P/M), or binds.lua already binds it.
-     * `exceptId` skips one entry, so re-capturing a row's own key is no clash.
+     * True when SUPER+key is held by another space, a built-in special key (S/P/M) or binds.lua, skipping `exceptId` so a row's own key is no clash.
      */
     function keyTaken(key, exceptId) {
         if (!key || key.length === 0)
@@ -276,16 +251,11 @@ Singleton {
         atomicWrites: true
         printErrors: false
         onSaved: {
-            reloadProc.running = true;
+            HyprReload.request();
             spacesFile.reload();
             root.refresh();
         }
         onSaveFailed: (err) => console.log("spaces: write failed: " + err)
-    }
-
-    Process {
-        id: reloadProc
-        command: ["setsid", "-f", "sh", "-c", "sleep 0.4; hyprctl reload"]
     }
 
     Component.onCompleted: root.refresh()

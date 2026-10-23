@@ -3,14 +3,7 @@ import QtQuick.Shapes
 import "Singletons"
 
 /**
- * Hand-drawn wifi glyph: three concentric arcs over a base dot, the lit-arc
- * count standing in for signal strength (>0.66 lights all three, >0.33 two,
- * >0 one). Lit strokes use iconDim, unlit a dim icon tint, so a radio-on but
- * unconnected glyph reads as a dim fan. When the radio is off the glyph fades
- * further and a diagonal slash crosses it. Paths live in a 24x24 space; the
- * arcs-and-dot bounding box is centred within the item on both axes, and the
- * off-state slash rides the same transform so it stays registered with them.
- * Every stroke weight scales by `s`.
+ * Hand-drawn wifi glyph whose lit arcs show signal strength (>0.66 three, >0.33 two, >0 one), with a slash when the radio is off.
  */
 Item {
     id: root
@@ -20,9 +13,7 @@ Item {
     property bool on: true
 
     /**
-     * Stroke weight in 24-space units, 0 keeps the legacy screen-constant
-     * weight (2*s px). Pass 1.7 where the glyph sits next to GlyphIcon family
-     * members (their stroke is 1.7 in 24-space), like the hover-pill glance.
+     * Stroke weight in 24-space units, where 0 keeps the legacy 2*s px and 1.7 matches neighboring GlyphIcon strokes.
      */
     property real stroke: 0
 

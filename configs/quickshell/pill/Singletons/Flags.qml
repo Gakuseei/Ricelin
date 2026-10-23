@@ -4,11 +4,7 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * Shared session flags persisted to a small JSON file and watched for external
- * change, so every Ricelin daemon (pill, lock) reads and writes the same
- * Do-Not-Disturb and Keep-Awake state live without a second notification server
- * or idle inhibitor. Toggling in one surface updates the others on the next file
- * event, and the state survives a daemon restart.
+ * Session flags shared through a watched JSON file, so the pill and lock see the same Do-Not-Disturb and Keep-Awake state live and across restarts.
  */
 Singleton {
     id: root
