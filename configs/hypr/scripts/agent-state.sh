@@ -1,6 +1,8 @@
 #!/bin/sh
 # Claude Code hook: notes whether a session waits for Erik or is done, for the pill. Usage: agent-state.sh wait|done|clear|reset|end
-dir="${XDG_RUNTIME_DIR:-/tmp}/ricelin-agents"
+[ -n "$XDG_RUNTIME_DIR" ] || exit 0
+umask 077
+dir="$XDG_RUNTIME_DIR/ricelin-agents"
 in=$(cat)
 sid=$(printf '%s' "$in" | sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' | head -n 1)
 [ -n "$sid" ] || exit 0
