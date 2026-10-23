@@ -1,8 +1,5 @@
 /**
- * Parses one availableModes entry like "2560x1440@279.96Hz" into its parts. The
- * Hz is rounded to a whole number for UI grouping and the apply mode string,
- * while `raw` keeps the original entry for reference. Returns null when the
- * entry does not match the WxH@HZHz shape.
+ * Rounds the Hz to a whole number for grouping and the apply mode string while `raw` keeps the original entry, or returns null when it is not WxH@HZHz.
  */
 function parseMode(raw) {
     var m = raw.match(/^(\d+)x(\d+)@([\d.]+)Hz$/);
@@ -17,11 +14,7 @@ function parseMode(raw) {
 }
 
 /**
- * Parses the `hyprctl monitors -j` text into the slim shape the Display surface
- * needs: per monitor its name, current width/height/refresh/scale/x/y and the
- * available modes as `{ w, h, hz, raw }`. Refresh is rounded the same way as a
- * mode's Hz so the current mode can be matched against the list. Modes that do
- * not parse are dropped. Returns [] on bad input.
+ * Rounds refresh like a mode's Hz so the current mode matches an entry in its list, dropping modes that do not parse.
  */
 function parse(jsonText) {
     var data;
@@ -51,15 +44,7 @@ function parse(jsonText) {
 }
 
 /**
- * Rewrites only the `hl.monitor({...})` block whose `output = "<output>"`,
- * replacing the `mode`, `position` and `scale` field values and leaving every
- * other character of the file byte-identical (other monitors, workspace_rule
- * loops, whitespace, field order). The block is located by its `output` field,
- * then the closest enclosing `hl.monitor({` ... `})` bounds are taken and each
- * of the three fields is substituted in place within those bounds. Returns
- * `{ text, ok, error }`; ok is false (text unchanged) when the block or any of
- * the three fields cannot be found. An output with no block yet (new monitor,
- * port swap renaming DP-1 to DP-3) gets a fresh block appended instead.
+ * Rewrites only mode, position and scale in the `hl.monitor` block for `output`, keeping the rest byte-identical, and appends a fresh block for an output with none yet (new monitor, DP-1 renamed to DP-3).
  */
 function setMonitor(luaText, output, mode, position, scale) {
     var outRe = new RegExp('output\\s*=\\s*"' + escapeRe(output) + '"');
@@ -93,11 +78,7 @@ function setMonitor(luaText, output, mode, position, scale) {
 }
 
 /**
- * Replaces the value of a single `name = <value>` field within a hl.monitor
- * block, preserving the field name, the `=` spacing and any trailing comma. The
- * value run is a complete double-quoted string when the value is quoted (so a
- * comma inside the quotes is not mistaken for the field end), otherwise the run
- * up to the next comma or the block's closing brace. Returns `{ text, ok }`.
+ * Takes a quoted value whole so a comma inside the quotes is not read as the field end.
  */
 function replaceField(block, name, value) {
     var re = new RegExp("(" + name + "\\s*=\\s*)(\"[^\"]*\"|[^,}\\n]*)");
@@ -111,9 +92,7 @@ function escapeRe(s) {
 }
 
 /**
- * Appends a new `hl.monitor({...})` block for an output the file does not know
- * yet, matching the field layout the installer ships. Returns `{ text, ok,
- * error }` like setMonitor.
+ * Appends a new `hl.monitor({...})` block for an unknown output, matching the field layout the installer ships.
  */
 function appendMonitor(luaText, output, mode, position, scale) {
     var text = luaText;
@@ -125,12 +104,7 @@ function appendMonitor(luaText, output, mode, position, scale) {
 }
 
 /**
- * Points the two workspace_rule loops at two real outputs: the loop covering
- * workspace 1 gets `mainName`, the other gets `otherName`. Whatever names the
- * loops carried before (including stale ones for unplugged monitors) are
- * replaced. Returns `{ text, ok, error, mainRange, otherRange }`; the ranges
- * carry each loop's from/to so the caller can move live workspaces to match.
- * ok is false when the file does not hold exactly two loops.
+ * Points the loop covering workspace 1 at `mainName` and the other at `otherName`, returning each loop's range so the caller can move live workspaces, and ok false unless exactly two loops exist.
  */
 function setWorkspaceLoops(luaText, mainName, otherName) {
     var re = /(for\s+i\s*=\s*(\d+)\s*,\s*(\d+)\s+do\s*\n\s*hl\.workspace_rule\(\{[^}]*monitor\s*=\s*")([^"]+)(")/g;

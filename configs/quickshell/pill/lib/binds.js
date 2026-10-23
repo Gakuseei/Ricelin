@@ -11,18 +11,28 @@ function optsHasMouse(opts) {
     return /\bmouse\s*=\s*true\b/.test(opts);
 }
 
+/**
+ * Index of the quote closing the string that opens at i, skipping backslash escapes; -1 when unterminated.
+ */
+function strEnd(s, i) {
+    for (var j = i + 1; j < s.length; j++) {
+        if (s[j] === "\\") j++;
+        else if (s[j] === '"') return j;
+    }
+    return -1;
+}
+
 function splitArgs(inner) {
     var args = [];
     var depth = 0;
-    var inStr = false;
     var start = 0;
     for (var i = 0; i < inner.length; i++) {
         var c = inner[i];
-        if (inStr) {
-            if (c === '"') inStr = false;
+        if (c === '"') {
+            i = strEnd(inner, i);
+            if (i < 0) break;
             continue;
         }
-        if (c === '"') { inStr = true; continue; }
         if (c === '(' || c === '{' || c === '[') depth++;
         else if (c === ')' || c === '}' || c === ']') depth--;
         else if (c === ',' && depth === 0) {
@@ -77,10 +87,7 @@ function deriveLabel(action) {
 }
 
 /**
- * Reads a trailing lua line-comment that sits AFTER the bind statement's closing
- * paren, i.e. `hl.bind(...)  -- my name`. The scan starts past `closeIndex` (the
- * outer close paren) so a `--` inside a quoted string arg can never be mistaken
- * for the name. Returns the trimmed comment text, or "" when there is none.
+ * Scans only past `closeIndex` so a `--` inside a quoted string arg is never taken for the trailing name comment.
  */
 function nameComment(raw, closeIndex) {
     var rest = raw.slice(closeIndex + 1);
@@ -93,9 +100,7 @@ function isExecAction(action) {
 }
 
 /**
- * Pulls the inner shell command out of an `exec_cmd("...")` dispatch. Returns ""
- * for an env-prefixed or non-exec dispatch, where the command is not a single
- * editable literal.
+ * Returns "" for an env-prefixed or non-exec dispatch, since that is not a single editable command literal.
  */
 function execCmd(action) {
     var m = action.match(/exec_cmd\(\s*"((?:[^"\\]|\\.)*)"\s*\)/);
@@ -108,16 +113,15 @@ function parseLine(raw, lineIndex, modValue) {
     if (open === -1) return null;
 
     var depth = 0;
-    var inStr = false;
     var startInner = open + "hl.bind(".length;
     var endInner = -1;
     for (var i = startInner - 1; i < raw.length; i++) {
         var c = raw[i];
-        if (inStr) {
-            if (c === '"') inStr = false;
+        if (c === '"') {
+            i = strEnd(raw, i);
+            if (i < 0) break;
             continue;
         }
-        if (c === '"') { inStr = true; continue; }
         if (c === '(') depth++;
         else if (c === ')') {
             depth--;
@@ -176,14 +180,13 @@ function rebind(luaText, lineIndex, newCombo) {
     var startInner = open + "hl.bind(".length;
     var firstEnd = -1;
     var depth = 0;
-    var inStr = false;
     for (var i = startInner; i < raw.length; i++) {
         var c = raw[i];
-        if (inStr) {
-            if (c === '"') inStr = false;
+        if (c === '"') {
+            i = strEnd(raw, i);
+            if (i < 0) break;
             continue;
         }
-        if (c === '"') { inStr = true; continue; }
         if (c === '(' || c === '{' || c === '[') depth++;
         else if (c === ')' || c === '}' || c === ']') depth--;
         else if (c === ',' && depth === 0) { firstEnd = i; break; }
@@ -221,9 +224,7 @@ function inUse(luaText, newCombo, exceptLineIndex) {
 }
 
 /**
- * Builds the lua first-argument source for a combo: `mod .. " + X"` when the
- * combo starts with the configured modifier followed by " + ", else a literal
- * `"COMBO"`. Mirrors the firstArg construction in rebind.
+ * Builds the lua combo argument like rebind's firstArg: `mod .. " + X"` when the combo starts with the modifier, else a quoted literal.
  */
 function comboExpr(combo, modValue) {
     var modPrefix = modValue + " + ";
@@ -237,21 +238,17 @@ function escapeCmd(cmd) {
 }
 
 /**
- * Locates the outer closing paren of the `hl.bind(...)` call on `raw`, starting
- * the scan at the opening paren index. Returns the index of the close paren, or
- * -1 when the statement is malformed. Quoted strings are skipped so a paren
- * inside an arg never closes the call early.
+ * Skips quoted strings so a paren inside an arg never closes the `hl.bind(` call early, returning -1 when malformed.
  */
 function closeParenIndex(raw, open) {
     var depth = 0;
-    var inStr = false;
     for (var i = open + "hl.bind(".length - 1; i < raw.length; i++) {
         var c = raw[i];
-        if (inStr) {
-            if (c === '"') inStr = false;
+        if (c === '"') {
+            i = strEnd(raw, i);
+            if (i < 0) break;
             continue;
         }
-        if (c === '"') { inStr = true; continue; }
         if (c === '(') depth++;
         else if (c === ')') {
             depth--;
@@ -262,22 +259,18 @@ function closeParenIndex(raw, open) {
 }
 
 /**
- * Walks the call inner from `from` to the index just past the `nth` top-level
- * comma (0-based: nth=0 stops past the first comma). Returns the absolute index
- * into `raw` where the argument after that comma begins, or -1 when there are
- * fewer top-level commas. Depth and quoting match the rebind/splitArgs scan.
+ * Returns the absolute index where the argument after the nth top-level comma (0-based) begins, or -1, using the same depth and quote scan as rebind.
  */
 function argStart(raw, innerStart, nth) {
     var depth = 0;
-    var inStr = false;
     var seen = -1;
     for (var i = innerStart; i < raw.length; i++) {
         var c = raw[i];
-        if (inStr) {
-            if (c === '"') inStr = false;
+        if (c === '"') {
+            i = strEnd(raw, i);
+            if (i < 0) break;
             continue;
         }
-        if (c === '"') { inStr = true; continue; }
         if (c === '(' || c === '{' || c === '[') depth++;
         else if (c === ')' || c === '}' || c === ']') {
             if (depth === 0) return -1;
@@ -291,9 +284,7 @@ function argStart(raw, innerStart, nth) {
 }
 
 /**
- * Finds the half-open range of the top-level argument at `argIndex` (0-based)
- * within the `hl.bind(...)` call on `raw`. Returns { start, end } as absolute
- * indices into `raw`, or null when the argument does not exist.
+ * Returns the half-open { start, end } range of top-level argument `argIndex` in the `hl.bind(...)` call, or null.
  */
 function argRange(raw, argIndex) {
     var open = raw.indexOf("hl.bind(");
@@ -312,11 +303,7 @@ function argRange(raw, argIndex) {
 }
 
 /**
- * Appends a new exec bind. `combo` becomes a `mod .. " + X"` or literal first
- * arg via comboExpr; `cmd` is escaped into an `exec_cmd("...")` dispatch; a
- * non-empty `name` is added as a trailing `-- name` comment. The line is
- * inserted after the last non-empty line of the file. Returns { text, ok,
- * error }.
+ * Appends an exec bind after the last non-empty line, with a non-empty `name` as a trailing `-- name` comment.
  */
 function add(luaText, combo, cmd, name) {
     if (!combo || !combo.length)
@@ -341,10 +328,6 @@ function add(luaText, combo, cmd, name) {
     return { text: lines.join("\n"), ok: true, error: "" };
 }
 
-/**
- * Removes the bind on `lineIndex` entirely and rejoins the file. Returns
- * { text, ok }.
- */
 function del(luaText, lineIndex) {
     var lines = luaText.split("\n");
     if (lineIndex < 0 || lineIndex >= lines.length)
@@ -354,10 +337,7 @@ function del(luaText, lineIndex) {
 }
 
 /**
- * Rewrites the dispatch (second top-level argument) of the bind on `lineIndex`
- * to `exec_cmd("<cmd>")`, leaving the combo (arg 0) and opts (arg 2) untouched.
- * The argument range is found with the same depth/quote scanner rebind uses.
- * Returns { text, ok, error }.
+ * Rewrites only the dispatch (arg 1) to `exec_cmd("<cmd>")`, leaving combo and opts untouched.
  */
 function editCmd(luaText, lineIndex, cmd) {
     var lines = luaText.split("\n");
@@ -379,36 +359,28 @@ function editCmd(luaText, lineIndex, cmd) {
 }
 
 /**
- * True when every bracket and quote in `s` is balanced, treating text inside a
- * double-quoted string as opaque. Guards editAction against writing a dispatch
- * that would unbalance the hl.bind call and break the whole lua config.
+ * Guards editAction against writing a dispatch with unbalanced brackets or quotes, which would break the whole lua config.
  */
 function balanceOk(s) {
     var depth = 0;
-    var inStr = false;
     for (var i = 0; i < s.length; i++) {
         var c = s[i];
-        if (inStr) {
-            if (c === '"') inStr = false;
+        if (c === '"') {
+            i = strEnd(s, i);
+            if (i < 0) break;
             continue;
         }
-        if (c === '"') { inStr = true; continue; }
         if (c === '(' || c === '{' || c === '[') depth++;
         else if (c === ')' || c === '}' || c === ']') {
             depth--;
             if (depth < 0) return false;
         }
     }
-    return depth === 0 && !inStr;
+    return depth === 0 && i === s.length;
 }
 
 /**
- * Replaces the dispatch (second top-level argument) of the bind on `lineIndex`
- * with `action` verbatim, leaving the combo (arg 0) and opts (arg 2) intact. Use
- * for non-exec or env-prefixed dispatches the simple command field cannot express
- * (window.*, focus, os.getenv path); the caller passes the full lua source. The
- * action is refused when its brackets or quotes are unbalanced so a stray edit
- * cannot break the config. Returns { text, ok, error }.
+ * Replaces the dispatch verbatim for what the command field cannot express (window.*, focus, os.getenv path), refusing unbalanced input so a stray edit cannot break the config.
  */
 function editAction(luaText, lineIndex, action) {
     var lines = luaText.split("\n");
@@ -431,9 +403,7 @@ function editAction(luaText, lineIndex, action) {
 }
 
 /**
- * Replaces the trailing `-- ...` name comment on the bind at `lineIndex`. Any
- * existing comment after the closing paren is stripped first, then ` -- name`
- * is appended when `name` is non-empty. Returns { text, ok }.
+ * Strips any existing comment after the closing paren, then appends ` -- name` when `name` is non-empty.
  */
 function editName(luaText, lineIndex, name) {
     var lines = luaText.split("\n");
@@ -456,4 +426,8 @@ function editName(luaText, lineIndex, name) {
 
     lines[lineIndex] = line;
     return { text: lines.join("\n"), ok: true, error: "" };
+}
+
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = { parse, rebind, add, del, editCmd, editAction, execCmd, balanceOk };
 }

@@ -1,8 +1,5 @@
 /**
- * Read/write helpers for animations.lua, which is a list of `hl.curve(...)` and
- * `hl.animation({...})` calls plus a small `animations = { enabled = ... }` block
- * rather than a flat config table. Each setter returns `{ text, ok }`; ok is false
- * (text unchanged) when the target is absent, so a hand-trimmed file never throws.
+ * Read/write helpers for animations.lua whose setters return `{ text, ok }` and leave the text unchanged when the target is absent.
  */
 
 /** Reads the master `animations.enabled` flag as "true"/"false" (or "" if absent). */
@@ -27,9 +24,7 @@ function getLeafSpeed(text, leaf) {
 }
 
 /**
- * Sets every animation leaf's `speed` to `literal`. Only `hl.animation` lines
- * carry a `speed =` field, so a blanket replace stays scoped to them. Returns the
- * count of leaves touched alongside the new text.
+ * Only `hl.animation` lines carry a `speed =` field, so the blanket replace stays scoped to them.
  */
 function setAllSpeeds(text, literal) {
     var n = 0;
@@ -41,9 +36,7 @@ function setAllSpeeds(text, literal) {
 }
 
 /**
- * Reads the four control-point numbers of a named bezier curve as
- * `[x1, y1, x2, y2]`, or null when the curve is absent. The curve reads
- * `hl.curve("name", { type = "bezier", points = { { x1, y1 }, { x2, y2 } } })`.
+ * Returns a named bezier curve's control points as `[x1, y1, x2, y2]`, or null when the curve is absent.
  */
 function getCurvePoints(text, name) {
     var re = new RegExp("hl\\.curve\\(\\s*\"" + name + "\"[^)]*?points\\s*=\\s*\\{\\s*\\{\\s*([0-9.-]+)\\s*,\\s*([0-9.-]+)\\s*\\}\\s*,\\s*\\{\\s*([0-9.-]+)\\s*,\\s*([0-9.-]+)\\s*\\}");
@@ -54,8 +47,7 @@ function getCurvePoints(text, name) {
 }
 
 /**
- * Rewrites a named bezier curve's two control points. `x1..y2` are formatted by
- * the caller. Only that curve's `points = { ... }` run is touched.
+ * Rewrites only the named curve's `points = { ... }` run, with `x1..y2` already formatted by the caller.
  */
 function setCurvePoints(text, name, x1, y1, x2, y2) {
     var re = new RegExp("(hl\\.curve\\(\\s*\"" + name + "\"[^)]*?points\\s*=\\s*\\{\\s*\\{\\s*)[0-9.-]+\\s*,\\s*[0-9.-]+(\\s*\\}\\s*,\\s*\\{\\s*)[0-9.-]+\\s*,\\s*[0-9.-]+(\\s*\\})");

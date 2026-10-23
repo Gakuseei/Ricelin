@@ -60,10 +60,7 @@ function modNames(modifiers) {
 }
 
 /**
- * Turn a captured Qt keypress (key code + modifier bitmask) into the combo
- * string Binds.rebind/inUse expect, e.g. "SUPER + K". Returns null for a bare
- * modifier press (Super/Ctrl/Alt/Shift alone) so the caller keeps listening for
- * the final key.
+ * Qt keypress as the combo binds.lua stores ("SUPER + K"); null for a bare modifier so capture keeps waiting.
  */
 function chord(key, modifiers) {
     var k = keyName(key);
@@ -71,4 +68,18 @@ function chord(key, modifiers) {
     var parts = modNames(modifiers);
     parts.push(k);
     return parts.join(" + ");
+}
+
+/**
+ * Display form of a stored combo, cased like KeyCap: "SUPER + Return" reads "Super + Return".
+ */
+function pretty(combo) {
+    return String(combo).split("+").map(function (k) { return k.trim(); })
+        .filter(function (k) { return k.length > 0; })
+        .map(function (k) { return k.length > 1 ? k.charAt(0).toUpperCase() + k.slice(1).toLowerCase() : k.toUpperCase(); })
+        .join(" + ");
+}
+
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = { chord, pretty };
 }

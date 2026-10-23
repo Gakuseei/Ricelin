@@ -1,10 +1,5 @@
 /**
- * Safe arithmetic evaluator for the launcher's calc mode. A hand written
- * recursive descent parser walks a small grammar (+ - * / ^, parentheses,
- * decimals, and postfix % as divide by 100), so a typed query never reaches a
- * JS eval and can never run code. evaluate() returns { ok, value, display, ops }
- * where `ops` counts real operations, letting the launcher show a result only
- * when the query is an actual calculation and not a lone number or an app name.
+ * Safe arithmetic evaluator for the launcher's calc mode that never reaches eval, where `ops` counts real operations so a lone number shows no result.
  */
 
 function tokenize(src) {

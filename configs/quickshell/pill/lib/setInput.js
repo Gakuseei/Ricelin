@@ -5,9 +5,7 @@ var getField = Deco.getField;
 var setField = Deco.setField;
 
 /**
- * Replaces the second argument of a `hl.env("KEY", "<old>")` call with the raw
- * value, re-quoted. Returns `{ text, ok }`; ok is false when the key's env call is
- * absent.
+ * Replaces the value of a `hl.env("KEY", ...)` call, returning `{ text, ok }` with ok false when the call is absent.
  */
 function setEnv(text, key, valueRaw) {
     var re = new RegExp("(hl\\.env\\(\\s*\"" + Deco.escapeRe(key) + "\"\\s*,\\s*)\"[^\"]*\"");
@@ -17,8 +15,7 @@ function setEnv(text, key, valueRaw) {
 }
 
 /**
- * Replaces the theme name and size in a `hyprctl setcursor <theme> <size>` call.
- * Returns `{ text, ok }`; ok is false when the call is absent.
+ * Replaces theme and size in the `hyprctl setcursor` call, returning `{ text, ok }` with ok false when it is absent.
  */
 function setCursorLine(text, theme, size) {
     var re = /setcursor\s+\S+\s+\d+/;

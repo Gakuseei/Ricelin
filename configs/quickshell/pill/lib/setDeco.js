@@ -1,7 +1,5 @@
 /**
- * Reads the current value of a top-level `name = <value>` Lua field. A
- * double-quoted value is returned unquoted; any other run is trimmed. Returns ""
- * when the field is absent.
+ * Returns a top-level Lua field's value with surrounding quotes stripped, or "" when absent.
  */
 function getField(text, name) {
     var re = new RegExp("\\b" + name + "\\s*=\\s*(\"[^\"]*\"|[^,}\\n]*)");
@@ -15,13 +13,7 @@ function getField(text, name) {
 }
 
 /**
- * Replaces the value of a single top-level `name = <value>` field in place,
- * preserving the field name, the `=` spacing and any trailing comma. A quoted
- * value run is taken whole so a comma inside the quotes is not mistaken for the
- * field end; otherwise the run goes up to the next comma, brace or newline.
- * `valueLiteral` is already formatted by the caller (a number/bool as-is, a
- * string already double-quoted). Returns `{ text, ok }`; ok is false (text
- * unchanged) when the field is absent.
+ * `valueLiteral` comes pre-formatted (strings already double-quoted), and a quoted old value is replaced whole so its commas do not end the field.
  */
 function setField(text, name, valueLiteral) {
     var re = new RegExp("(\\b" + name + "\\s*=\\s*)(\"[^\"]*\"|[^,}\\n]*)");
@@ -31,10 +23,7 @@ function setField(text, name, valueLiteral) {
 }
 
 /**
- * Locates a `blockName = { ... }` table and returns its substring, balanced to
- * the matching close brace so a nested table (decoration holds shadow and blur)
- * does not end the scan early. Returns `{ start, end, body }` where `start`/`end`
- * bracket the inner body between the braces, or null when the block is absent.
+ * Brace-balances to the matching close so a nested table (decoration holds shadow and blur) does not end the scan early.
  */
 function getBlock(text, blockName) {
     var head = new RegExp(blockName + "\\s*=\\s*\\{");
@@ -56,10 +45,6 @@ function getBlock(text, blockName) {
     return null;
 }
 
-/**
- * Reads a `name = <value>` field scoped to `blockName`'s body. Returns "" when
- * the block or the field within it is absent.
- */
 function getBlockField(text, blockName, name) {
     var blk = getBlock(text, blockName);
     if (!blk)
@@ -68,11 +53,7 @@ function getBlockField(text, blockName, name) {
 }
 
 /**
- * Rewrites a `name = <value>` field scoped to `blockName`'s body and splices the
- * block back into the whole text. Scoping keeps a name shared by sibling blocks
- * (e.g. `enabled` in both shadow and blur) from matching the wrong block.
- * Returns `{ text, ok }`; ok is false (text unchanged) when the block or field
- * is absent.
+ * Scoping to the block keeps a name shared by siblings (`enabled` in shadow and blur) from matching the wrong one.
  */
 function setBlockField(text, blockName, name, valueLiteral) {
     var blk = getBlock(text, blockName);
@@ -89,11 +70,7 @@ function escapeRe(s) {
 }
 
 /**
- * Finds the bounds of the `hl.layer_rule({ ... })` call whose body carries
- * `name = "ruleName"`. Walks each `hl.layer_rule(` head, brace-balances to its
- * matching `})`, and returns `{ start, end }` (from the head to just past the
- * close) for the first call that names `ruleName`. Returns null when no such
- * call exists.
+ * Returns { start, end } of the first `hl.layer_rule({ ... })` call whose body has `name = "ruleName"`, or null.
  */
 function findNamedRule(text, ruleName) {
     var head = /hl\.layer_rule\s*\(\s*\{/g;
@@ -131,10 +108,7 @@ function hasNamedRule(text, ruleName) {
 }
 
 /**
- * Removes the whole `hl.layer_rule({ ... })` call named `ruleName`, together
- * with one trailing newline and the single blank line `addNamedRule` puts in
- * front of an appended rule, leaving the rest of the file byte-identical.
- * Returns `{ text, ok }`; ok is false (text unchanged) when no such rule exists.
+ * Also drops one trailing newline and the blank line addNamedRule puts in front, leaving the rest of the file byte-identical.
  */
 function removeNamedRule(text, ruleName) {
     var r = findNamedRule(text, ruleName);
@@ -150,10 +124,7 @@ function removeNamedRule(text, ruleName) {
 }
 
 /**
- * Appends `block` (a complete `hl.layer_rule({...})` string) at the end of the
- * file, separated by a blank line, unless that exact block is already present.
- * Returns `{ text, ok }`; ok is false (text unchanged) when the block already
- * exists.
+ * Appends `block` after a blank line unless that exact block is already present, in which case ok is false.
  */
 function addNamedRule(text, block) {
     if (text.indexOf(block) !== -1)
