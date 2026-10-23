@@ -95,6 +95,20 @@ def run(tmp):
     print("G stock default: ok")
     assert not any(a[0] == "gsettings" for a in calls), "no real gsettings call"
 
+    class Histogram(Done):
+        stdout = "  40000: (224,86,59) #E0563B srgb(224,86,59)\n"
+    w.subprocess.run = lambda argv, **kw: (calls.append(argv), Histogram())[1]
+    w.CACHE = tmp / "cache"
+    pic = tmp / "wall.png"
+    pic.write_bytes(b"png")
+    magick = lambda: sum(a[0] == "magick" for a in calls)
+    first = w.cached_analyze(str(pic))
+    assert first[0] is not None and w.cached_analyze(str(pic)) == first and magick() == 1, "a re-pick reuses the palette"
+    os.utime(pic, ns=(1, 1))
+    w.cached_analyze(str(pic))
+    assert magick() == 2, "a changed file is analysed again"
+    print("H analyze cache: ok")
+
 
 if __name__ == "__main__":
     main()

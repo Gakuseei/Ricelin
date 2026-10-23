@@ -6,7 +6,7 @@
     "ghostty": "Zig source build or a third-party repo",
     "dotool": "Go source build plus a uinput udev rule and group",
     "nerdfont": "download the patched font from nerd-fonts releases and run fc-cache",
-    "github": "download a release from the project's github",
+    "bibata": "download the Bibata-Modern-Ice cursor from its GitHub release",
     "flatpak": "install from Flathub",
     "curl": "the project's own curl-pipe installer"
   },
@@ -37,7 +37,7 @@
 
     { "id": "mpvpaper", "group": "core", "required": false, "desc": "Plays video files as animated wallpapers", "aur": true,
       "names": { "arch": "mpvpaper", "debian": null, "fedora": "mpvpaper", "suse": "mpvpaper", "gentoo": "gui-apps/mpvpaper" },
-      "repo": { "gentoo": "overlay:guru" }, "fallback": "github" },
+      "repo": { "gentoo": "overlay:guru" } },
 
     { "id": "hyprpicker", "group": "core", "required": true, "desc": "Picks a color from anywhere on screen", "aur": false,
       "names": { "arch": "hyprpicker", "debian": "hyprpicker", "fedora": "hyprpicker", "suse": "hyprpicker", "gentoo": "gui-apps/hyprpicker" },
@@ -158,8 +158,8 @@
 
     { "id": "bibata-cursor-theme", "group": "core", "required": true, "desc": "The cursor theme", "aur": true,
       "names": { "arch": "bibata-cursor-theme-bin", "debian": null, "fedora": null, "suse": null, "gentoo": null },
-      "note": "debian has no reliable bibata package, so debian is left null and routes through the github fallback (the Bibata release tarball) like fedora and suse",
-      "fallback": "github" },
+      "note": "debian has no reliable bibata package, so debian is left null and routes through the bibata fallback (the Bibata release tarball) like fedora and suse",
+      "fallback": "bibata" },
 
     { "id": "rishot", "group": "core", "required": true, "desc": "Screenshot and annotate, bound to the Print key", "aur": false,
       "names": { "arch": null, "debian": null, "fedora": null, "suse": null, "gentoo": null }, "fallback": "curl" },

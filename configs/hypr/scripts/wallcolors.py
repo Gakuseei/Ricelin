@@ -76,6 +76,28 @@ def analyze(wallpaper):
     return win["best"][1], win["best"][2], mean_l
 
 
+def cached_analyze(wallpaper):
+    """analyze() remembered per path and mtime, so re-picking a wallpaper skips the magick pass."""
+    store = CACHE / "analyze.json"
+    mtime = os.stat(wallpaper).st_mtime_ns
+    try:
+        seen = json.loads(store.read_text())
+    except (OSError, ValueError):
+        seen = {}
+    hit = seen.get(wallpaper)
+    if hit and hit[0] == mtime:
+        return tuple(hit[1:])
+    result = analyze(wallpaper)
+    # Zero mean lightness means magick read nothing, so a failed run is never remembered.
+    if result[2]:
+        seen[wallpaper] = [mtime, *result]
+        CACHE.mkdir(parents=True, exist_ok=True)
+        tmp = store.with_name(f".analyze.{os.getpid()}")
+        tmp.write_text(json.dumps(seen))
+        os.replace(tmp, store)
+    return result
+
+
 def matugen(source_hex):
     out = subprocess.run(
         ["matugen", "color", "hex", source_hex, "-m", "dark", "-j", "hex"],
@@ -379,7 +401,7 @@ def main():
         wallpaper = sys.argv[1]
         if not Path(wallpaper).is_file():
             return 0
-        hue, sat, mean_l = analyze(wallpaper)
+        hue, sat, mean_l = cached_analyze(wallpaper)
         chromatic = hue is not None
         if not chromatic:
             hue, sat = 0.09, 0.0
@@ -416,6 +438,13 @@ def main():
     (CACHE / "hypr-colors.lua").write_text(
         'return {\n    active = "%s",\n    inactive = "%s",\n}\n'
         % (pill["primary"], b["base01"]))
+    # Pushed live because hyprctl reload drops game mode and stalls for about a second.
+    try:
+        subprocess.run(["hyprctl", "eval", 'hl.config({ general = { ["col.active_border"] = "rgb(%s)", '
+                        '["col.inactive_border"] = "rgb(%s)" } })' % (pill["primary"][1:], b["base01"][1:])],
+                       capture_output=True)
+    except OSError:
+        pass
 
     lines = [
         f'background = {b["base00"]}',

@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -66,8 +67,7 @@ PRESERVED = [
     "fish/config.fish",
 ]
 
-# The single auto monitor that replaces a user's hand-tuned layout. Their real
-# monitors.lua is kept beside it as monitors.lua.example.
+# The shipped monitors.lua: one auto monitor. A machine's own layout lives in hypr/local.lua.
 MON_AUTO = """hl.monitor({
     output   = "",
     mode     = "preferred",
@@ -135,19 +135,26 @@ def _rm(path):
         path.unlink()
 
 
-def _copy(src, dest):
+def _copy(src, dest, skip=()):
     """
     Copy a file or whole tree from the clone into place, keeping modes. Dev cruft
     (the git-tracked test_*.py harnesses and any compiled __pycache__/*.pyc) is
     left behind so it never lands in ~/.config. The live hypridle.conf is skipped
     too: it is untracked (Settings owns it) and only exists in a dev work-tree,
     so deploying from one must behave like deploying from a clean clone, where
-    neutralize seeds it from the example.
+    neutralize seeds it from the example. Paths in skip are left as they are,
+    and an existing dest tree is overlaid, never wiped.
     """
     src, dest = Path(src), Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     if src.is_dir():
-        shutil.copytree(src, dest, ignore=shutil.ignore_patterns(*COPY_IGNORE))
+        cruft = shutil.ignore_patterns(*COPY_IGNORE)
+
+        def ignore(d, names):
+            rel = Path(d).relative_to(src)
+            return set(cruft(d, names)) | {n for n in names if dest / rel / n in skip}
+
+        shutil.copytree(src, dest, ignore=ignore, dirs_exist_ok=True)
     else:
         shutil.copy2(src, dest)
 
@@ -179,6 +186,17 @@ def _has_nvidia(sys_root="/sys"):
         except OSError:
             continue
     return False
+
+
+def _system_layout():
+    """The system's X11 keyboard layout from localectl, or "us" when it reports none."""
+    try:
+        out = subprocess.run(["localectl", "status"], capture_output=True,
+                             text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return "us"
+    m = re.search(r"X11 Layout:\s*([a-z,]+)\s*$", out, re.M)
+    return m[1] if m else "us"
 
 
 def detect_existing(config_root=CONFIG_ROOT):
@@ -233,8 +251,8 @@ def deploy(src=CONFIGS, config_root=CONFIG_ROOT, apply=False):
     Copy every deploy-set item into ~/.config and drop the ownership marker so
     uninstall knows it is ours. A foreign config in the way is always backed up
     before it goes (to .bak, or the next free .bak.N when one is taken), never
-    blind-removed; one of our own older copies is replaced cleanly with no
-    backup. Returns the action list; nothing moves unless apply is set.
+    blind-removed; one of our own older copies is overlaid in place, so files
+    only the user has and the PRESERVED ones stay. Returns the action list; nothing moves unless apply is set.
     """
     src = Path(src)
     config_root = Path(config_root)
@@ -263,19 +281,11 @@ def deploy(src=CONFIGS, config_root=CONFIG_ROOT, apply=False):
         })
         if not apply:
             continue
-        if managed:
-            saved = {rel: (config_root / rel).read_bytes() for rel in keep}
-            marker = _marker_for(dest, is_dir)
-            if marker.exists():
-                marker.unlink()
-            _rm(dest)
-        else:
-            # Foreign config moves aside first, so it is never lost to _rm.
+        if not managed:
+            # Foreign config moves aside first, so it is never lost.
             backup(dest, apply=True)
-            saved = {}
-        _copy(src_path, dest)
-        for rel, data in saved.items():
-            (config_root / rel).write_bytes(data)
+        # Overlay instead of wipe: user files the clone lacks (local.lua, private.lua) survive.
+        _copy(src_path, dest, skip={config_root / rel for rel in keep})
         _marker_for(dest, is_dir).touch()
     return actions
 
@@ -367,12 +377,12 @@ def neutralize(config_root=CONFIG_ROOT, apply=False, src=CONFIGS):
     """
     Make the deployed configs portable. Operates in place on what deploy() put
     in ~/.config and returns the action list; nothing is written unless apply.
-    The monitors and env rewrites only touch a file that is still the pristine
+    The env rewrite only touches a file that is still the pristine
     repo copy, so a user file preserved across a re-deploy stays as it is.
 
-      monitors.lua -> keep the user's layout as monitors.lua.example, write the
-                      single auto monitor (output="", preferred, auto, scale 1)
-      env.lua      -> rewrite the base env, keep the nvidia vars only on nvidia
+      input.lua    -> kb_layout from localectl's X11 layout (us when unset)
+      env.lua      -> add the nvidia vars on an nvidia machine (the shipped
+                      env.lua and monitors.lua are already generic)
       hypridle     -> rewrite /home/erik in the lock_cmd / on-timeout script paths
                       (the conf does not expand env vars, so a literal home is wrong
                       for any other user and idle-lock never fires)
@@ -383,17 +393,14 @@ def neutralize(config_root=CONFIG_ROOT, apply=False, src=CONFIGS):
     config_root = Path(config_root)
     actions = []
 
-    mon = config_root / "hypr" / "modules" / "monitors.lua"
-    if _pristine("hypr/modules/monitors.lua", config_root, src):
-        example = mon.with_name(mon.name + ".example")
-        save_example = not example.exists()
-        actions.append({"step": "monitors", "path": str(mon),
-                        "example": str(example) if save_example else None,
-                        "wrote": "single auto monitor"})
+    # A pristine input.lua takes the system layout, or a non-German user cannot type the lock password.
+    inp = config_root / "hypr" / "modules" / "input.lua"
+    if _pristine("hypr/modules/input.lua", config_root, src):
+        layout = _system_layout()
+        actions.append({"step": "keyboard", "path": str(inp), "layout": layout})
         if apply:
-            if save_example:
-                shutil.copy2(mon, example)
-            mon.write_text(MON_AUTO)
+            inp.write_text(re.sub(r'(kb_layout\s*=\s*)"[^"]*"', rf'\g<1>"{layout}"',
+                                  inp.read_text(), count=1))
 
     env = config_root / "hypr" / "modules" / "env.lua"
     if _pristine("hypr/modules/env.lua", config_root, src):
@@ -534,26 +541,32 @@ def _selftest():
               "re-deploy replaces our own copy (no second backup)")
         check((root / "fish.bak" / "config.fish").read_text().strip().endswith("user fish"),
               "pristine fish.bak never clobbered on re-deploy")
+        (root / "hypr" / "mine.lua").write_text("-- SENTINEL user-only\n")
+        (root / "hypr" / "modules" / "binds.lua").write_text("-- SENTINEL binds\n")
+        deploy(config_root=root, apply=True)
+        check((root / "hypr" / "mine.lua").is_file(),
+              "re-deploy keeps files only the user has")
+        check((root / "hypr" / "modules" / "binds.lua").read_text().startswith("-- SENTINEL"),
+              "re-deploy leaves PRESERVED files as they are")
 
         # 5. neutralize dry-run: a plan with the expected steps, nothing written.
         # hypridle.conf is untracked, so on a fresh deploy only the seed step
         # shows; the rewrite step appears once the file exists.
         plan = neutralize(config_root=root, apply=False)
         steps = {a["step"] for a in plan}
-        check({"monitors", "env", "hypridle-seed", "fish", "fastfetch", "grub-excluded"} <= steps,
+        check({"keyboard", "env", "hypridle-seed", "fish", "fastfetch", "grub-excluded"} <= steps,
               "neutralize plan has every step")
         check(not (root / "hypr" / "hypridle.conf").exists(),
               "neutralize dry-run did not seed hypridle.conf")
-        check("DP-1" in (root / "hypr" / "modules" / "monitors.lua").read_text(),
-              "neutralize dry-run did not rewrite monitors.lua")
 
         # 6. neutralize for real: each config is made portable
         nvidia = _has_nvidia()
         neutralize(config_root=root, apply=True)
         mon = root / "hypr" / "modules" / "monitors.lua"
-        check(mon.read_text() == MON_AUTO, "monitors.lua is now the single auto monitor")
-        check((root / "hypr" / "modules" / "monitors.lua.example").read_text().find("DP-1") >= 0,
-              "user's monitors layout saved as monitors.lua.example")
+        check(mon.read_text() == MON_AUTO, "monitors.lua ships as the single auto monitor")
+        check(f'kb_layout          = "{_system_layout()}"' in
+              (root / "hypr" / "modules" / "input.lua").read_text(),
+              "input.lua takes the system keyboard layout")
         env_txt = (root / "hypr" / "modules" / "env.lua").read_text()
         check(env_txt == ENV_BASE + (ENV_NVIDIA if nvidia else ""),
               f"env.lua matches base{' + nvidia' if nvidia else ' (nvidia dropped)'}")

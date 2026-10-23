@@ -697,8 +697,7 @@ def run(args):
             family = info["family"]
 
             # a. refresh the package index first so a stale list never sinks the run.
-            refresh_env = pkg.INSTALL_ENV if family == "debian" else None
-            ok, detail = _run(pkg.refresh_argv(family), dry, env=refresh_env)
+            ok, detail = _run(pkg.refresh_argv(family), dry)
             record(ok, detail, "Refresh package index",
                    "Update the package list yourself, then re-run.")
 
@@ -734,14 +733,14 @@ def run(args):
                 batch = pkg.install_argv(plan["native"], family)
                 if family == "fedora":
                     batch = [*batch, "--skip-broken"]
-                ok, detail = _run(pkg.privileged(batch, family), dry, env=pkg.INSTALL_ENV)
+                ok, detail = _run(pkg.privileged(batch, family), dry)
                 if ok or dry:
                     record(ok, detail, "Install packages",
                            "Re-run; a single failed package will not block the rest.")
                 else:
                     for name in plan["native"]:
                         argv = pkg.privileged(pkg.install_argv([name], family), family)
-                        ok, detail = _run(argv, dry, env=pkg.INSTALL_ENV)
+                        ok, detail = _run(argv, dry)
                         if not ok and name in plan["optional_native"]:
                             notes.append(f"Optional package {name} did not install, skipped.")
                             continue
@@ -939,7 +938,7 @@ def run(args):
                            "Install Brave by hand.")
                 else:
                     argv = pkg.privileged(pkg.install_argv([target], family), family)
-                    ok, detail = _run(argv, dry, env=pkg.INSTALL_ENV)
+                    ok, detail = _run(argv, dry)
                     record(ok, detail, "Install Brave",
                            "Install Brave by hand.")
             else:
@@ -1044,6 +1043,7 @@ def main():
                         help="Preselect Brave, set to follow the app theme")
     parser.add_argument("--no-deps", action="store_true",
                         help="Skip the package step, only deploy the configs")
+    # install.sh reads --reinstall to skip its already-installed gate, then forwards "$@" here.
     parser.add_argument("--reinstall", action="store_true",
                         help="Run the full install over an existing Ricelin install")
     parser.add_argument("--uninstall", action="store_true",

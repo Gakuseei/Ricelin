@@ -92,19 +92,26 @@ def _dotool_build_deps(family):
             "run": _pm_install(family, *deps.get(family, deps["debian"]))}
 
 
-# The Zig the ghostty tip pins. Bumping this means checking the version ghostty's
-# build.zig.zon asks for; the ensure step below rejects any other zig on PATH.
+# Bumping GHOSTTY_TAG means matching ZIG_VERSION to the minimum_zig_version in its build.zig.zon.
+GHOSTTY_TAG = "v1.3.1"
 ZIG_VERSION = "0.15.2"
+# Official tarball sha256 per `uname -m`, from ziglang.org/download/index.json.
+ZIG_SHA256 = {
+    "x86_64": "02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239",
+    "aarch64": "958ed7d1e00d0ea76590d27666efbf7a932281b3d7ba0c6b01b0ff26498f667f",
+}
 
 
 def _zig_ensure_step():
     """
     One shell step that guarantees the pinned Zig: a `zig` on PATH with exactly
-    ZIG_VERSION is used as-is, anything else pulls the official tarball into
-    ~/.local/share and links the binary into ~/.local/bin. No root, works on
-    every family, and never trusts a distro package's version lottery.
+    ZIG_VERSION is used as-is, anything else pulls the official tarball, checks
+    its sha256, unpacks it into ~/.local/share and links the binary into
+    ~/.local/bin. No root, works on every family, and never trusts a distro
+    package's version lottery.
     """
-    name = "zig-$(uname -m)-linux-" + ZIG_VERSION
+    arch = os.uname().machine
+    name = "zig-%s-linux-%s" % (arch, ZIG_VERSION)
     url = "https://ziglang.org/download/" + ZIG_VERSION + "/" + name + ".tar.xz"
     return {"desc": "make sure the Zig %s ghostty pins is here (PATH zig wins, else official tarball)" % ZIG_VERSION,
             "shell":
@@ -112,11 +119,12 @@ def _zig_ensure_step():
             'if [ "$v" != "%s" ]; then '
             'a="$(mktemp --suffix=.tar.xz)" && '
             'curl -fsSL -o "$a" %s && '
+            'echo "%s  $a" | sha256sum -c --quiet - && '
             'mkdir -p "$HOME/.local/share" "$HOME/.local/bin" && '
             'rm -rf "$HOME/.local/share/%s" && '
             'tar -xf "$a" -C "$HOME/.local/share" && rm -f "$a" && '
             'ln -sf "$HOME/.local/share/%s/zig" "$HOME/.local/bin/zig"; '
-            'fi' % (ZIG_VERSION, shlex.quote(url), name, name)}
+            'fi' % (ZIG_VERSION, shlex.quote(url), ZIG_SHA256.get(arch, ""), name, name)}
 
 
 def _cargo(pkg, family):
@@ -138,7 +146,7 @@ def _cargo(pkg, family):
         return [
             _swww_build_deps(family),
             _clone_step("no swww crate on crates.io, clone the source from github",
-                        "https://github.com/LGFae/swww", "swww"),
+                        "https://github.com/LGFae/swww", "swww", extra_args="--depth 1 --branch v0.11.2 "),
             {"desc": "make sure cargo is here, then build swww and swww-daemon (release)",
              "shell": _CARGO_PREP + "; " + _in_build("swww", "cargo build --release")},
             {"desc": "install both swww binaries into ~/.local/bin, no root needed",
@@ -157,9 +165,9 @@ def _cargo(pkg, family):
 def _ghostty(pkg, family):
     """
     Ghostty the honest way. On fedora the fyralabs Terra repo ships it, so add
-    that and install. Everywhere else there is no package, so build it from
-    source with Zig, which the build pins hard (latest tags want Zig 0.14, the
-    git tip wants 0.15.2).
+    that and install. Everywhere else there is no package, so build GHOSTTY_TAG
+    from source with the exact Zig it pins. The build runs as the user and stages
+    into DESTDIR with the final /usr prefix, so root only copies the result.
     """
     if family == "fedora":
         return [
@@ -169,14 +177,17 @@ def _ghostty(pkg, family):
             {"desc": "install ghostty from Terra",
              "run": [distro.ROOT, "dnf", "install", "-y", "ghostty"]},
         ]
+    stage = shlex.quote(os.path.join(BUILD_DIR, "ghostty", "stage"))
     return [
         _zig_ensure_step(),
-        _clone_step("no ghostty package here, clone the source (the build needs the exact Zig it pins)",
-                    "https://github.com/ghostty-org/ghostty", "ghostty", extra_args="--depth 1 "),
-        {"desc": "compile a release build with Zig",
-         "shell": 'export PATH="$HOME/.local/bin:$PATH"; ' + _in_build("ghostty", "zig build -Doptimize=ReleaseFast")},
-        {"desc": "install ghostty into /usr",
-         "shell": _in_build("ghostty", distro.ROOT + ' env "PATH=$HOME/.local/bin:$PATH" zig build -p /usr -Doptimize=ReleaseFast')},
+        _clone_step("no ghostty package here, clone the %s source (the build needs the exact Zig it pins)" % GHOSTTY_TAG,
+                    "https://github.com/ghostty-org/ghostty", "ghostty",
+                    extra_args="--depth 1 --branch %s " % GHOSTTY_TAG),
+        {"desc": "compile a release build with Zig as you, staged for /usr",
+         "shell": 'export PATH="$HOME/.local/bin:$PATH"; '
+                  + _in_build("ghostty", "DESTDIR=%s zig build --prefix /usr -Doptimize=ReleaseFast" % stage)},
+        {"desc": "copy the staged ghostty into /usr",
+         "shell": "%s cp -r %s/usr/. /usr/" % (distro.ROOT, stage)},
     ]
 
 
@@ -192,7 +203,7 @@ def _dotool(pkg, family):
     return [
         _dotool_build_deps(family),
         _clone_step("no dotool package off arch, clone it from sourcehut",
-                    "https://git.sr.ht/~geb/dotool", "dotool"),
+                    "https://git.sr.ht/~geb/dotool", "dotool", extra_args="--depth 1 --branch 1.6 "),
         {"desc": "build the binaries (needs go, libxkbcommon-dev and scdoc)",
          "shell": _in_build("dotool", "./build.sh")},
         {"desc": "install dotool, dotoolc and dotoold plus the man page",
@@ -211,39 +222,43 @@ def _dotool(pkg, family):
     ]
 
 
-def _fetch_unpack_shell(url, dest):
+def _fetch_unpack_shell(url, sha256, dest):
     """
-    One shell line that downloads url into a fresh mktemp file, unpacks it into
-    dest, then deletes the temp. mktemp gives an unpredictable name so nothing can
-    sit on a known /tmp path and win a TOCTOU race against the download.
+    One shell line that downloads url into a fresh mktemp file, checks it against
+    the pinned sha256, unpacks it into dest, then deletes the temp. mktemp gives an
+    unpredictable name so nothing can sit on a known /tmp path and win a TOCTOU
+    race against the download.
     """
     return ('a="$(mktemp --suffix=.tar.xz)" && '
-            'curl -fsSL -o "$a" %s && tar -xf "$a" -C %s && rm -f "$a"'
-            % (shlex.quote(url), shlex.quote(dest)))
+            'curl -fsSL -o "$a" %s && echo "%s  $a" | sha256sum -c --quiet - && '
+            'tar -xf "$a" -C %s && rm -f "$a"'
+            % (shlex.quote(url), sha256, shlex.quote(dest)))
 
 
 def _nerdfont(pkg, family):
-    """Pull the JetBrainsMono Nerd Font from the latest nerd-fonts release."""
-    url = "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz"
+    """Pull the JetBrainsMono Nerd Font from a pinned nerd-fonts release."""
+    url = "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/JetBrainsMono.tar.xz"
+    sha = "04d5e8f903693f9dd13e16f867e994834e681eb3c72c0d337a770dcda09010cf"
     return [
         {"desc": "make sure the user font dir exists",
          "run": ["mkdir", "-p", FONT_DIR]},
         {"desc": "download the patched JetBrainsMono Nerd Font to a private temp file and unpack it",
-         "shell": _fetch_unpack_shell(url, FONT_DIR)},
+         "shell": _fetch_unpack_shell(url, sha, FONT_DIR)},
         {"desc": "rebuild the font cache so the glyphs show up",
          "run": ["fc-cache", "-f"]},
     ]
 
 
-def _github(pkg, family):
-    """Pull the Bibata-Modern-Classic cursor from the latest Bibata release."""
-    url = ("https://github.com/ful1e5/Bibata_Cursor/releases/latest/download/"
-           "Bibata-Modern-Classic.tar.xz")
+def _bibata(pkg, family):
+    """Pull the Bibata-Modern-Ice cursor env.lua sets from a pinned Bibata release."""
+    url = ("https://github.com/ful1e5/Bibata_Cursor/releases/download/v2.0.7/"
+           "Bibata-Modern-Ice.tar.xz")
+    sha = "a68cae60c4dc706350e194ebc91c5fe48bc7bc9d59e119555834a2a7ee5078ef"
     return [
         {"desc": "make sure the user icon dir exists",
          "run": ["mkdir", "-p", ICON_DIR]},
-        {"desc": "download the Bibata-Modern-Classic cursor theme to a private temp file and extract it",
-         "shell": _fetch_unpack_shell(url, ICON_DIR)},
+        {"desc": "download the Bibata-Modern-Ice cursor theme to a private temp file and extract it",
+         "shell": _fetch_unpack_shell(url, sha, ICON_DIR)},
     ]
 
 
@@ -280,7 +295,7 @@ _HANDLERS = {
     "ghostty": _ghostty,
     "dotool": _dotool,
     "nerdfont": _nerdfont,
-    "github": _github,
+    "bibata": _bibata,
     "flatpak": _flatpak,
     "curl": _curl,
 }
@@ -310,8 +325,8 @@ def present(fallback_id, pkg):
         if fallback_id == "nerdfont":
             font_dir = Path(FONT_DIR)
             return font_dir.is_dir() and any(font_dir.glob("JetBrainsMono*"))
-        if fallback_id == "github":
-            return os.path.isdir(os.path.join(ICON_DIR, "Bibata-Modern-Classic"))
+        if fallback_id == "bibata":
+            return os.path.isdir(os.path.join(ICON_DIR, "Bibata-Modern-Ice"))
         if fallback_id == "flatpak":
             r = subprocess.run(["flatpak", "info", "--user", pkg["flatpak_id"]],
                                capture_output=True)
@@ -346,8 +361,16 @@ def _selftest():
     assert any("zig build" in s.get("shell", "") for s in deb)
     zig = next(s for s in deb if "ziglang.org" in s.get("shell", ""))
     assert ZIG_VERSION in zig["shell"] and "zig version" in zig["shell"]
-    inst = next(s for s in deb if "-p /usr" in s.get("shell", ""))
-    assert "sudo env" in inst["shell"], "sudo step must carry PATH past sudo"
+    build = next(s for s in deb if "zig build" in s.get("shell", ""))
+    assert "--prefix /usr" in build["shell"] and "sudo" not in build["shell"], "zig builds as the user"
+    assert any(s.get("shell", "").startswith("sudo cp -r ") for s in deb), "root only copies the staged build"
+    assert any("--branch %s" % GHOSTTY_TAG in s.get("shell", "") for s in deb)
+
+    # every download is pinned to a release and checked against its sha256
+    for fb in ("nerdfont", "bibata"):
+        sh = steps_for(fb, {}, "debian")[1]["shell"]
+        assert "/latest/" not in sh and "sha256sum -c" in sh, fb
+    assert "sha256sum -c" in zig["shell"] and ZIG_SHA256.get(os.uname().machine, "") in zig["shell"]
 
     # dotool pulls its build deps natively before build.sh runs
     dot = steps_for("dotool", {"id": "dotool"}, "debian")
@@ -369,7 +392,7 @@ def _selftest():
     assert any("https://github.com/LGFae/swww" in s.get("shell", "") for s in swww)
     assert any("cargo build --release" in s.get("shell", "") for s in swww)
     deps = next(s for s in swww if "liblz4" in s.get("desc", ""))
-    assert deps["run"][:3] == [distro.ROOT, "apt-get", "install"] and "liblz4-dev" in deps["run"]
+    assert deps["run"][0] == distro.ROOT and "apt-get" in deps["run"] and "liblz4-dev" in deps["run"]
     fed_deps = next(s for s in steps_for("cargo", {"id": "swww"}, "fedora") if "liblz4" in s.get("desc", ""))
     assert "lz4-devel" in fed_deps["run"]
     install_sh = next(s["shell"] for s in swww if "install -m755" in s.get("shell", ""))

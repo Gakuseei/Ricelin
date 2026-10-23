@@ -60,6 +60,8 @@ def main():
     write(origin / "configs/sddm/themes/torii/Main.qml", "greeter\n")
     write(origin / "configs/grub/10_ricelin", "entry\n")
     write(origin / "configs/brave-theme/manifest.json", "{}\n")
+    for name in ("distro.py", "pkg.py"):
+        write(origin / "installer" / name, (HERE.parents[2] / "installer" / name).read_text())
     git(origin, "add", "-A")
     git(origin, "commit", "-q", "-m", "init")
 
@@ -87,6 +89,8 @@ def main():
     assert first["status"] == "ok", first
     assert first["applied"] is True
     assert (config / "quickshell/pill/Look.qml").read_text() == "code v3\n", "code must overwrite"
+    assert (config / "quickshell/pill/Look.qml.bak").read_text() == "stale local code\n", "a local code edit is kept as .bak"
+    assert not (config / "hypr/scripts/tool.sh.bak").exists(), "an untouched code file gets no .bak"
     assert ru.manifest_path().read_text(), "manifest written"
     assert os.access(config / "hypr/scripts/tool.sh", os.X_OK), "synced scripts stay executable"
     assert (config / "quickshell/pill/Look.qml").stat().st_mode & 0o777 == 0o644, "synced code files are 0644"
@@ -96,6 +100,12 @@ def main():
     for skipped in ("kde", "sddm", "grub", "brave-theme", "hypr/scripts/test_tool.py"):
         assert not (config / skipped).exists(), f"{skipped} is outside the deploy set"
     print("sync follows the installer deploy set: ok")
+
+    distro_mod, pkg_mod = ru.installer_modules(data, ru.origin_head(data))
+    assert pkg_mod.distro is distro_mod, "pkg binds the clone's distro, not a system module"
+    assert pkg_mod.install_argv(["x"], "debian")[:2] == ["env", "DEBIAN_FRONTEND=noninteractive"]
+    assert ru.installer_modules(data, "0" * 40) is None, "a missing module yields no dependency step"
+    print("dependency step loads the clone's installer modules: ok")
 
     assert (config / "hypr/hypridle.conf").read_text() == (
         "after_sleep_cmd = hyprctl dispatch \"hl.dsp.dpms({ action = 'on' })\"\n"

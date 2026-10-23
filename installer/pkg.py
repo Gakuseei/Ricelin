@@ -19,11 +19,6 @@ import tempfile
 import distro
 
 
-# Environment overrides the runner merges in for the apt path, so a package that
-# pops a debconf prompt mid-install can never wedge the unattended terminal run.
-INSTALL_ENV = {"DEBIAN_FRONTEND": "noninteractive"}
-
-
 def _require_family(family):
     """Guard against a family distro.PM never mapped, so a typo fails loud."""
     if family not in distro.PM:
@@ -79,7 +74,8 @@ def install_argv(names, family, aur=False):
             return [helper, "-S", "--needed", "--noconfirm", *names]
         return ["pacman", "-S", "--needed", "--noconfirm", *names]
     if family == "debian":
-        return ["apt-get", "install", "-y", *names]
+        # sudo and pkexec drop the caller's env, so the debconf frontend rides in the argv.
+        return ["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", *names]
     if family == "fedora":
         return ["dnf", "install", "-y", *names]
     if family == "gentoo":
@@ -155,7 +151,7 @@ def enable_repo_argv(repo, family):
         if not _ubuntu_like():
             return []
         return [
-            ["apt-get", "install", "-y", "software-properties-common"],
+            install_argv(["software-properties-common"], "debian"),
             ["add-apt-repository", "-y", repo],
             ["apt-get", "update"],
         ]
@@ -312,7 +308,10 @@ def _selftest():
 
     assert install_argv(["foo"], "arch") == ["pacman", "-S", "--needed", "--noconfirm", "foo"]
     checks += 1
-    assert install_argv(["foo", "bar"], "debian") == ["apt-get", "install", "-y", "foo", "bar"]
+    assert install_argv(["foo", "bar"], "debian") == [
+        "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "foo", "bar"]
+    assert privileged(install_argv(["foo"], "debian"), "debian")[:3] == [
+        "sudo", "env", "DEBIAN_FRONTEND=noninteractive"], "the frontend must sit past sudo"
     checks += 1
     assert install_argv(["foo"], "fedora")[:3] == ["dnf", "install", "-y"]
     checks += 1
@@ -395,9 +394,6 @@ def _selftest():
     assert refresh_argv("arch")[0] == "doas"
     distro.ROOT = "sudo"
     checks += 2
-
-    assert INSTALL_ENV == {"DEBIAN_FRONTEND": "noninteractive"}
-    checks += 1
 
     assert privileged(["pacman", "-S", "x"], "arch") == ["sudo", "pacman", "-S", "x"]
     checks += 1
