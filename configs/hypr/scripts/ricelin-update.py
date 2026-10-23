@@ -21,7 +21,6 @@ work-tree are detected as devmode and left alone, since they update with plain g
 """
 import datetime
 import fnmatch
-import importlib.util
 import json
 import os
 import re
@@ -407,32 +406,53 @@ def baseline(config_root, sha):
 # The engine reads the upstream package manifest from the clone, works out which
 # core packages are not installed on this machine, and offers to install the chosen
 # ones on apply.
+#
+# The family detection and name resolution below are a deliberately inlined copy of
+# installer/distro.py. The engine ships to user machines on its own and must never
+# import the installer package, so the two are kept in sync by hand rather than
+# shared. Only the slice this feature needs is copied.
+
+FAMILY_TOKENS = {
+    "arch": ("arch", "cachyos", "endeavouros", "manjaro", "garuda", "artix",
+             "arcolinux", "archcraft", "rebornos", "athena", "blackarch", "archbang",
+             "crystal", "snigdha", "parabola", "obarun", "arch32", "hyperbola", "steamos",
+             "omarchy", "xerolinux", "archman", "biglinux", "ctlos", "tromjaro",
+             "bluestar", "arkane", "blendos", "acreetionos", "mabox"),
+    "debian": ("debian", "ubuntu", "linuxmint", "pop", "elementary", "zorin", "raspbian"),
+    "fedora": ("fedora", "nobara", "rhel", "centos", "rocky", "almalinux"),
+    "suse": ("suse", "opensuse", "sles", "sled", "tumbleweed", "leap"),
+    "gentoo": ("gentoo", "funtoo", "calculate", "pentoo", "redcore"),
+}
 
 
-def installer_modules(clone, sha):
-    """
-    The installer's own distro and pkg modules as they are at sha, loaded straight
-    from the clone so family detection, name resolution and the install argv never
-    drift from the installer. None when either is absent or fails to load, so an
-    upstream without them simply yields no dependency step. distro is registered
-    under its own name first because pkg.py imports it by that name.
-    """
-    mods = []
-    for name in ("distro", "pkg"):
-        src = subprocess.run(
-            ["git", "-C", str(clone), "show", f"{sha}:installer/{name}.py"],
-            capture_output=True, text=True, check=False,
-        )
-        if src.returncode != 0:
-            return None
-        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(name, loader=None))
-        sys.modules[name] = mod
-        try:
-            exec(compile(src.stdout, f"{clone}/installer/{name}.py", "exec"), mod.__dict__)
-        except Exception:
-            return None
-        mods.append(mod)
-    return mods
+def os_release(path="/etc/os-release"):
+    data = {}
+    try:
+        with open(path) as fh:
+            for line in fh:
+                if "=" in line and not line.startswith("#"):
+                    k, v = line.rstrip().split("=", 1)
+                    data[k] = v.strip().strip('"\'')
+    except OSError:
+        pass
+    return data
+
+
+def detect_family(path="/etc/os-release"):
+    """Map os-release ID then ID_LIKE onto a package family, or "unknown"."""
+    data = os_release(path)
+    ids = [data.get("ID", "").lower()]
+    ids += data.get("ID_LIKE", "").lower().split()
+    for token in ids:
+        for fam, names in FAMILY_TOKENS.items():
+            if token in names:
+                return fam
+    return "unknown"
+
+
+def native_name(pkg, family):
+    """The native package name for this family, or None when there is none."""
+    return (pkg.get("names") or {}).get(family)
 
 
 def manifest_at(clone, sha):
@@ -454,6 +474,29 @@ def manifest_at(clone, sha):
         return None
 
 
+def pkg_installed(name, family):
+    """
+    Whether the native package is installed, read-only and quiet. A failed query
+    (wrong tool, no db) counts as not installed rather than raising, mirroring the
+    installer's own is_installed.
+    """
+    try:
+        if family == "arch":
+            r = subprocess.run(["pacman", "-Qq", name], capture_output=True, text=True)
+            return r.returncode == 0
+        if family == "debian":
+            r = subprocess.run(["dpkg-query", "-W", "-f=${Status}", name],
+                               capture_output=True, text=True)
+            return "install ok installed" in r.stdout
+        if family == "gentoo":
+            return subprocess.run(["portageq", "has_version", "/", name],
+                                  capture_output=True).returncode == 0
+        r = subprocess.run(["rpm", "-q", name], capture_output=True, text=True)
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def detect_missing_deps(clone, head):
     """
     Core packages from the upstream manifest that have a native name on this family
@@ -461,25 +504,36 @@ def detect_missing_deps(clone, head):
     package db can't speak for) are skipped, since there is nothing to query or to
     pkexec-install. Returns rows of {id, name, desc, group}.
     """
-    mods = installer_modules(clone, head)
+    family = detect_family()
     manifest = manifest_at(clone, head)
-    family = mods[0].detect_family() if mods else "unknown"
     if family == "unknown" or not manifest:
         return []
-    distro, pm = mods
     rows = []
     for pkg in manifest.get("packages", []):
         if pkg.get("group") != "core":
             continue
-        name = distro.native_name(pkg, family)
-        if not name or pm.is_installed(name, family):
+        name = native_name(pkg, family)
+        if not name or pkg_installed(name, family):
             continue
         rows.append({"id": pkg["id"], "name": name,
                      "desc": pkg.get("desc", ""), "group": pkg.get("group")})
     return rows
 
 
-def manual_hint(pkg, family, fallbacks, distro, pm):
+def native_install_argv(family, names):
+    """The bare repo-install argv (no privilege wrapper) for one or more native packages."""
+    if family == "arch":
+        return ["pacman", "-S", "--needed", "--noconfirm", *names]
+    if family == "debian":
+        return ["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", *names]
+    if family == "fedora":
+        return ["dnf", "install", "-y", *names]
+    if family == "gentoo":
+        return ["emerge", "--noreplace", *names]
+    return ["zypper", "--non-interactive", "install", *names]
+
+
+def manual_hint(pkg, family, fallbacks):
     """
     The instruction for a dependency this engine can't install headless, returned as
     its failure reason so the user is told what to run rather than left with a silent
@@ -490,9 +544,10 @@ def manual_hint(pkg, family, fallbacks, distro, pm):
     so there every package is handed over as an emerge line instead. A fallback-only
     package has no native package and points at its fallback method.
     """
-    name = distro.native_name(pkg, family)
-    if distro.is_aur(pkg, family):
-        return f"AUR package, install it yourself: {pm.aur_helper() or 'yay'} -S {name}"
+    name = native_name(pkg, family)
+    if family == "arch" and name and pkg.get("aur"):
+        helper = shutil.which("yay") or shutil.which("paru") or "yay"
+        return f"AUR package, install it yourself: {helper} -S {name}"
     if family == "gentoo" and name:
         return f"compiles from source, run it in a terminal: emerge -av {name}"
     hint = fallbacks.get(pkg.get("fallback")) or "install it manually"
@@ -521,12 +576,10 @@ def install_missing_deps(clone, head, ids):
     hint instead of attempted and failed silently. Unknown ids and a missing manifest
     are reported as failures too, never dropped.
     """
-    mods = installer_modules(clone, head)
+    family = detect_family()
     manifest = manifest_at(clone, head)
-    family = mods[0].detect_family() if mods else "unknown"
     if family == "unknown" or not manifest:
         return [{"id": pid, "error": "couldn't read the package manifest"} for pid in ids]
-    distro, pm = mods
     by_id = {p["id"]: p for p in manifest.get("packages", [])}
     fallbacks = manifest.get("fallbacks", {})
 
@@ -537,14 +590,14 @@ def install_missing_deps(clone, head, ids):
         if pkg is None:
             failures.append({"id": pid, "error": "unknown package"})
             continue
-        name = distro.native_name(pkg, family)
-        if not name or distro.is_aur(pkg, family) or family == "gentoo":
-            failures.append({"id": pid, "error": manual_hint(pkg, family, fallbacks, distro, pm)})
+        name = native_name(pkg, family)
+        if not name or (family == "arch" and pkg.get("aur")) or family == "gentoo":
+            failures.append({"id": pid, "error": manual_hint(pkg, family, fallbacks)})
             continue
         repo.append((pid, name))
 
     if repo:
-        cmd = ["pkexec", *pm.install_argv([n for _, n in repo], family)]
+        cmd = ["pkexec", *native_install_argv(family, [n for _, n in repo])]
         result, os_error = None, ""
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -552,7 +605,7 @@ def install_missing_deps(clone, head, ids):
             os_error = str(exc)
         # Verify per package so a partial transaction reports only what's still missing.
         for pid, name in repo:
-            if not pm.is_installed(name, family):
+            if not pkg_installed(name, family):
                 failures.append({"id": pid, "error": native_install_reason(result, os_error)})
     return failures
 

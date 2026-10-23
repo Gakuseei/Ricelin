@@ -101,11 +101,9 @@ def main():
         assert not (config / skipped).exists(), f"{skipped} is outside the deploy set"
     print("sync follows the installer deploy set: ok")
 
-    distro_mod, pkg_mod = ru.installer_modules(data, ru.origin_head(data))
-    assert pkg_mod.distro is distro_mod, "pkg binds the clone's distro, not a system module"
-    assert pkg_mod.install_argv(["x"], "debian")[:2] == ["env", "DEBIAN_FRONTEND=noninteractive"]
-    assert ru.installer_modules(data, "0" * 40) is None, "a missing module yields no dependency step"
-    print("dependency step loads the clone's installer modules: ok")
+    assert ru.native_install_argv("debian", ["x"])[:2] == ["env", "DEBIAN_FRONTEND=noninteractive"]
+    assert "exec(" not in Path(ru.__file__).read_text(), "the engine never runs code from the clone"
+    print("dependency step stays on the engine's own helpers: ok")
 
     assert (config / "hypr/hypridle.conf").read_text() == (
         "after_sleep_cmd = hyprctl dispatch \"hl.dsp.dpms({ action = 'on' })\"\n"
