@@ -1,6 +1,7 @@
 general {
     lock_cmd = /home/erik/.config/hypr/scripts/lock.sh
     before_sleep_cmd = loginctl lock-session
+    inhibit_sleep = 3
     after_sleep_cmd = hyprctl dispatch "hl.dsp.dpms({ action = 'on' })"
 }
 

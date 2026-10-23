@@ -4,9 +4,7 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * Read-only view of the shared flags file the pill owns. The lock only cares
- * about the palette mode; this adapter carries a subset of the keys, so it
- * must never writeAdapter or it would strip the rest of the pill's state.
+ * Read-only subset view of the pill's shared flags file, which must never writeAdapter or it would strip the pill's other keys.
  */
 Singleton {
     readonly property string paletteMode: adapter.paletteMode

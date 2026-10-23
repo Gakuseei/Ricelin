@@ -4,10 +4,7 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * Wallpaper-derived palette, same matugen JSON the pill watches, trimmed to
- * the tokens the lock consumes. Never source anything from on_primary_container:
- * matugen can leave it empty through JsonAdapter and the token collapses to
- * black (the pill learned this the hard way).
+ * Wallpaper palette for the lock from the pill's matugen JSON, never sourced from on_primary_container because it can load empty and turn black.
  */
 Singleton {
     readonly property string primary: adapter.primary

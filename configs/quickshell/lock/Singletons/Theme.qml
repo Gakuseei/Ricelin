@@ -3,14 +3,10 @@ import QtQuick
 import Quickshell
 
 /**
- * Lock palette, same split as the pill's Theme: the fixed hex is the identity
- * and the default, and with the dynamic-palette flag on the accent and text
- * family follow the wallpaper through Dyn. Each token is a single ternary, so
- * static mode renders byte-identical to the old fixed theme.
+ * Lock palette: washi by default, the wallpaper's with the dynamic palette.
  */
 Singleton {
     readonly property bool dyn: Flags.paletteMode !== "static"
-
     readonly property color verm:   dyn ? Qt.darker(Dyn.primary, 1.18) : "#c0442b"
     readonly property color cream:  dyn ? Dyn.cream : "#e6d6cb"
     readonly property color bright: dyn ? Dyn.bright : "#fff6f0"

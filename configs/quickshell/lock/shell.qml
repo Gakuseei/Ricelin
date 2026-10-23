@@ -9,6 +9,23 @@ import "Singletons"
 ShellRoot {
     id: root
 
+    /**
+     * Heartbeat for watchdog.sh, which restarts this shell when it stops beating.
+     */
+    FileView {
+        id: heartbeat
+        path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/ricelin-lock-alive"
+        printErrors: false
+        blockLoading: false
+    }
+    Timer {
+        interval: 2000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: heartbeat.setText(String(Date.now()))
+    }
+
     readonly property string currentUser: Quickshell.env("USER") || Quickshell.env("LOGNAME") || ""
 
     /** Drives the pill-to-lock reveal. Kept off while the surface first mounts so the mask starts as the pill, then flipped on to grow it open; flipped back to collapse it before the session actually unlocks. */
@@ -49,14 +66,7 @@ ShellRoot {
     }
 
     /**
-     * Fast lock trigger. Spawning a fresh `qs ipc call` client to ask for the lock
-     * cost a quarter second of Qt startup on the critical path; instead lock.sh just
-     * touches this file and the watch fires the lock, shaving that off the delay.
-     * The IPC handler stays as a fallback for any other caller.
-     *
-     * An external write lands as a burst of change events, so the fire is debounced
-     * into one; primed gates out the startup events (including the file's own
-     * creation) so the daemon never locks itself on launch.
+     * lock.sh just touches this file to skip the quarter second `qs ipc call` startup, and triggerPrimed gates out startup events so the daemon never locks itself on launch.
      */
     property bool triggerPrimed: false
     Timer {
@@ -69,6 +79,16 @@ ShellRoot {
         interval: 60
         onTriggered: if (root.triggerPrimed)
             root.doLock()
+    }
+    /**
+     * lock.sh reads this to confirm the compositor really locked; empty means unlocked.
+     */
+    FileView {
+        id: lockedFlag
+        path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/ricelin-locked"
+        printErrors: false
+        onLoaded: if (text().length > 0 && !sessionLock.secure)
+            setText("")
     }
     FileView {
         path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/ricelin-lock-trigger"
@@ -83,6 +103,7 @@ ShellRoot {
     WlSessionLock {
         id: sessionLock
         locked: false
+        onSecureStateChanged: lockedFlag.setText(secure ? "1" : "")
 
         WlSessionLockSurface {
             id: lockSurface

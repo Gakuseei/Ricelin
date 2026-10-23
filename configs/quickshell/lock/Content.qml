@@ -16,10 +16,7 @@ Item {
     property bool showError: false
 
     /**
-     * Password visibility toggle for the capsule eye. Masked renders no text at
-     * all: each char lights one ember bead instead of the usual bullet row, and
-     * the freshest bead burns cream like a wick tip. Reveal swaps beads for the
-     * plain string. Reset on every auth attempt so a retry never leaks state.
+     * Shows the plain password instead of ember beads, reset on every auth attempt so a retry never leaks state.
      */
     property bool reveal: false
 
@@ -370,10 +367,7 @@ Item {
         }
 
         /**
-         * One bead per typed char instead of the usual bullets, fed by a
-         * ListModel so existing beads survive each keystroke untouched (a plain
-         * number model rebuilds every delegate and flickers). Only the freshest
-         * bead pulses, as the wick tip.
+         * Beads come from a ListModel so existing ones survive each keystroke, since a plain number model rebuilds every delegate and flickers.
          */
         ListModel { id: beadModel }
 
@@ -397,8 +391,8 @@ Item {
                     SequentialAnimation on opacity {
                         running: bead.index === input.text.length - 1
                         loops: Animation.Infinite
-                        NumberAnimation { to: 0.35; duration: 480 }
-                        NumberAnimation { to: 1; duration: 480 }
+                        NumberAnimation { to: 0.35; duration: 480; easing.type: Easing.InOutSine }
+                        NumberAnimation { to: 1; duration: 480; easing.type: Easing.InOutSine }
                     }
                 }
             }

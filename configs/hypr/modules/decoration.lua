@@ -19,6 +19,7 @@ hl.config({
     misc = {
         disable_hyprland_logo    = true,
         disable_splash_rendering = true,
+        allow_session_lock_restore = true,
     },
     general = {
         gaps_in     = 6,

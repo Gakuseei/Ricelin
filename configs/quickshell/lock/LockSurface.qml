@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Effects
 import Quickshell
+import Quickshell.Io
 import "Singletons"
 
 Item {
@@ -12,25 +13,39 @@ Item {
     property string screenName: ""
 
     /**
-     * Drives the lock-open morph. A pill-shaped hole grows from the pill's resting
-     * spot out to the full screen, wiping the lock open over the grabbed desktop.
-     * The grow waits for the grab so it reveals onto the real desktop, the collapse
-     * just runs on unlock.
+     * Drives the pill-shaped hole that wipes the lock open, and the grow waits for the grab so it reveals the real desktop.
      */
     property bool active: false
     property real maskP: 0
 
     readonly property bool overlayReady: deskOverlay.status === Image.Ready
     readonly property bool shouldOpen: active && overlayReady
-    onShouldOpenChanged: if (shouldOpen)
-        openAnim.restart()
-    onActiveChanged: if (!active)
-        closeAnim.restart()
+    onShouldOpenChanged: if (shouldOpen) {
+        closeAnim.stop();
+        openAnim.restart();
+    }
+    onActiveChanged: if (!active) {
+        openAnim.stop();
+        closeAnim.restart();
+    }
 
     /**
-     * The lock UI's primary screen is just the first one Quickshell reports, so
-     * the auth panel lands on one deterministic monitor without pinning a display
-     * name that only exists on Erik's machine.
+     * The pill's real resting size on this monitor, written by the pill, so the hole grows from exactly its shape.
+     */
+    FileView {
+        id: pillRest
+        path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/ricelin-pill-" + surface.screenName
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+    }
+    readonly property var restSize: {
+        const v = pillRest.text().trim().split(" ").map(Number);
+        return v.length === 2 && v[0] > 0 && v[1] > 0 ? v : [160, 38];
+    }
+
+    /**
+     * Uses the first screen Quickshell reports as primary so the auth panel lands on one fixed monitor without pinning a machine-specific display name.
      */
     readonly property bool isMain: {
         var scr = Quickshell.screens;
@@ -55,10 +70,7 @@ Item {
     clip: true
 
     /**
-     * The blurred desktop backdrop. It is the whole build cost, so it loads a beat
-     * after the surface mounts; the cheap sharp overlay and clock are up first,
-     * which keeps the compositor from showing a black gap while this instantiates.
-     * The hole reveals this once the pill grows.
+     * The blurred backdrop is the whole build cost, so it loads a beat after mount and the compositor never shows a black gap while it instantiates.
      */
     Loader {
         id: blurLayer
@@ -267,9 +279,7 @@ Item {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         /**
-         * Full height: the shader already fades the glow out across the top
-         * 15% of the field, so capping the field at half the screen stamped a
-         * visible hard stop into the middle of it.
+         * Full height because the shader already fades the glow over the top 15%, and a half-screen cap left a visible hard stop.
          */
         height: parent.height
     }
@@ -282,10 +292,7 @@ Item {
     }
 
     /**
-     * The frozen desktop grab, sharp and opaque, punched with a pill-shaped hole.
-     * As the hole grows the lock wipes open; outside the hole you keep seeing your
-     * own desktop, never black. Loaded synchronously so it is ready the frame the
-     * lock mounts and the reveal never opens onto a blank.
+     * Frozen desktop grab with a pill-shaped hole, loaded synchronously so the reveal never opens onto a blank frame.
      */
     Image {
         id: deskOverlay
@@ -310,8 +317,8 @@ Item {
             color: "white"
             antialiasing: true
 
-            readonly property real pillW: 160 * surface.s
-            readonly property real pillH: 38 * surface.s
+            readonly property real pillW: surface.restSize[0] * surface.s
+            readonly property real pillH: surface.restSize[1] * surface.s
             readonly property real pillY: 8 * Flags.topGap * surface.s
 
             width: pillW + (surface.width - pillW) * surface.maskP
@@ -333,17 +340,14 @@ Item {
         maskSpreadAtMin: 1.0
     }
 
-    /**
-     * The open eases in and out so it grows on smoothly instead of popping, the
-     * close keeps the liquid pillMorph curve that already feels right.
-     */
     NumberAnimation {
         id: openAnim
         target: surface
         property: "maskP"
         to: 1
-        duration: 620
-        easing.type: Easing.InOutCubic
+        duration: 520
+        easing.type: Easing.BezierSpline
+        easing.bezierCurve: [0.32, 0.72, 0, 1, 1, 1]
     }
 
     NumberAnimation {

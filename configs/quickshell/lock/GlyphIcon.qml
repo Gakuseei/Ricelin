@@ -2,9 +2,7 @@ import QtQuick
 import QtQuick.Shapes
 
 /**
- * Baked vector glyphs for the lock, same recipe as the pill's GlyphIcon: 24x24
- * SVG path data stroked into a Shape, so nothing depends on icon themes. Only
- * the glyphs the lock actually needs live here.
+ * Baked 24x24 SVG path glyphs for the lock, so nothing depends on icon themes.
  */
 Item {
     id: root
