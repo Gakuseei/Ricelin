@@ -16,7 +16,9 @@ PillSurface {
     mRight: Theme.inset.side
     mBottom: Theme.inset.bottom
 
-    readonly property var loc: Qt.locale("en_US")
+    readonly property var loc: Clock.locale
+    /** Weekday (0 = Sunday) of the first grid column. */
+    readonly property int weekStart: Flags.weekStart === "sun" ? 0 : 1
 
     readonly property date today: sysClock.date
     property int viewYear: today.getFullYear()
@@ -61,21 +63,22 @@ PillSurface {
         return key.length > 0 && rangeLo.length > 0 && key >= rangeLo && key <= rangeHi;
     }
 
-    /** "ddd d MMM" for a single day, "d MMM" without the weekday. */
-    function fmtDay(key, dow) {
+    function keyDate(key) {
         var p = key.split("-");
-        var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
-        return loc.toString(d, dow ? "ddd d MMM" : "d MMM");
+        return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    }
+
+    /** "Mon 9 Jun" for a single day, "9 Jun" without the weekday, in the chosen date language. */
+    function fmtDay(key, dow) {
+        return Clock.dateFor(dow ? "ddd d MMM" : "d MMM", Flags.dateLang, keyDate(key));
     }
 
     /** "22–25 Jun" within a month, "29 Jun – 2 Jul" across one. */
     function fmtSpan(loKey, hiKey) {
         var lp = loKey.split("-");
         var hp = hiKey.split("-");
-        if (lp[0] === hp[0] && lp[1] === hp[1]) {
-            var d = new Date(Number(lp[0]), Number(lp[1]) - 1, Number(lp[2]));
-            return Number(lp[2]) + "–" + Number(hp[2]) + " " + loc.toString(d, "MMM");
-        }
+        if (lp[0] === hp[0] && lp[1] === hp[1])
+            return Number(lp[2]) + (Flags.dateLang === "de" ? ".–" : "–") + fmtDay(hiKey, false);
         return fmtDay(loKey, false) + " – " + fmtDay(hiKey, false);
     }
 
@@ -122,7 +125,12 @@ PillSurface {
 
     function firstWeekdayOffset(year, month) {
         var d = new Date(year, month, 1).getDay();
-        return (d + 6) % 7;
+        return (d - weekStart + 7) % 7;
+    }
+
+    function isWeekend(column) {
+        var dow = (weekStart + column) % 7;
+        return dow === 0 || dow === 6;
     }
 
     function daysInMonth(year, month) {
@@ -222,13 +230,11 @@ PillSurface {
         return true;
     }
 
-    component SmallCaps: Text {
+    component Caption: Text {
         color: Theme.textFaint
         font.family: Theme.font
-        font.pixelSize: Theme.fs.label * root.s
-        font.weight: Font.Bold
-        font.capitalization: Font.AllUppercase
-        font.letterSpacing: Theme.labelTracking * root.s
+        font.pixelSize: Theme.fs.meta * root.s
+        font.weight: Font.DemiBold
     }
 
     /** Underlined inline input used by the editor's title and time fields. */
@@ -337,7 +343,7 @@ PillSurface {
 
                     property bool editing: false
 
-                    SmallCaps {
+                    Caption {
                         id: cityText
                         visible: !cityBox.editing
                         anchors.left: parent.left
@@ -371,10 +377,8 @@ PillSurface {
                         verticalAlignment: TextInput.AlignVCenter
                         color: Theme.cream
                         font.family: Theme.font
-                        font.pixelSize: Theme.fs.label * root.s
-                        font.weight: Font.Bold
-                        font.capitalization: Font.AllUppercase
-                        font.letterSpacing: Theme.labelTracking * root.s
+                        font.pixelSize: Theme.fs.meta * root.s
+                        font.weight: Font.DemiBold
                         placeholderText: "Town"
                         placeholderTextColor: Theme.textFaint
                         selectByMouse: true
@@ -430,10 +434,9 @@ PillSurface {
                         width: wxCol.width / 4
                         spacing: 5 * root.s
 
-                        SmallCaps {
+                        Caption {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: dayCol.modelData.day
-                            font.letterSpacing: 0.5 * root.s
                         }
                         GlyphIcon {
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -573,15 +576,14 @@ PillSurface {
                 Item {
                     id: wd
                     required property int index
-                    readonly property bool weekend: index >= 5
+                    readonly property bool weekend: root.isWeekend(index)
                     width: weekdays.width / 7
                     height: 16 * root.s
 
-                    SmallCaps {
+                    Caption {
                         anchors.centerIn: parent
-                        text: root.loc.standaloneDayName((wd.index + 1) % 7, Locale.NarrowFormat)
+                        text: root.loc.standaloneDayName((root.weekStart + wd.index) % 7, Locale.NarrowFormat)
                         color: wd.weekend ? Theme.textFaint : Theme.subtle
-                        font.letterSpacing: 0
                     }
                 }
             }
@@ -604,8 +606,7 @@ PillSurface {
                 Item {
                     id: cell
                     required property int index
-                    readonly property int weekday: index % 7
-                    readonly property bool weekend: weekday >= 5
+                    readonly property bool weekend: root.isWeekend(index % 7)
                     width: grid.width / 7
                     height: root.cellH
 
@@ -803,7 +804,7 @@ PillSurface {
             anchors.top: parent.top
             spacing: 8 * root.s
 
-            SmallCaps {
+            Caption {
                 width: parent.width
                 height: 22 * root.s
                 verticalAlignment: Text.AlignVCenter

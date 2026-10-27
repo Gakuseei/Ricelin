@@ -38,7 +38,7 @@ PillSurface {
         SurfaceHeader {
             s: root.s
             glyph: "蓄"
-            title: "BATTERY"
+            title: "Battery"
 
             Text {
                 anchors.right: parent.right
@@ -46,10 +46,8 @@ PillSurface {
                 text: Battery.stateLabel
                 color: Battery.charging ? Theme.flameGlow : Theme.textFaint
                 font.family: Theme.font
-                font.pixelSize: Theme.fs.label * root.s
-                font.weight: Font.Bold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: Theme.labelTracking * root.s
+                font.pixelSize: Theme.fs.meta * root.s
+                font.weight: Font.DemiBold
             }
         }
 
@@ -125,10 +123,8 @@ PillSurface {
                     text: stat.label
                     color: Theme.textFaint
                     font.family: Theme.font
-                    font.pixelSize: Theme.fs.label * root.s
-                    font.weight: Font.Bold
-                    font.capitalization: Font.AllUppercase
-                    font.letterSpacing: Theme.labelTracking * root.s
+                    font.pixelSize: Theme.fs.meta * root.s
+                    font.weight: Font.DemiBold
                 }
 
                 Text {

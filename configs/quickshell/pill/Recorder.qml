@@ -256,7 +256,7 @@ PillSurface {
         SurfaceHeader {
             s: root.s
             glyph: "録"
-            title: "Record"
+            title: "Recorder"
 
             Row {
                 x: parent.width - width
@@ -283,10 +283,8 @@ PillSurface {
                     text: ScreenRec.recording ? root.fmtTime(root.elapsed) : (root.counting ? "Get ready" : "Idle")
                     color: ScreenRec.recording ? Theme.vermLit : Theme.textFaint
                     font.family: Theme.font
-                    font.pixelSize: Theme.fs.label * root.s
-                    font.weight: Font.Bold
-                    font.capitalization: Font.AllUppercase
-                    font.letterSpacing: Theme.labelTracking * root.s
+                    font.pixelSize: Theme.fs.meta * root.s
+                    font.weight: Font.DemiBold
                     font.features: { "tnum": 1 }
                 }
             }
@@ -425,10 +423,8 @@ PillSurface {
                         text: "Rec"
                         color: Theme.vermLit
                         font.family: Theme.font
-                        font.pixelSize: Theme.fs.label * root.s
-                        font.weight: Font.Bold
-                        font.capitalization: Font.AllUppercase
-                        font.letterSpacing: Theme.labelTracking * root.s
+                        font.pixelSize: Theme.fs.meta * root.s
+                        font.weight: Font.DemiBold
                     }
                 }
 
@@ -769,10 +765,8 @@ PillSurface {
                 text: "Save to"
                 color: Theme.textFaint
                 font.family: Theme.font
-                font.pixelSize: Theme.fs.label * root.s
-                font.weight: Font.Bold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: Theme.labelTracking * root.s
+                font.pixelSize: Theme.fs.meta * root.s
+                font.weight: Font.DemiBold
             }
 
             /**
@@ -846,10 +840,8 @@ PillSurface {
                     text: "Recent · " + ScreenRec.recentCount
                     color: Theme.textFaint
                     font.family: Theme.font
-                    font.pixelSize: Theme.fs.label * root.s
-                    font.weight: Font.Bold
-                    font.capitalization: Font.AllUppercase
-                    font.letterSpacing: Theme.labelTracking * root.s
+                    font.pixelSize: Theme.fs.meta * root.s
+                    font.weight: Font.DemiBold
                 }
             }
 

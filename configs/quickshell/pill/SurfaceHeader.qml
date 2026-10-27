@@ -2,7 +2,7 @@ import QtQuick
 import "Singletons"
 
 /**
- * The one surface header: back chevron, kanji, small-caps title and breadcrumb; a press on the strip steps back (shell.qml).
+ * The one surface header: back chevron, kanji, title and breadcrumb; a press on the strip steps back (shell.qml).
  */
 Item {
     id: head
@@ -66,10 +66,8 @@ Item {
             text: (head.crumb.length > 0 ? head.title + "  ›  " + head.crumb : head.title)
             color: Theme.subtle
             font.family: Theme.font
-            font.pixelSize: Theme.fs.label * head.s
-            font.weight: Font.Bold
-            font.capitalization: Font.AllUppercase
-            font.letterSpacing: Theme.labelTracking * head.s
+            font.pixelSize: Theme.fs.body * head.s
+            font.weight: Font.DemiBold
         }
     }
 }

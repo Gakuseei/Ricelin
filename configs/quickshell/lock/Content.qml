@@ -99,7 +99,7 @@ Item {
 
     SystemClock {
         id: sysClock
-        precision: SystemClock.Minutes
+        precision: Flags.lockSeconds ? SystemClock.Seconds : SystemClock.Minutes
     }
 
     Timer {
@@ -118,9 +118,8 @@ Item {
         opacity: 0.85
         font.family: Theme.font
         font.weight: 600
-        font.pixelSize: 11 * content.s
-        font.letterSpacing: 3.5 * content.s
-        font.capitalization: Font.AllUppercase
+        font.pixelSize: 15 * content.s
+        font.letterSpacing: 0.2 * content.s
         layer.enabled: true
         layer.effect: MultiEffect {
             shadowEnabled: true
@@ -131,26 +130,68 @@ Item {
         }
     }
 
+    /** Qt reads "h" as 24h unless the same format holds AP, and the AM/PM sits in its own label here, so the 12h hour is built by hand. */
+    readonly property string clockString: {
+        var d = sysClock.date;
+        if (!Flags.time12h)
+            return Qt.formatDateTime(d, Flags.lockSeconds ? "HH:mm:ss" : "HH:mm");
+        var h = d.getHours() % 12;
+        if (h === 0)
+            h = 12;
+        return h + Qt.formatDateTime(d, Flags.lockSeconds ? ":mm:ss" : ":mm");
+    }
+
     Text {
         id: clockText
-        visible: content.isMain
+        visible: content.isMain && !Flags.lockSeconds
         anchors.horizontalCenter: parent.horizontalCenter
         y: parent.height * 0.24
         color: Theme.bright
         font.family: "Zen Kaku Gothic New"
         font.weight: 500
         font.pixelSize: 130 * content.s
-        /** Qt reads "h" as 24h unless the same format holds AP, and the AM/PM sits in its own label here, so the 12h hour is built by hand. */
-        text: {
-            var d = sysClock.date;
-            if (!Flags.time12h)
-                return Qt.formatDateTime(d, "HH:mm");
-            var h = d.getHours() % 12;
-            if (h === 0)
-                h = 12;
-            var m = d.getMinutes();
-            return h + ":" + (m < 10 ? "0" : "") + m;
+        text: content.clockString
+        layer.enabled: true
+        layer.effect: MultiEffect {
+            shadowEnabled: true
+            shadowColor: Qt.rgba(0, 0, 0, 0.5)
+            shadowBlur: 1.0
+            shadowVerticalOffset: 2
+            shadowHorizontalOffset: 0
         }
+    }
+
+    FontMetrics {
+        id: clockMetrics
+        font: clockText.font
+    }
+
+    /**
+     * With seconds every digit sits in a cell as wide as the widest digit, since this font has no tabular figures and a centred clock would twitch every second.
+     */
+    Row {
+        id: clockCells
+        visible: content.isMain && Flags.lockSeconds
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: clockText.y
+        readonly property real digitW: {
+            void clockMetrics.font;
+            return Math.max(...("0123456789".split("").map(c => clockMetrics.advanceWidth(c))));
+        }
+
+        Repeater {
+            model: Flags.lockSeconds ? content.clockString.length : 0
+
+            Text {
+                required property int index
+                width: text === ":" ? implicitWidth : clockCells.digitW
+                horizontalAlignment: Text.AlignHCenter
+                text: content.clockString.charAt(index)
+                color: Theme.bright
+                font: clockText.font
+            }
+        }
+
         layer.enabled: true
         layer.effect: MultiEffect {
             shadowEnabled: true
@@ -163,7 +204,7 @@ Item {
 
     Text {
         visible: content.isMain && Flags.time12h
-        anchors.left: clockText.right
+        anchors.left: Flags.lockSeconds ? clockCells.right : clockText.right
         anchors.leftMargin: 12 * content.s
         anchors.baseline: clockText.baseline
         color: Theme.bright

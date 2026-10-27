@@ -114,7 +114,7 @@ PillSurface {
         anchors.right: parent.right
         s: root.s
         glyph: "電"
-        title: "POWER"
+        title: "Power"
     }
 
     Row {

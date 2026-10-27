@@ -13,15 +13,18 @@ Item {
     property real pixelSize: 14
     property int weight: Font.Normal
     property bool active: true
+    /** Scrolls one pass on its own whenever the text changes, for places a hover would not reach. */
+    property bool auto: false
     property real s: 1
 
     property real scrollX: 0
 
+    implicitWidth: label.implicitWidth
     implicitHeight: label.implicitHeight
     clip: true
 
     readonly property real overflow: Math.max(0, label.implicitWidth - width)
-    readonly property bool scrolling: active && hover.hovered && overflow > 0 && !Motion.calm
+    readonly property bool scrolling: active && (auto || hover.hovered) && overflow > 0 && !Motion.calm
     readonly property bool unrolled: scrolling || scrollX < 0
     readonly property real edge: 16 * s
 
@@ -86,7 +89,7 @@ Item {
 
     SequentialAnimation {
         id: run
-        loops: Animation.Infinite
+        loops: root.auto ? 1 : Animation.Infinite
         PauseAnimation { duration: Motion.standard }
         NumberAnimation {
             target: root

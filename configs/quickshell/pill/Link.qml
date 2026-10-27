@@ -314,10 +314,8 @@ PillSurface {
                         text: Notifs.unread + " new"
                         color: Theme.textFaint
                         font.family: Theme.font
-                        font.pixelSize: Theme.fs.label * root.s
-                        font.weight: Font.Bold
-                        font.capitalization: Font.AllUppercase
-                        font.letterSpacing: Theme.labelTracking * root.s
+                        font.pixelSize: Theme.fs.meta * root.s
+                        font.weight: Font.DemiBold
                     }
                 }
 
@@ -465,10 +463,8 @@ PillSurface {
                                     text: group.g.app
                                     color: Theme.textFaint
                                     font.family: Theme.font
-                                    font.pixelSize: Theme.fs.label * root.s
-                                    font.weight: Font.Bold
-                                    font.capitalization: Font.AllUppercase
-                                    font.letterSpacing: Theme.labelTracking * root.s
+                                    font.pixelSize: Theme.fs.meta * root.s
+                                    font.weight: Font.DemiBold
                                     elide: Text.ElideRight
                                     textFormat: Text.PlainText
                                 }

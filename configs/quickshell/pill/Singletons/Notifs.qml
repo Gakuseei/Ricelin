@@ -16,6 +16,21 @@ Singleton {
     property var expireAt: ({})
     property var hookedIds: ({})
 
+    /**
+     * Newest notification as `{ id, app, summary }` for the resting pill's live line, held a few seconds after the toasts clear; null when nothing is fresh.
+     */
+    property var flash: null
+    readonly property int flashMs: 6000
+
+    onPopupsChanged: if (popups.length === 0 && flash)
+        flashTimer.restart()
+
+    Timer {
+        id: flashTimer
+        interval: root.flashMs
+        onTriggered: root.flash = null
+    }
+
     readonly property var tracked: server.trackedNotifications.values
     readonly property int count: tracked.length + history.length
 
@@ -175,6 +190,7 @@ Singleton {
         for (var j = 0; j < l.length; j++) l[j].dismiss();
         root.history = [];
         root.popups = [];
+        root.flash = null;
     }
 
     function removePopup(n) {
@@ -213,6 +229,8 @@ Singleton {
                 var du = Object.assign({}, root.userDismissed);
                 delete du[n.id];
                 root.userDismissed = du;
+                if (root.flash && root.flash.id === n.id)
+                    root.flash = null;
             }
             root.removePopup(n);
             var b = Object.assign({}, root.arrivalMs);
@@ -282,8 +300,15 @@ Singleton {
             e[n.id] = Date.now() + (n.urgency === NotificationUrgency.Low ? 2500 : 4000);
             root.expireAt = e;
             var critical = n.urgency === NotificationUrgency.Critical;
-            if (!Flags.dnd || critical)
+            if (!Flags.dnd || critical) {
                 root.popups = root.popups.concat([n]).slice(-3);
+                root.flash = {
+                    id: n.id,
+                    app: (n.appName && n.appName.length) ? n.appName : "System",
+                    summary: root.plain(n.summary || n.body)
+                };
+                flashTimer.restart();
+            }
         }
     }
 }

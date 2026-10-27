@@ -54,10 +54,8 @@ Item {
                 text: "Get ready"
                 color: Theme.textFaint
                 font.family: Theme.font
-                font.pixelSize: Theme.fs.label * root.s
-                font.weight: Font.Bold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: Theme.labelTracking * root.s
+                font.pixelSize: Theme.fs.meta * root.s
+                font.weight: Font.DemiBold
             }
         }
 

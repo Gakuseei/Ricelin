@@ -462,9 +462,8 @@ PillSurface {
                                                 color: Theme.textFaint
                                                 font.family: Theme.font
                                                 font.pixelSize: Theme.fs.label * root.s
-                                                font.weight: Font.Bold
-                                                font.capitalization: Font.AllUppercase
-                                                font.letterSpacing: Theme.labelTracking * root.s
+                                                font.weight: Font.DemiBold
+                                                font.letterSpacing: 0.4 * root.s
                                             }
                                         }
                                     }

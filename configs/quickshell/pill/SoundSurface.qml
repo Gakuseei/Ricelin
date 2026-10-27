@@ -182,13 +182,11 @@ PillSurface {
         font.pixelSize: Theme.fs.meta * root.s
     }
 
-    component Caps: Text {
+    component Caption: Text {
         color: Theme.textFaint
         font.family: Theme.font
-        font.pixelSize: Theme.fs.label * root.s
-        font.weight: Font.Bold
-        font.capitalization: Font.AllUppercase
-        font.letterSpacing: Theme.labelTracking * root.s
+        font.pixelSize: Theme.fs.meta * root.s
+        font.weight: Font.DemiBold
     }
 
     component IconButton: Item {
@@ -707,7 +705,7 @@ PillSurface {
             width: parent.width
             height: 28 * root.s
 
-            Caps {
+            Caption {
                 id: outLabel
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
@@ -820,7 +818,7 @@ PillSurface {
                 width: parent.width
                 height: 28 * root.s
 
-                Caps {
+                Caption {
                     id: gainLabel
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter

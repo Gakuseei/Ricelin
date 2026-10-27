@@ -4,21 +4,64 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * Live weather from Open-Meteo with no API key, located once via ip-api or `Flags.weatherCity` and cached, then refreshed every 20 minutes.
+ * Live weather from Open-Meteo with no API key, located once via ip-api or `Flags.weatherCity` and cached, then refreshed every 20 minutes and retried sooner after a failure.
  */
 Singleton {
     id: root
 
     readonly property string cacheDir: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/ricelin"
 
-    property int tempNow: 0
     property int codeNow: 0
     property int humidity: 0
     property bool isDay: true
     property string city: ""
-    property var hourly: []
-    property var daily: []
     property bool ready: false
+
+    /** Fetched temperatures stay in Celsius so a unit switch converts at once without a refetch. */
+    property real rawNow: 0
+    property var rawHourly: []
+    property var rawDaily: []
+
+    readonly property bool fahrenheit: Flags.weatherUnit === "f"
+    readonly property int tempNow: temp(rawNow)
+    readonly property var hourly: rawHourly.map(r => ({ hour: r.hour, temp: root.temp(r.t), code: r.code }))
+    readonly property var daily: rawDaily.map(r => ({
+        day: Clock.weekday(r.date, Flags.dateLang),
+        date: r.date,
+        code: r.code,
+        temp: root.temp(r.t),
+        rh: r.rh
+    }))
+
+    /** A Celsius reading as a whole number in the chosen unit. */
+    function temp(c) {
+        return Math.round(fahrenheit ? c * 9 / 5 + 32 : c);
+    }
+
+    /** Retry delays after a failed lookup or fetch; past the last one the 20 minute cycle takes over. */
+    readonly property var backoff: [20000, 60000, 180000]
+    property int failures: 0
+
+    function failed() {
+        if (retry.running || failures >= backoff.length)
+            return;
+        retry.interval = backoff[failures];
+        failures++;
+        retry.restart();
+    }
+
+    function succeeded() {
+        failures = 0;
+        retry.stop();
+    }
+
+    /** Next step of the chain: a fetch once located, else the location lookup again. */
+    function refresh() {
+        if (located)
+            fetchWeather();
+        else
+            locate();
+    }
 
     property real lat: 0
     property real lon: 0
@@ -98,6 +141,8 @@ Singleton {
 
     /** Resolve coordinates: geocode the manual city override, else fall back to IP. */
     function locate() {
+        if (ipProc.running || geoProc.running)
+            return;
         if (Flags.weatherCity && Flags.weatherCity.trim().length > 0)
             geoProc.running = true;
         else
@@ -123,8 +168,10 @@ Singleton {
                         root.located = true;
                         root.writeLoc();
                         root.fetchWeather();
+                        return;
                     }
                 } catch (e) {}
+                root.failed();
             }
         }
     }
@@ -147,8 +194,10 @@ Singleton {
                         root.located = true;
                         root.writeLoc();
                         root.fetchWeather();
+                        return;
                     }
                 } catch (e) {}
+                root.failed();
             }
         }
     }
@@ -166,8 +215,10 @@ Singleton {
                 try {
                     var d = JSON.parse(this.text);
                     var cur = d.current;
-                    if (!cur)
+                    if (!cur || typeof cur.temperature_2m !== "number") {
+                        root.failed();
                         return;
+                    }
                     var rows = [];
                     var h = d.hourly;
                     if (h && h.time && h.temperature_2m && h.weather_code) {
@@ -175,7 +226,7 @@ Singleton {
                         for (var i = 0; i < n; i++) {
                             rows.push({
                                 hour: h.time[i].slice(11, 13),
-                                temp: Math.round(h.temperature_2m[i]),
+                                t: h.temperature_2m[i],
                                 code: h.weather_code[i]
                             });
                         }
@@ -183,33 +234,44 @@ Singleton {
                     var days = [];
                     var dd = d.daily;
                     if (dd && dd.time && dd.weather_code && dd.temperature_2m_max && dd.relative_humidity_2m_mean) {
-                        var dn = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
                         var m = Math.min(dd.time.length, dd.weather_code.length, dd.temperature_2m_max.length, dd.relative_humidity_2m_mean.length);
                         for (var j = 0; j < m; j++) {
+                            var p = dd.time[j].split("-");
                             days.push({
-                                day: dn[new Date(dd.time[j]).getDay()],
+                                date: new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2])),
                                 code: dd.weather_code[j],
-                                temp: Math.round(dd.temperature_2m_max[j]),
+                                t: dd.temperature_2m_max[j],
                                 rh: Math.round(dd.relative_humidity_2m_mean[j])
                             });
                         }
                     }
-                    root.tempNow = Math.round(cur.temperature_2m);
+                    root.rawNow = cur.temperature_2m;
                     root.codeNow = cur.weather_code;
                     root.humidity = Math.round(cur.relative_humidity_2m);
                     root.isDay = cur.is_day === 1;
-                    root.hourly = rows;
-                    root.daily = days;
+                    root.rawHourly = rows;
+                    root.rawDaily = days;
                     root.ready = true;
-                } catch (e) {}
+                    root.succeeded();
+                } catch (e) {
+                    root.failed();
+                }
             }
         }
+    }
+
+    Timer {
+        id: retry
+        onTriggered: root.refresh()
     }
 
     Timer {
         interval: 1200000
         running: true
         repeat: true
-        onTriggered: root.fetchWeather()
+        onTriggered: {
+            root.failures = 0;
+            root.refresh();
+        }
     }
 }

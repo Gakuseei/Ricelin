@@ -560,13 +560,11 @@ PillSurface {
         }
     }
 
-    component Caps: Text {
+    component Caption: Text {
         color: Theme.textFaint
         font.family: Theme.font
-        font.pixelSize: Theme.fs.label * root.s
-        font.weight: Font.Bold
-        font.capitalization: Font.AllUppercase
-        font.letterSpacing: Theme.labelTracking * root.s
+        font.pixelSize: Theme.fs.meta * root.s
+        font.weight: Font.DemiBold
     }
 
     SurfaceHeader {
@@ -820,7 +818,7 @@ PillSurface {
                             width: parent.width
                             height: shown ? 24 * root.s : 0
 
-                            Caps {
+                            Caption {
                                 id: revealCaption
                                 anchors.left: parent.left
                                 anchors.leftMargin: Theme.sp.s * root.s
@@ -978,7 +976,7 @@ PillSurface {
                 width: parent ? parent.width : 0
                 height: 24 * root.s
 
-                Caps {
+                Caption {
                     anchors.left: parent.left
                     anchors.leftMargin: Theme.sp.s * root.s
                     anchors.verticalCenter: parent.verticalCenter

@@ -30,7 +30,7 @@ Item {
     }
 
     /**
-     * The pill's real resting size on this monitor, written by the pill, so the hole grows from exactly its shape.
+     * The pill's real resting size on this monitor as "w h" or "w h radius", in pill units the pill's own scale (uiScale included) turns into pixels, so the hole grows from exactly its shape.
      */
     FileView {
         id: pillRest
@@ -40,9 +40,12 @@ Item {
         onFileChanged: reload()
     }
     readonly property var restSize: {
-        const v = pillRest.text().trim().split(" ").map(Number);
-        return v.length === 2 && v[0] > 0 && v[1] > 0 ? v : [160, 38];
+        const v = pillRest.text().trim().split(/\s+/).map(Number);
+        const ok = (v.length === 2 || v.length === 3) && v[0] > 0 && v[1] > 0;
+        const r = ok && v.length === 3 && v[2] >= 0 ? v[2] : Flags.pillRounding;
+        return ok ? [v[0], v[1], r] : [160, 38, Flags.pillRounding];
     }
+    readonly property real pillScale: s * Flags.uiScale
 
     /**
      * Uses the first screen Quickshell reports as primary so the auth panel lands on one fixed monitor without pinning a machine-specific display name.
@@ -317,16 +320,17 @@ Item {
             color: "white"
             antialiasing: true
 
-            readonly property real pillW: surface.restSize[0] * surface.s
-            readonly property real pillH: surface.restSize[1] * surface.s
-            readonly property real pillY: 8 * Flags.topGap * surface.s
+            readonly property real pillW: surface.restSize[0] * surface.pillScale
+            readonly property real pillH: surface.restSize[1] * surface.pillScale
+            readonly property real pillY: 8 * Flags.topGap * surface.pillScale
+            readonly property real cornerRatio: Math.min(0.5, surface.restSize[2] / surface.restSize[1])
 
             width: pillW + (surface.width - pillW) * surface.maskP
             height: pillH + (surface.height - pillH) * surface.maskP
             x: (surface.width - width) / 2
             y: pillY * (1 - surface.maskP)
-            /** Corner follows the current height so the hole stays a rounded stadium the whole way, then eases to square edges only as it fills the screen. */
-            radius: (height / 2) * (1 - surface.maskP)
+            /** Corner keeps the pill's corner-to-height ratio as the hole grows, then eases to square edges only as it fills the screen. */
+            radius: height * cornerRatio * (1 - surface.maskP)
         }
     }
 
