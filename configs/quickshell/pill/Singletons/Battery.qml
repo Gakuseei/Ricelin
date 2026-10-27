@@ -19,7 +19,7 @@ Singleton {
     readonly property bool charging: state === UPowerDeviceState.Charging
     readonly property bool full: state === UPowerDeviceState.FullyCharged || pct >= 100
     readonly property bool discharging: state === UPowerDeviceState.Discharging
-    readonly property bool low: !charging && pct <= 20
+    readonly property bool low: !charging && pct <= Flags.batteryWarn
 
     readonly property real rateW: !dev ? 0
         : (discharging ? -dev.changeRate : (charging ? dev.changeRate : 0))

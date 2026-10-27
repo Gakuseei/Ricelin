@@ -52,6 +52,33 @@ Singleton {
     property alias nightLightOffMin: adapter.nightLightOffMin
     property alias iconWeight: adapter.iconWeight
     property alias paletteVibrancy: adapter.paletteVibrancy
+    property alias idleModules: adapter.idleModules
+    property alias hoverModules: adapter.hoverModules
+    property alias hoverActions: adapter.hoverActions
+    property alias expandMode: adapter.expandMode
+    property alias openDelay: adapter.openDelay
+    property alias closeDelay: adapter.closeDelay
+    property alias wsStyle: adapter.wsStyle
+    property alias wsShow: adapter.wsShow
+    property alias wsScroll: adapter.wsScroll
+    property alias pillHeight: adapter.pillHeight
+    property alias pillRounding: adapter.pillRounding
+    property alias idleWidth: adapter.idleWidth
+    property alias pillShadow: adapter.pillShadow
+    property alias pillBorder: adapter.pillBorder
+    property alias pillSheen: adapter.pillSheen
+    property alias springFeel: adapter.springFeel
+    property alias liveOrder: adapter.liveOrder
+    property alias liveOff: adapter.liveOff
+    property alias batteryWarn: adapter.batteryWarn
+    property alias restGlyph: adapter.restGlyph
+    property alias musicBars: adapter.musicBars
+    property alias dateStyle: adapter.dateStyle
+    property alias dateLang: adapter.dateLang
+    property alias weekStart: adapter.weekStart
+    property alias weatherUnit: adapter.weatherUnit
+    property alias lockUseFont: adapter.lockUseFont
+    property alias lockSeconds: adapter.lockSeconds
 
     FileView {
         id: file
@@ -119,6 +146,37 @@ Singleton {
             property real iconWeight: 1.0
             /** Dynamic palette color strength, 0 muted to 1 vivid. */
             property real paletteVibrancy: 0.5
+            property var idleModules: ["glyph", "clock", "div", "live"]
+            /** Module ids in display order; "div" may repeat. */
+            property var hoverModules: ["workspaces", "div", "clockdate", "div", "weather", "minimized", "tray", "dnd", "wifi", "bt", "battery", "inbox", "mixer", "sound", "sysmon", "recorder", "settings", "power"]
+            /** Per hover icon { left, right } action overrides; missing keys keep the built-in behaviour. */
+            property var hoverActions: ({})
+            /** "hover" expands on pointer entry, "click" only on a click on free pill space. */
+            property string expandMode: "hover"
+            property int openDelay: 0
+            property int closeDelay: 300
+            property string wsStyle: "dots"
+            property string wsShow: "occupied"
+            property bool wsScroll: false
+            property real pillHeight: 38
+            property real pillRounding: 18
+            property real idleWidth: 160
+            property bool pillShadow: true
+            property bool pillBorder: true
+            property bool pillSheen: true
+            property string springFeel: "soft"
+            property var liveOrder: ["agent", "timer", "recording", "message", "music"]
+            /** Live activity sources switched off by default so only the agent and timer show, as before. */
+            property var liveOff: ["recording", "message", "music"]
+            property int batteryWarn: 20
+            property string restGlyph: "時"
+            property int musicBars: 5
+            property string dateStyle: "ddd d MMM"
+            property string dateLang: "en"
+            property string weekStart: "mon"
+            property string weatherUnit: "c"
+            property bool lockUseFont: true
+            property bool lockSeconds: false
         }
     }
 }

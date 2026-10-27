@@ -11,7 +11,7 @@ import Quickshell.Services.UPower
 Singleton {
     id: root
 
-    readonly property int lowAt: 20
+    readonly property int lowAt: Flags.batteryWarn
     readonly property var devices: UPower.devices.values
 
     readonly property var list: devices.filter(function(d) {

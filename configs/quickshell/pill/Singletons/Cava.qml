@@ -11,7 +11,7 @@ import Quickshell.Hyprland
 Singleton {
     id: root
 
-    readonly property int bars: 5
+    readonly property int bars: [3, 5, 7].indexOf(Flags.musicBars) >= 0 ? Flags.musicBars : 5
     property var levels: []
     property bool active: false
 
@@ -64,17 +64,18 @@ Singleton {
                     return;
                 const parts = line.split(";");
                 const n = root.bands;
-                const k = n / root.bars;
                 const all = [];
                 for (let i = 0; i < n; i++)
                     all.push((parseInt(parts[i]) || 0) / 1000);
                 const out = [];
                 let peak = 0;
                 for (let b = 0; b < root.bars; b++) {
+                    const lo = Math.floor(b * n / root.bars);
+                    const hi = Math.max(lo + 1, Math.floor((b + 1) * n / root.bars));
                     let v = 0;
-                    for (let j = 0; j < k; j++)
-                        v += all[b * k + j];
-                    v /= k;
+                    for (let j = lo; j < hi; j++)
+                        v += all[j];
+                    v /= hi - lo;
                     out.push(v);
                     if (v > peak)
                         peak = v;

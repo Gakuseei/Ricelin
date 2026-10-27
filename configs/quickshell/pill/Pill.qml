@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Effects
 import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
@@ -82,16 +81,21 @@ Item {
     readonly property bool quickChoosing: quickHere && ScreenRec.quickChoosing && !surfaceOpen
     readonly property bool quickCounting: quickHere && ScreenRec.counting && surface !== "recorder"
 
-    readonly property real restW: 160 * s
-    readonly property real restH: 38 * s
-    readonly property real hoverPad: 20 * s
-    readonly property real hoverW: hoverFace.rowWidth + 2 * hoverPad
-    readonly property real hoverH: 58 * s
+    PillMetrics {
+        id: metrics
+        s: pill.s
+    }
+
+    readonly property real restW: metrics.restW
+    readonly property real restH: metrics.restH
+    readonly property real hoverPad: metrics.hoverPad
+    readonly property real hoverW: metrics.hoverWidth(hoverFace.rowWidth)
+    readonly property real hoverH: metrics.hoverH
     readonly property real toastW: 342 * s
     readonly property real gameH: 34 * s
     readonly property real gameW: barWindow ? barWindow.width : 1920
-    readonly property real restCorner: 18 * s
-    readonly property real openCorner: 22 * s
+    readonly property real restCorner: metrics.restCorner
+    readonly property real openCorner: metrics.openCorner
 
     /**
      * Surface registry with each file, size, Esc target, hover preload and whether Ame stays out.
@@ -255,7 +259,7 @@ Item {
         const f = modeSize[mode];
         if (f)
             return f();
-        return Qt.size(Math.max(restW, restFace.rowWidth + 36 * s), restH);
+        return Qt.size(metrics.restWidth(restFace.rowWidth), restH);
     }
     readonly property real targetW: targetSize.width
     readonly property real targetH: targetSize.height
@@ -264,14 +268,18 @@ Item {
     height: springH.value
 
     /**
-     * Shape springs: growing overshoots a hair, shrinking and the rest-hover hop settle without.
+     * Shape springs: growing overshoots a hair, shrinking and the rest-hover hop settle without; "snappy" is quicker and firmer.
      */
+    readonly property var feel: Flags.springFeel === "snappy"
+        ? ({ hop: 0.19, shrink: 0.25, grow: 0.29, growDamping: 0.9 })
+        : ({ hop: 0.26, shrink: 0.34, grow: 0.4, growDamping: 0.82 })
+
     Spring {
         id: springW
         target: pill.targetW
-        response: pill.hoverHop ? 0.26 : 0.34
-        growResponse: pill.hoverHop ? 0.26 : 0.4
-        growDamping: pill.hoverHop ? 1 : 0.82
+        response: pill.hoverHop ? pill.feel.hop : pill.feel.shrink
+        growResponse: pill.hoverHop ? pill.feel.hop : pill.feel.grow
+        growDamping: pill.hoverHop ? 1 : pill.feel.growDamping
     }
     Spring {
         id: springH
@@ -349,7 +357,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         visible: opacity > 0.01
         opacity: shown ? 1 : 0
-        border.width: 1
+        border.width: Flags.pillBorder ? 1 : 0
         border.color: Theme.border
         gradient: Gradient {
             GradientStop { position: 0.0; color: Qt.alpha(Theme.cardTop, Flags.pillOpacity) }
@@ -399,53 +407,17 @@ Item {
     }
 
     /**
-     * One shader draws the shadow with no offscreen buffer, so it stays on through every morph.
+     * Corner flatness rides the morph curve, so docking into the game bar squares the corners smoothly.
      */
-    RectangularShadow {
-        anchors.fill: body
-        topLeftRadius: body.topLeftRadius
-        topRightRadius: body.topRightRadius
-        bottomLeftRadius: body.bottomLeftRadius
-        bottomRightRadius: body.bottomRightRadius
-        blur: 22 * pill.s
-        offset.y: 3 * pill.s
-        color: Qt.rgba(0, 0, 0, Theme.shadowOpacity)
-    }
+    property real gameFlat: mode === "game" ? 1 : 0
+    Behavior on gameFlat { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
 
-    Rectangle {
+    PillBody {
         id: body
         anchors.fill: parent
-
-        /**
-         * Corner flatness rides the morph curve, so docking into the game bar squares the corners smoothly.
-         */
-        property real gameFlat: pill.mode === "game" ? 1 : 0
-        Behavior on gameFlat { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
-        property real topFlat: pill.mode === "game" ? 1 : 0
-        Behavior on topFlat { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
-
+        s: pill.s
         radius: pill.morphRadius
-        topLeftRadius: pill.morphRadius * (1 - topFlat)
-        topRightRadius: pill.morphRadius * (1 - topFlat)
-        bottomLeftRadius: pill.morphRadius * (1 - gameFlat)
-        bottomRightRadius: pill.morphRadius * (1 - gameFlat)
-        border.width: 1
-        border.color: Theme.border
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.alpha(Theme.cardTop, Flags.pillOpacity) }
-            GradientStop { position: 1.0; color: Qt.alpha(Theme.cardBot, Flags.pillOpacity) }
-        }
-
-        Rectangle {
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.topMargin: 1
-            anchors.leftMargin: body.radius * 0.6
-            anchors.rightMargin: body.radius * 0.6
-            height: 1
-            color: Theme.sheen
-        }
+        flat: pill.gameFlat
     }
 
     /**
@@ -464,15 +436,22 @@ Item {
         if (!settledShape)
             return;
         ameBox = targetSize;
-        const rest = (width / s).toFixed(1) + " " + (height / s).toFixed(1);
-        if (mode === "rest" && rest !== restFile.written) {
+        writeRest();
+    }
+    onRestCornerChanged: Qt.callLater(writeRest)
+
+    function writeRest() {
+        if (mode !== "rest" || !settledShape)
+            return;
+        const rest = (width / s).toFixed(1) + " " + (height / s).toFixed(1) + " " + (restCorner / s).toFixed(1);
+        if (rest !== restFile.written) {
             restFile.written = rest;
             restFile.setText(rest);
         }
     }
 
     /**
-     * The lock screen grows its reveal out of this monitor's resting pill.
+     * The lock screen grows its reveal out of this monitor's resting pill: "width height corner" in unscaled px.
      */
     FileView {
         id: restFile
@@ -518,19 +497,35 @@ Item {
      */
     readonly property real inputPadRight: bud.shown ? bud.budR + 2 * s : 0
 
+    /**
+     * "click" opens the hover state only on a click on free pill space; pointer entry alone never latches it.
+     */
+    readonly property bool clickMode: Flags.expandMode === "click"
+
     onHoveredChanged: {
         if (hovered) {
-            if (bootSettled)
-                hoverLatch = true;
             graceTimer.stop();
+            if (bootSettled && !clickMode) {
+                if (Flags.openDelay > 0)
+                    openTimer.restart();
+                else
+                    hoverLatch = true;
+            }
         } else {
+            openTimer.stop();
             graceTimer.restart();
         }
     }
 
     Timer {
+        id: openTimer
+        interval: Math.max(0, Flags.openDelay)
+        onTriggered: if (pill.hovered && !pill.clickMode) pill.hoverLatch = true
+    }
+
+    Timer {
         id: graceTimer
-        interval: 300
+        interval: Math.max(16, Flags.closeDelay)
         onTriggered: {
             if (pill.morphCloseness < 0.95) {
                 graceTimer.restart();
@@ -540,10 +535,22 @@ Item {
         }
     }
 
+    /**
+     * Hover mode: a tap pins the open pill. Click mode: a tap opens it, the next one closes it.
+     */
     TapHandler {
         enabled: !pill.surfaceOpen
         gesturePolicy: TapHandler.WithinBounds
-        onTapped: pill.pinned = !pill.pinned
+        onTapped: {
+            if (!pill.clickMode) {
+                pill.pinned = !pill.pinned;
+            } else if (pill.hoverLatch || pill.pinned) {
+                pill.pinned = false;
+                pill.hoverLatch = false;
+            } else {
+                pill.hoverLatch = true;
+            }
+        }
     }
 
     DropFace {
