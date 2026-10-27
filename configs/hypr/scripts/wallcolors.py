@@ -1,18 +1,9 @@
 #!/usr/bin/env python3
-"""
-Generate the rice colour set from a wallpaper and fan it out to the consumers.
-One histogram pass yields both the area-dominant chromatic hue (binned by hue
-family so a small vivid accent never hijacks the theme) and the mean lightness.
-The mean lightness drives the pill's whole tone: a bright wallpaper makes a light
-pill with dark text, a dark or OLED-black one makes a near-black pill with cream
-text, so the surfaces and the text flip together for contrast across the full
-range. The dominant hue tints every tier in HSL. An achromatic wallpaper drops to
-a neutral grey ramp. matugen still builds the dark base16 the always-dark terminal
-reads; the pill JSON carries surfaces, accent and the contrast-matched text.
-"""
+"""Wallpaper or Manual hue to OKLCH rice colours for the pill, lock, fastfetch, GTK, ghostty and Hyprland."""
 import colorsys
 import fcntl
 import json
+import math
 import os
 import re
 import shutil
@@ -35,62 +26,269 @@ STATIC = {"surface": "#211711", "surface_container_low": "#221813", "surface_con
           "surface_container_high": "#2e231b", "outline_variant": "#3a2a22", "primary": "#e0563b",
           "cream": "#e6d6cb", "bright": "#fff6f0"}
 
+ANALYZE_VERSION = 2
+HIST_LINE = re.compile(r"\s*(\d+):\s*\([^)]*\)\s*#([0-9A-Fa-f]{6})")
 SURF_NAMES = ["surface", "surface_container_low", "surface_container",
               "surface_container_high", "surface_container_highest", "outline_variant"]
-DARK_STEPS = [0.0, 0.022, 0.038, 0.065, 0.100, 0.225]
-LIGHT_STEPS = [0.0, -0.045, -0.075, -0.115, -0.160, -0.340]
+DARK_STEPS = [0.0, 0.012, 0.028, 0.045, 0.070, 0.130]
+LIGHT_STEPS = [0.0, -0.018, -0.032, -0.048, -0.070, -0.160]
 TEXT_KEYS = ["cream", "bright", "subtle", "dim", "faint", "icon_dim", "tick_rest"]
-DARK_TEXT = [(0.90, 0.05), (0.97, 0.03), (0.73, 0.07), (0.54, 0.06),
-             (0.44, 0.05), (0.81, 0.07), (0.75, 0.08)]
-LIGHT_TEXT = [(0.20, 0.18), (0.10, 0.20), (0.36, 0.14), (0.48, 0.10),
-              (0.56, 0.08), (0.28, 0.12), (0.34, 0.12)]
+DARK_TEXT = [0.90, 0.97, 0.76, 0.62, 0.52, 0.83, 0.79]
+LIGHT_TEXT = [0.27, 0.18, 0.42, 0.53, 0.62, 0.34, 0.40]
+TEXT_MIN = [4.5, 4.5, 4.5, 3.0, 1.8, 4.5, 3.0]
+NEUTRAL = {"mean_l": 0.0, "base": None, "accent": None}
+
+
+def clamp(x, lo=0.0, hi=1.0):
+    return max(lo, min(hi, x))
+
+
+def lerp(x, x0, x1, y0, y1):
+    return y0 + clamp((x - x0) / (x1 - x0)) * (y1 - y0)
+
+
+def to_linear(c):
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def to_gamma(c):
+    return 12.92 * c if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055
+
+
+def oklch(rgb):
+    r, g, b = map(to_linear, rgb)
+    l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b) ** (1 / 3)
+    m = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b) ** (1 / 3)
+    s = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b) ** (1 / 3)
+    L = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s
+    a = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s
+    bb = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s
+    return L, math.hypot(a, bb), math.degrees(math.atan2(bb, a)) % 360
+
+
+def _lch_linear(L, C, h):
+    a, b = C * math.cos(math.radians(h)), C * math.sin(math.radians(h))
+    l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    return (4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+            -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+            -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s)
+
+
+def lch(L, C, h):
+    """OKLCH to sRGB hex, keeping lightness and hue and giving up chroma until it fits the gamut."""
+    L = clamp(L)
+    fits = lambda c: all(-1e-7 <= x <= 1 + 1e-7 for x in _lch_linear(L, c, h))
+    if not fits(C):
+        lo, hi = 0.0, C
+        for _ in range(20):
+            mid = (lo + hi) / 2
+            lo, hi = (mid, hi) if fits(mid) else (lo, mid)
+        C = lo
+    return "#%02x%02x%02x" % tuple(round(clamp(to_gamma(clamp(x))) * 255) for x in _lch_linear(L, C, h))
+
+
+def rgb(hex_str):
+    return tuple(int(hex_str[i:i + 2], 16) / 255 for i in (1, 3, 5))
+
+
+def luminance(hex_str):
+    r, g, b = map(to_linear, rgb(hex_str))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast(x, y):
+    hi, lo = sorted((luminance(x), luminance(y)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def hue_dist(a, b):
+    return abs((a - b + 180) % 360 - 180)
+
+
+def circ_mean(pairs):
+    x = sum(w * math.cos(math.radians(h)) for w, h in pairs)
+    y = sum(w * math.sin(math.radians(h)) for w, h in pairs)
+    return math.degrees(math.atan2(y, x)) % 360
+
+
+def percentile(pairs, q):
+    pairs = sorted(pairs)
+    goal, run = q * sum(w for _, w in pairs), 0.0
+    for value, w in pairs:
+        run += w
+        if run >= goal:
+            return value
+    return pairs[-1][0] if pairs else 0.0
+
+
+def smooth(bins):
+    return [sum(bins[(i + k) % 72] * math.exp(-k * k / 8) for k in range(-6, 7)) for i in range(72)]
+
+
+def _base(px, total):
+    weight = lambda n, L, C: n * clamp((C - 0.012) / 0.05) * (1.0 if 0.1 < L < 0.95 else 0.3)
+    bins = [0.0] * 72
+    for n, L, C, h in px:
+        bins[int(h // 5) % 72] += weight(n, L, C)
+    if sum(bins) < 0.06 * total:
+        return None
+    sm = smooth(bins)
+    peak = max(range(72), key=sm.__getitem__) * 5 + 2.5
+    fam = [(n, L, C, h) for n, L, C, h in px if C >= 0.012 and hue_dist(h, peak) <= 30]
+    hue = circ_mean([(weight(n, L, C), h) for n, L, C, h in fam])
+    return [round(hue, 2), round(percentile([(C, n) for n, L, C, h in fam], 0.7), 4)]
+
+
+def _families(px, total):
+    """Vivid colour families, a 45 degree hue window per bin: (salience, hue, area, mean chroma, lightness, centre)."""
+    vivid = [(n, L, C, h) for n, L, C, h in px if C >= 0.04 and 0.2 < L < 0.96]
+    sums = [[0.0] * 5 for _ in range(72)]
+    for n, L, C, h in vivid:
+        s, w = sums[int(h // 5) % 72], n * C * C
+        s[0] += n
+        s[1] += n * C
+        s[2] += n * C * L
+        s[3] += w * math.cos(math.radians(h))
+        s[4] += w * math.sin(math.radians(h))
+    fams = []
+    for i in range(72):
+        area, cw, lw, x, y = (sum(sums[(i + k) % 72][j] for k in range(-4, 5)) for j in range(5))
+        if area < 0.004 * total:
+            continue
+        mean_c, lit = cw / area, lw / cw
+        hue = math.degrees(math.atan2(y, x)) % 360
+        fams.append(((area / total) ** 0.4 * mean_c ** 2.5 * (1.0 if 0.3 < lit < 0.92 else 0.6),
+                     hue, area / total, mean_c, lit, i * 5 + 2.5))
+    return vivid, fams
+
+
+def _accent(px, total, base):
+    """The most salient vivid family, preferring a real highlight outside the base hue over a stronger base."""
+    vivid, fams = _families(px, total)
+    if not fams:
+        return None
+    far = [f for f in fams if base and hue_dist(f[1], base[0]) > 50
+           and f[3] >= max(0.055, 0.5 * base[1]) and f[2] >= 0.006]
+    _, hue, _, _, lit, centre = max(far or fams)
+    mem = [(n, L, C, h) for n, L, C, h in vivid if hue_dist(h, centre) <= 22.5]
+    return [round(hue, 2), round(percentile([(C, n) for n, L, C, h in mem], 0.8), 4), round(lit, 4)]
+
+
+def features(histogram):
+    """Mean lightness, area-dominant family (base) and most salient vivid colour (accent) of a magick histogram."""
+    px, total, hls = [], 0, 0.0
+    for line in histogram.splitlines():
+        m = HIST_LINE.match(line)
+        if not m:
+            continue
+        n, col = int(m.group(1)), tuple(int(m.group(2)[i:i + 2], 16) / 255 for i in (0, 2, 4))
+        total += n
+        hls += n * (max(col) + min(col)) / 2
+        px.append((n, *oklch(col)))
+    if not total:
+        return None
+    base = _base(px, total)
+    return {"mean_l": round(hls / total, 4), "base": base, "accent": _accent(px, total, base)}
+
+
+def manual_features(hue_deg, light, sat):
+    """The Manual hue editor's HSL hue as features, so the pill matches the swatch the strip shows."""
+    h = oklch(colorsys.hls_to_rgb((hue_deg % 360) / 360, 0.5, 0.75))[2]
+    chromatic = sat > 0.02
+    return {"mean_l": 0.85 if light else 0.12, "base": [h, 0.09] if chromatic else None,
+            "accent": [h, 0.15, 0.70] if chromatic else None}
+
+
+def mix(x, y):
+    """Theme.textFaint's channel average of two colours."""
+    return "#%02x%02x%02x" % tuple(round((a + b) / 2 * 255) for a, b in zip(rgb(x), rgb(y)))
+
+
+def _readable(L, C, h, backs, ratio, step):
+    while True:
+        out = lch(L, C, h)
+        if min(contrast(out, b) for b in backs) >= ratio or not 0.0 < L < 1.0:
+            return out
+        L += step
+
+
+def palette(feat, light=None, vibrancy=0.5):
+    """Pill colours from features, tone and strength (0 muted, 0.5 natural, 1 vivid), contrast-checked on the body."""
+    v = clamp(vibrancy)
+    light = feat["mean_l"] >= 0.40 if light is None else light
+    base, acc = feat.get("base"), feat.get("accent")
+    if base:
+        bh, bc = base
+        cap = (0.010 + 0.050 * v) if light else (0.012 + 0.058 * v)
+        sc = min(max(bc * (0.18 + 0.50 * v), 0.004 + 0.014 * v), cap)
+    else:
+        bh, bc, sc = (acc[0] if acc else 60.0), 0.0, 0.0
+    if acc:
+        ah, ac, al = acc[0], acc[1] * (1.0 if base else 0.5), acc[2]
+    else:
+        ah, ac, al = bh, max(bc * 1.5, 0.08) if base else 0.0, None
+    if base or acc:
+        ac = min(max(ac * (0.45 + 0.75 * v), 0.02 + 0.06 * v), 0.10 + 0.14 * v)
+    else:
+        ac = 0.012
+    m = feat["mean_l"]
+    if light:
+        sl, steps, text, sign = lerp(m, 0.40, 0.75, 0.950, 0.975), LIGHT_STEPS, LIGHT_TEXT, -1
+        acc_l = clamp(0.50 + 0.3 * ((al or 0.6) - 0.6), 0.42, 0.58)
+        deep_l, glow_l, outline_d = 0.38, 0.66, -0.40
+    else:
+        sl, steps, text, sign = lerp(m, 0.0, 0.40, 0.17, 0.25), DARK_STEPS, DARK_TEXT, 1
+        acc_l = clamp(0.74 + 0.3 * ((al or 0.7) - 0.7) + 0.09 * clamp(1 - hue_dist(ah, 105) / 45), 0.66, 0.88)
+        deep_l, glow_l, outline_d = 0.40, 0.88, 0.30
+    p = {name: lch(sl + st, sc * (1.25 if name == "outline_variant" else 1.0), bh)
+         for name, st in zip(SURF_NAMES, steps)}
+    body = [p["surface"], p["surface_container_low"], p["surface_container_high"]]
+    p["primary"] = _readable(acc_l, ac, ah, body, 3.2, sign * 0.01)
+    p["primary_container"] = lch(deep_l, ac * 0.8, ah)
+    p["on_primary_container"] = lch(glow_l, ac * (0.85 if light else 0.45), ah)
+    p["outline"] = lch(sl + outline_d, sc, bh)
+    tc = min(0.006 + sc * 0.45, 0.028) if base or acc else 0.0
+    for key, lit, need in zip(TEXT_KEYS, text, TEXT_MIN):
+        p[key] = _readable(lit, tc * (1.5 if key == "tick_rest" else 1.0), bh, body, need + 0.1, sign * 0.01)
+    lit = text[TEXT_KEYS.index("faint")]
+    while min(contrast(mix(p["faint"], p["subtle"]), b) for b in body) < 4.6 and 0.0 < lit < 1.0:
+        lit += sign * 0.01
+        p["faint"] = lch(lit, tc, bh)
+    return p
+
+
+def seed(feat):
+    """matugen's source colour for the always-dark terminal base16, from the wallpaper's base family."""
+    base = feat.get("base")
+    return lch(0.60, clamp(base[1], 0.05, 0.14), base[0]) if base else "#787878"
 
 
 def analyze(wallpaper):
     out = subprocess.run(
-        ["magick", wallpaper, "-alpha", "off", "-resize", "200x200", "-colors", "48",
+        ["magick", wallpaper, "-alpha", "off", "-resize", "128x128", "-depth", "8",
          "-format", "%c", "histogram:info:-"],
         capture_output=True, text=True).stdout
-    buckets, total, lum, chroma = {}, 0, 0.0, 0
-    for line in out.splitlines():
-        m = re.search(r"\s*(\d+):\s*\([^)]*\)\s*#([0-9A-Fa-f]{6})", line)
-        if not m:
-            continue
-        count, hex_str = int(m.group(1)), m.group(2)
-        r, g, b = (int(hex_str[i:i + 2], 16) / 255 for i in (0, 2, 4))
-        h, l, s = colorsys.rgb_to_hls(r, g, b)
-        total += count
-        lum += count * l
-        if s < 0.15 or l < 0.05 or l > 0.92:
-            continue
-        chroma += count
-        bucket = buckets.setdefault((int(h * 360) // 30) % 12, {"wsat": 0.0, "best": None})
-        bucket["wsat"] += count * s
-        score = count * s * (1 if 0.12 < l < 0.55 else 0.4)
-        if not bucket["best"] or score > bucket["best"][0]:
-            bucket["best"] = (score, h, s)
-    mean_l = lum / total if total else 0.0
-    if not buckets or chroma < 0.08 * total:
-        return None, 0.0, mean_l
-    win = max(buckets.values(), key=lambda v: v["wsat"])
-    return win["best"][1], win["best"][2], mean_l
+    return features(out)
 
 
 def cached_analyze(wallpaper):
     """analyze() remembered per path and mtime, so re-picking a wallpaper skips the magick pass."""
-    store = CACHE / "analyze.json"
+    store = CACHE / "analyze-v2.json"
     mtime = os.stat(wallpaper).st_mtime_ns
     try:
         seen = json.loads(store.read_text())
     except (OSError, ValueError):
         seen = {}
+    if not isinstance(seen, dict):
+        seen = {}
     hit = seen.get(wallpaper)
-    if hit and hit[0] == mtime:
-        return tuple(hit[1:])
+    if isinstance(hit, dict) and hit.get("v") == ANALYZE_VERSION and hit.get("mtime") == mtime:
+        return hit["features"]
     result = analyze(wallpaper)
-    # Zero mean lightness means magick read nothing, so a failed run is never remembered.
-    if result[2]:
-        seen[wallpaper] = [mtime, *result]
+    if result:
+        seen[wallpaper] = {"v": ANALYZE_VERSION, "mtime": mtime, "features": result}
         CACHE.mkdir(parents=True, exist_ok=True)
         tmp = store.with_name(f".analyze.{os.getpid()}")
         tmp.write_text(json.dumps(seen))
@@ -104,16 +302,6 @@ def matugen(source_hex):
         capture_output=True, text=True, check=True,
     )
     return json.loads(out.stdout)
-
-
-def tint(hue, sat, light):
-    r, g, b = colorsys.hls_to_rgb(hue % 1.0, max(0.0, min(1.0, light)), max(0.0, min(1.0, sat)))
-    return "#%02x%02x%02x" % (round(r * 255), round(g * 255), round(b * 255))
-
-
-def lerp(x, x0, x1, y0, y1):
-    t = max(0.0, min(1.0, (x - x0) / (x1 - x0)))
-    return y0 + t * (y1 - y0)
 
 
 def render_fastfetch(pill):
@@ -223,9 +411,10 @@ def write_if_changed(path, text):
     return True
 
 
-def gtk_colors(p, light):
+def gtk_colors(p):
     named = {
-        "accent_bg_color": p["primary"], "accent_fg_color": p["bright"] if light else p["surface"],
+        "accent_bg_color": p["primary"],
+        "accent_fg_color": max(p["surface"], p["bright"], key=lambda c: contrast(c, p["primary"])),
         "accent_color": p["primary"],
         "window_bg_color": p["surface_container_low"], "view_bg_color": p["surface"],
         "headerbar_bg_color": p["surface_container"], "headerbar_backdrop_color": p["surface_container_low"],
@@ -299,7 +488,7 @@ def apply_apps(p):
         enable_apps()
     r, g, b = (int(p["surface"][i:i + 2], 16) / 255 for i in (1, 3, 5))
     light = colorsys.rgb_to_hls(r, g, b)[1] > 0.5
-    colors = gtk_colors(p, light)
+    colors = gtk_colors(p)
     root = ":root { --accent-bg-color: @accent_bg_color; --accent-fg-color: @accent_fg_color; --accent-color: %s; }\n"
     changed = write_if_changed(GTK4 / "ricelin.css", colors + root % p["primary"])
     if not (GTK4 / "gtk.css").exists():
@@ -376,62 +565,23 @@ def sync_apps(pill, need_flag=False):
         print(f"wallcolors: app theme skipped: {exc}", file=sys.stderr)
 
 
-def main():
-    if len(sys.argv) < 2:
-        return 1
-    if sys.argv[1] == "--apps":
-        if sys.argv[2:3] == ["off"]:
-            with apps_lock():
-                disable_apps()
-            return 0
-        try:
-            pill = json.loads((CACHE / "colors.json").read_text())
-        except (OSError, ValueError):
-            pill = STATIC
-        sync_apps(pill)
-        return 0
-    if sys.argv[1] == "--hue":
-        hue = (float(sys.argv[2]) % 360) / 360.0
-        mode = sys.argv[3] if len(sys.argv) > 3 else "dark"
-        sat = float(sys.argv[4]) if len(sys.argv) > 4 else 0.5
-        sat = max(0.0, min(1.0, sat))
-        mean_l = 0.85 if mode == "light" else 0.12
-        chromatic = sat > 0.02
-    else:
-        wallpaper = sys.argv[1]
-        if not Path(wallpaper).is_file():
-            return 0
-        hue, sat, mean_l = cached_analyze(wallpaper)
-        chromatic = hue is not None
-        if not chromatic:
-            hue, sat = 0.09, 0.0
+def vibrancy():
+    try:
+        return clamp(float(flags().get("paletteVibrancy", 0.5)))
+    except (TypeError, ValueError):
+        return 0.5
+
+
+def publish(pill, source_hex):
+    """Write the pill set and fan it out to fastfetch, GTK apps, Hyprland borders and ghostty."""
     CACHE.mkdir(parents=True, exist_ok=True)
-
-    light = mean_l >= 0.40
-    surf_sat = min(sat, 0.26) if light else min(max(sat, 0.30 if chromatic else 0.0), 0.45)
-    acc_sat = (min(sat + 0.18, 0.85) if light else min(max(sat, 0.30) + 0.12, 0.82)) if chromatic else 0.05
-    if light:
-        base = lerp(mean_l, 0.40, 0.66, 0.80, 0.93)
-        steps, text, acc_l, deep_l, glow_l = LIGHT_STEPS, LIGHT_TEXT, 0.42, 0.30, 0.55
-    else:
-        base = lerp(mean_l, 0.0, 0.40, 0.045, 0.20)
-        steps, text, acc_l, deep_l, glow_l = DARK_STEPS, DARK_TEXT, 0.70, 0.34, 0.86
-
-    pill = {name: tint(hue, surf_sat, base + step) for name, step in zip(SURF_NAMES, steps)}
-    pill["primary"] = tint(hue, acc_sat, acc_l)
-    pill["primary_container"] = tint(hue, min(acc_sat + 0.08, 0.9), deep_l)
-    pill["on_primary_container"] = tint(hue, min(acc_sat, 0.45), glow_l)
-    pill["outline"] = tint(hue, surf_sat, base + (-0.35 if light else 0.35))
-    for key, (lit, st) in zip(TEXT_KEYS, text):
-        pill[key] = tint(hue, st, lit)
     (CACHE / "colors.json").write_text(json.dumps(pill, indent=2) + "\n")
     render_fastfetch(pill)
     if flags().get("appTheme"):
         sync_apps(pill, need_flag=True)
 
     try:
-        b = {k: v["dark"]["color"] for k, v in
-             matugen(tint(hue, sat, 0.45) if chromatic else "#787878")["base16"].items()}
+        b = {k: v["dark"]["color"] for k, v in matugen(source_hex)["base16"].items()}
     except (OSError, ValueError, KeyError, subprocess.SubprocessError):
         return 0
 
@@ -457,6 +607,32 @@ def main():
         lines.append(f'palette = {i}={b["base%02x" % i]}')
     (CACHE / "ghostty-colors").write_text("\n".join(lines) + "\n")
     return 0
+
+
+def main():
+    if len(sys.argv) < 2:
+        return 1
+    if sys.argv[1] == "--apps":
+        if sys.argv[2:3] == ["off"]:
+            with apps_lock():
+                disable_apps()
+            return 0
+        try:
+            pill = json.loads((CACHE / "colors.json").read_text())
+        except (OSError, ValueError):
+            pill = STATIC
+        sync_apps(pill)
+        return 0
+    if sys.argv[1] == "--hue":
+        light = (sys.argv[3] if len(sys.argv) > 3 else "dark") == "light"
+        sat = clamp(float(sys.argv[4]) if len(sys.argv) > 4 else 0.5)
+        feat = manual_features(float(sys.argv[2]), light, sat)
+        return publish(palette(feat, light, sat), seed(feat))
+    wallpaper = sys.argv[1]
+    if not Path(wallpaper).is_file():
+        return 0
+    feat = cached_analyze(wallpaper) or NEUTRAL
+    return publish(palette(feat, vibrancy=vibrancy()), seed(feat))
 
 
 if __name__ == "__main__":

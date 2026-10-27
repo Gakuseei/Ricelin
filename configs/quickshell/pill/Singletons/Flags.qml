@@ -51,6 +51,7 @@ Singleton {
     property alias nightLightOnMin: adapter.nightLightOnMin
     property alias nightLightOffMin: adapter.nightLightOffMin
     property alias iconWeight: adapter.iconWeight
+    property alias paletteVibrancy: adapter.paletteVibrancy
 
     FileView {
         id: file
@@ -116,6 +117,8 @@ Singleton {
             property int nightLightOffMin: 450
             /** Multiplier on every icon's stroke width. */
             property real iconWeight: 1.0
+            /** Dynamic palette color strength, 0 muted to 1 vivid. */
+            property real paletteVibrancy: 0.5
         }
     }
 }

@@ -103,7 +103,7 @@ def run(tmp):
     pic.write_bytes(b"png")
     magick = lambda: sum(a[0] == "magick" for a in calls)
     first = w.cached_analyze(str(pic))
-    assert first[0] is not None and w.cached_analyze(str(pic)) == first and magick() == 1, "a re-pick reuses the palette"
+    assert first["base"] is not None and w.cached_analyze(str(pic)) == first and magick() == 1, "a re-pick reuses the palette"
     os.utime(pic, ns=(1, 1))
     w.cached_analyze(str(pic))
     assert magick() == 2, "a changed file is analysed again"
