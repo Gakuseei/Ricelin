@@ -50,6 +50,7 @@ Singleton {
     property alias nightLightTemp: adapter.nightLightTemp
     property alias nightLightOnMin: adapter.nightLightOnMin
     property alias nightLightOffMin: adapter.nightLightOffMin
+    property alias iconWeight: adapter.iconWeight
 
     FileView {
         id: file
@@ -113,6 +114,8 @@ Singleton {
             property int nightLightTemp: 4000
             property int nightLightOnMin: 1260
             property int nightLightOffMin: 450
+            /** Multiplier on every icon's stroke width. */
+            property real iconWeight: 1.0
         }
     }
 }

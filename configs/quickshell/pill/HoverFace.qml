@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Shapes
 import Quickshell.Networking
 import "Singletons"
 
@@ -178,52 +177,11 @@ Face {
                 width: 16 * face.s
                 height: 16 * face.s
 
-                Shape {
-                    id: dndShape
-
-                    width: 16
-                    height: 16
-                    scale: face.s
-                    transformOrigin: Item.TopLeft
-                    x: dndShape.boundingRect.width > 0
-                       ? dndIcon.width / 2 - (dndShape.boundingRect.x + dndShape.boundingRect.width / 2) * face.s
-                       : (dndIcon.width - 16 * face.s) / 2
-                    y: dndShape.boundingRect.height > 0
-                       ? dndIcon.height / 2 - (dndShape.boundingRect.y + dndShape.boundingRect.height / 2) * face.s
-                       : (dndIcon.height - 16 * face.s) / 2
-                    preferredRendererType: Shape.CurveRenderer
-
-                    ShapePath {
-                        strokeColor: Theme.vermLit
-                        strokeWidth: 1.5
-                        fillColor: "transparent"
-                        capStyle: ShapePath.RoundCap
-                        joinStyle: ShapePath.RoundJoin
-                        startX: 5.2; startY: 12.2
-                        PathLine { x: 12.2; y: 12.2 }
-                        PathLine { x: 12.2; y: 7.2 }
-                        PathCubic {
-                            control1X: 12.2; control1Y: 5.4
-                            control2X: 11.2; control2Y: 4.0
-                            x: 9.5; y: 3.5
-                        }
-                    }
-                    ShapePath {
-                        strokeColor: Theme.vermLit
-                        strokeWidth: 1.5
-                        fillColor: "transparent"
-                        capStyle: ShapePath.RoundCap
-                        startX: 6.8; startY: 13.6
-                        PathLine { x: 9.2; y: 13.6 }
-                    }
-                    ShapePath {
-                        strokeColor: Theme.vermLit
-                        strokeWidth: 1.6
-                        fillColor: "transparent"
-                        capStyle: ShapePath.RoundCap
-                        startX: 3.2; startY: 2.8
-                        PathLine { x: 13.0; y: 13.4 }
-                    }
+                GlyphIcon {
+                    anchors.fill: parent
+                    name: "dnd"
+                    color: Theme.vermLit
+                    stroke: 1.7
                 }
             }
 
