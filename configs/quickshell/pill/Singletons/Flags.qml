@@ -80,15 +80,22 @@ Singleton {
     property alias lockUseFont: adapter.lockUseFont
     property alias lockSeconds: adapter.lockSeconds
 
+    /** One write per event-loop turn, however many flags changed in it. */
+    function flush() {
+        file.writeAdapter();
+    }
+
     FileView {
         id: file
         path: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/ricelin/flags.json"
         blockLoading: true
+        /** Synchronous writes: an async write in flight gets joined by the next one, which reloads its older text over values set since. */
+        blockWrites: true
         watchChanges: true
         printErrors: false
 
         onFileChanged: reload()
-        onAdapterUpdated: writeAdapter()
+        onAdapterUpdated: Qt.callLater(root.flush)
         onLoadFailed: function(error) {
             if (error === FileViewError.FileNotFound)
                 writeAdapter();
