@@ -55,6 +55,7 @@ def main():
     write(origin / monitors, "monitor A\nspacer\nspacer\nmonitor B\nspacer\nspacer\ntail\n")
     write(origin / pill, "code v1\n")
     write(origin / "configs/hypr/scripts/tool.sh", "#!/bin/sh\necho tool\n")
+    write(origin / "configs/quickshell/pill/App/ricelin-settings.desktop", "[Desktop Entry]\n")
     write(origin / "configs/hypr/scripts/test_tool.py", "harness\n")
     write(origin / "configs/kde/kdeglobals", "[General]\n")
     write(origin / "configs/sddm/themes/torii/Main.qml", "greeter\n")
@@ -110,6 +111,20 @@ def main():
         "on-timeout = hyprctl dispatch \"hl.dsp.dpms({ action = 'off' })\"\n"
         "on-resume = hyprctl dispatch \"hl.dsp.dpms({ action = 'on' })\"\n")
     print("hypridle dpms migration: ok")
+
+    entry = ru.settings_entry_link()
+    shipped = (config / "quickshell/pill/App/ricelin-settings.desktop").resolve()
+    assert entry == tmp / "data/applications/ricelin-settings.desktop", entry
+    assert entry.is_symlink() and entry.resolve() == shipped, "apply links the launcher entry"
+    assert ru.link_settings_entry(config) is False and entry.resolve() == shipped, "a correct link is left alone"
+    entry.unlink()
+    entry.symlink_to(tmp / "gone.desktop")
+    assert ru.link_settings_entry(config) is True and entry.resolve() == shipped, "a stale link is repointed"
+    entry.unlink()
+    entry.write_text("mine\n")
+    assert ru.link_settings_entry(config) is False and entry.read_text() == "mine\n", "a user's own entry file stays"
+    entry.unlink()
+    print("settings launcher entry: ok")
 
     """
     Diverge the user locally without overlapping the upstream config-bump lines.

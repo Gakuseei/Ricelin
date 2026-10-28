@@ -369,6 +369,37 @@ def migrate_hypridle(config_root):
         atomic_write_bytes(path, fixed.encode("utf-8"))
 
 
+def settings_entry_link():
+    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return Path(base) / "applications" / "ricelin-settings.desktop"
+
+
+def link_settings_entry(config_root):
+    """Shared with the installer: a symlink here is ours and gets repointed, a regular file is the user's and stays."""
+    target = Path(config_root) / "quickshell" / "pill" / "App" / "ricelin-settings.desktop"
+    link = settings_entry_link()
+    if not target.is_file():
+        return False
+    if link.is_symlink():
+        if link.resolve() == target.resolve():
+            return False
+        link.unlink()
+    elif link.exists():
+        return False
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(target)
+    return True
+
+
+def migrate(config_root):
+    """Fix up live state that a plain file sync can't carry."""
+    migrate_hypridle(config_root)
+    try:
+        link_settings_entry(config_root)
+    except OSError:
+        pass
+
+
 def baseline_modules(manifest, head):
     """First run: record head as the base for every protected file without merging."""
     mods = manifest.setdefault("modules", {})
@@ -645,7 +676,7 @@ def run(mode, remote, config_root, take, install_ids):
         rows = [{"name": module_name(rel), "path": rel, "state": "clean"}
                 for rel in PROTECTED]
         if apply:
-            migrate_hypridle(config_root)
+            migrate(config_root)
             baseline_modules(manifest, head)
             manifest["syncedSha"] = head
             save_manifest(manifest)
@@ -664,7 +695,7 @@ def run(mode, remote, config_root, take, install_ids):
     code_changed = sync_code(clone, config_root, head, apply, base)
 
     if apply:
-        migrate_hypridle(config_root)
+        migrate(config_root)
         manifest.setdefault("modules", {}).update(sha_updates)
         manifest["syncedSha"] = head
         save_manifest(manifest)

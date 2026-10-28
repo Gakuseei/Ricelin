@@ -503,6 +503,30 @@ def link_ricelin_cli(dry):
     return True, "", True
 
 
+def _update_engine():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_ricelin_update", deploy.REPO_ROOT / "configs" / "hypr" / "scripts" / "ricelin-update.py")
+    engine = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(engine)
+    return engine
+
+
+def link_settings_entry(dry):
+    """Link Ricelin Settings into the launcher through the update engine, so updates restore it the same way."""
+    engine = _update_engine()
+    link = engine.settings_entry_link()
+    if dry:
+        print(f"  would link: {link.name} -> {deploy.CONFIG_ROOT / 'quickshell/pill/App' / link.name}")
+        return True, ""
+    try:
+        if engine.link_settings_entry(deploy.CONFIG_ROOT):
+            print(f"  linked: {link.name} -> {os.readlink(link)}")
+    except OSError as exc:
+        return False, f"{exc}: link settings launcher entry"
+    return True, ""
+
+
 def seed_brave_gtk(dry):
     """Seed GTK colors into a Brave profile that has never run; an existing profile is left alone since Brave owns it."""
     native = Path.home() / ".config" / "BraveSoftware" / "Brave-Browser"
@@ -879,6 +903,11 @@ def run(args):
             notes.append("Linked the ricelin CLI into ~/.local/bin. With it on PATH "
                          "you can run: ricelin status, ricelin restart, ricelin update.")
 
+        ok, detail = link_settings_entry(dry)
+        record(ok, detail, "Link the settings launcher entry",
+               "Symlink ~/.local/share/applications/ricelin-settings.desktop to "
+               "~/.config/quickshell/pill/App/ricelin-settings.desktop yourself.")
+
         # l. seed a starter wallpaper so the first boot has a background, a
         #    populated picker and a palette to render.
         ok, detail = seed_wallpapers(dry)
@@ -1013,13 +1042,13 @@ def run_uninstall(args):
         ok, _ = _run([_root_cmd(), "rm", "-f", f], dry)
         print(f"  removed: {f}" if ok else f"  could not remove {f}, delete it yourself")
 
-    link = Path.home() / ".local" / "bin" / "ricelin"
-    if link.is_symlink():
-        try:
-            link.unlink()
-            print(f"  removed: {link}")
-        except OSError:
-            pass
+    for link in (Path.home() / ".local" / "bin" / "ricelin", _update_engine().settings_entry_link()):
+        if link.is_symlink():
+            try:
+                link.unlink()
+                print(f"  removed: {link}")
+            except OSError:
+                pass
     tui.info(["The repo clone in ~/.local/share/ricelin and your wallpapers in "
               "~/Ricelin are left for you to delete."])
     tui.outro("Ricelin removed")

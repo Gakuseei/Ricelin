@@ -204,7 +204,10 @@ cmd_uninstall() {
     installer="${XDG_DATA_HOME:-$HOME/.local/share}/ricelin/installer/ricelin_install.py"
     [ -f "$installer" ] || die "installer not found ($installer); remove ~/.config/hypr and ~/.config/quickshell by hand, your originals sit next to them as .bak"
     command -v python3 >/dev/null 2>&1 || die "python3 not found"
-    exec python3 "$installer" --uninstall
+    python3 "$installer" --uninstall || exit
+    entry="${XDG_DATA_HOME:-$HOME/.local/share}/applications/ricelin-settings.desktop"
+    # An installer clone older than the launcher entry leaves its link dangling.
+    if [ -L "$entry" ] && [ ! -e "$entry" ]; then rm -f "$entry"; fi
 }
 
 cmd_status() {
