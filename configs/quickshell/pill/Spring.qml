@@ -32,6 +32,11 @@ QtObject {
      * Starts from a value and velocity of the caller's choosing, e.g. a released drag.
      */
     function launch(from, vel, to) {
+        if (Flags.reduceMotion) {
+            target = to;
+            snap(to);
+            return;
+        }
         value = from;
         velocity = vel;
         growing = to > from;
@@ -39,14 +44,19 @@ QtObject {
         frame.running = true;
     }
 
+    /** Reduce motion: the shape jumps to its target and only the content fades. */
     onTargetChanged: {
+        if (Flags.reduceMotion) {
+            snap(target);
+            return;
+        }
         growing = target > value;
         frame.running = true;
     }
 
     function step(dt) {
         const g = growing;
-        const z = Flags.reduceMotion ? Math.max(1, g ? growDamping : damping) : (g ? growDamping : damping);
+        const z = g ? growDamping : damping;
         const xv = Sp.step(value - target, velocity, 2 * Math.PI / (g ? growResponse : response), z, dt);
         if (Math.abs(xv[0]) < 0.25 && Math.abs(xv[1]) < 2) {
             snap(target);
