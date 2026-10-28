@@ -10,6 +10,8 @@ MouseArea {
     property real s: 1
     required property Flickable flick
     property real goal: 0
+    /** Distance one wheel notch scrolls at s = 1. */
+    property real step: 36
 
     acceptedButtons: Qt.NoButton
 
@@ -17,16 +19,23 @@ MouseArea {
         return Math.max(0, Math.min(Math.max(0, flick.contentHeight - flick.height), y));
     }
 
+    /** Wayland mice send pixel deltas too; true trusts only a scroll phase (touchpads) as smooth, so a wheel moves by `step` per notch. */
+    property bool byNotch: false
+
+    function smooth(event) {
+        return byNotch ? (event.phase !== Qt.NoScrollPhase || event.angleDelta.y === 0) : event.pixelDelta.y !== 0;
+    }
+
     onWheel: function(event) {
         event.accepted = true;
-        if (event.pixelDelta.y !== 0 || Motion.calm) {
+        if (smooth(event) || Motion.calm) {
             chase.running = false;
-            flick.contentY = clamped(flick.contentY - (event.pixelDelta.y || event.angleDelta.y / 120 * 36 * s));
+            flick.contentY = clamped(flick.contentY - (smooth(event) && event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y / 120 * step * s));
             return;
         }
         if (!chase.running)
             goal = flick.contentY;
-        goal = clamped(goal - event.angleDelta.y / 120 * 36 * s);
+        goal = clamped(goal - event.angleDelta.y / 120 * step * s);
         chase.running = true;
     }
 

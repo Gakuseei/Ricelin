@@ -28,6 +28,10 @@ Item {
      */
     property bool awake: true
 
+    /** A preset thumbnail's own glyph look; null and empty follow the flags. */
+    property var glyphsOn: null
+    property string glyphText: ""
+
     readonly property bool hover: phase === "hover"
     readonly property real groupGap: (hover ? 20 : 9) * s
     readonly property real clusterGap: (hover ? 12 : 9) * s

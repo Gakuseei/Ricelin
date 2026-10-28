@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Ricelin Settings
+GenericName=Settings
+Comment=Pill, desktop, devices and system settings
+Exec=qs -c pill ipc call pill settings app
+Icon=preferences-system
+Terminal=false
+StartupNotify=false
+Categories=Settings;
+Keywords=settings;preferences;pill;ricelin;keybinds;display;wallpaper;

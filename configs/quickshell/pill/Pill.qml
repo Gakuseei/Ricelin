@@ -53,11 +53,6 @@ Item {
     readonly property bool expanded: surfaceOpen || held || hoverLatch
 
     /**
-     * The updater's pkexec prompt is up: the shell drops its modal grab so the polkit window takes input.
-     */
-    readonly property bool authPending: surface === "updates" && current !== null && current.applying === true
-
-    /**
      * The special workspace on this monitor, named in place of the clock; empty normally.
      */
     readonly property string specialView: {
@@ -98,7 +93,7 @@ Item {
     readonly property real openCorner: metrics.openCorner
 
     /**
-     * Surface registry with each file, size, Esc target, hover preload and whether Ame stays out.
+     * Surface registry with each file, size, hover preload and whether Ame stays out.
      */
     readonly property var surfaceDefs: ({
         calendar:   { file: "Calendar.qml", size: it => Qt.size((it.implicitWidth > 0 ? it.implicitWidth : 282 * s) + 36 * s, it.implicitHeight + 32 * s) },
@@ -113,21 +108,8 @@ Item {
         sound:      { file: "SoundSurface.qml", w: 400, extra: 6 },
         bt:         { file: "BtSurface.qml", w: 286 },
         battery:    { file: "BatterySurface.qml", w: 316, extra: -6 },
-        settings:   { file: "Settings.qml", w: 392 },
-        keybinds:   { file: "Keybinds.qml", w: 460, back: "settings" },
-        workspaces: { file: "WorkspacesSurface.qml", w: 392, back: "settings" },
-        stash:      { file: "Stash.qml", w: 392, back: "workspaces" },
-        spaceapps:  { file: "SpaceApps.qml", w: 392, back: "workspaces" },
         recorder:   { file: "Recorder.qml", w: 384, extra: 7 },
-        sysmon:     { file: "SysmonSurface.qml", w: 392, extra: 3 },
-        appearance: { file: "Appearance.qml", w: 392, back: "settings" },
-        updates:    { file: "Updates.qml", w: 360, back: "settings" },
-        display:    { file: "Display.qml", w: 392, back: "settings" },
-        input:      { file: "Input.qml", w: 392, back: "settings" },
-        look:       { file: "Look.qml", w: 392, back: "settings" },
-        idlelock:   { file: "IdleLock.qml", w: 392, back: "settings" },
-        animation:  { file: "AnimationSurface.qml", w: 392, back: "settings" },
-        fontpicker: { file: "FontPicker.qml", w: 360, back: "appearance" }
+        sysmon:     { file: "SysmonSurface.qml", w: 392, extra: 3 }
     })
     readonly property var surfaceNames: Object.keys(surfaceDefs)
 
@@ -169,33 +151,28 @@ Item {
     signal requestClose()
 
     /**
-     * One level back: a nested form closes, a sub-surface returns to its parent, anything else dismisses.
+     * One level back: a nested form closes, anything else dismisses.
      */
     function surfaceBack() {
         if (current && current.back())
             return;
-        const up = surfaceOpen && surfaceDefs[surface] ? surfaceDefs[surface].back : undefined;
-        if (up)
-            requestSurface(up);
-        else
-            requestClose();
+        requestClose();
     }
 
     /**
-     * Tells the arriving and leaving surface which way the switch went: +1 into a sub-page, -1 back out.
+     * Tells the arriving surface whether it swaps in for another one, so it waits until the old one has mostly faded.
      */
     property string lastSurface: ""
     onSurfaceChanged: {
         const prev = lastSurface;
         lastSurface = surface;
         const d = surfaceDefs;
-        const dir = d[surface] && d[surface].back === prev ? 1 : (d[prev] && d[prev].back === surface ? -1 : 0);
         const old = d[prev] ? slots.itemAt(surfaceNames.indexOf(prev)).item : null;
         if (old)
-            old.slide = -dir;
+            old.slide = 0;
         const now = d[surface] ? surfaceItem(surface) : null;
         if (now)
-            now.arrive(dir, old !== null);
+            now.arrive(0, old !== null);
     }
 
     onSurfaceOpenChanged: if (surfaceOpen) {

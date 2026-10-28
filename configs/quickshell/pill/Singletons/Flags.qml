@@ -79,6 +79,7 @@ Singleton {
     property alias weatherUnit: adapter.weatherUnit
     property alias lockUseFont: adapter.lockUseFont
     property alias lockSeconds: adapter.lockSeconds
+    property alias appZoom: adapter.appZoom
 
     /** One write per event-loop turn, however many flags changed in it. */
     function flush() {
@@ -184,6 +185,8 @@ Singleton {
             property string weatherUnit: "c"
             property bool lockUseFont: true
             property bool lockSeconds: false
+            /** Settings app zoom on top of uiScale, set with Ctrl+wheel or Ctrl+-/+/0. */
+            property real appZoom: 0.85
         }
     }
 }

@@ -64,6 +64,13 @@ hl.window_rule({
 })
 
 hl.window_rule({
+    name   = "float-ricelin-settings",
+    match  = { class = "org.quickshell", title = "Ricelin Settings" },
+    float  = true,
+    center = true,
+})
+
+hl.window_rule({
     name         = "idle-inhibit-fullscreen",
     match        = { class = ".*" },
     idle_inhibit = "fullscreen",

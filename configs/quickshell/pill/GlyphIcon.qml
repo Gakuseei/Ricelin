@@ -65,6 +65,7 @@ Item {
         "terminal": { d: "M5 7l5 5l-5 5m7 2h7", fill: false },
         "search": { d: "M3 10a7 7 0 1 0 14 0a7 7 0 1 0-14 0m18 11l-6-6", fill: false },
         "close": { d: "M18 6L6 18M6 6l12 12", fill: false },
+        "plus": { d: "M12 5v14m-7-7h14", fill: false },
         "trash": { d: "M4 7h16m-10 4v6m4-6v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3", fill: false },
         "return": { d: "M18 6v6a3 3 0 0 1-3 3H5l4-4m0 8l-4-4", fill: false },
         "wifi": { d: "M12 18h.01m-2.838-2.828a4 4 0 0 1 5.656 0m-8.485-2.829a8 8 0 0 1 11.314 0 M3.515 9.515c4.686-4.687 12.284-4.687 17 0", fill: false },

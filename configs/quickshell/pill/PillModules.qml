@@ -28,6 +28,7 @@ QtObject {
             id: g
 
             readonly property bool barsOn: Flags.musicViz && Cava.active
+            readonly property bool glyphs: mods.row.glyphsOn === null ? Flags.showGlyphs : mods.row.glyphsOn === true
             readonly property real k: mods.hover ? 17 / 15 : 1
 
             implicitWidth: fill.implicitWidth
@@ -36,7 +37,7 @@ QtObject {
 
             Text {
                 anchors.fill: parent
-                opacity: (Flags.showGlyphs && !g.barsOn) ? 1 : 0
+                opacity: (g.glyphs && !g.barsOn) ? 1 : 0
                 text: fill.text
                 color: "transparent"
                 font: fill.font
@@ -47,8 +48,8 @@ QtObject {
 
             Text {
                 id: fill
-                opacity: (Flags.showGlyphs && !g.barsOn) ? 1 : 0
-                text: Flags.restGlyph.length > 0 ? Flags.restGlyph : "時"
+                opacity: (g.glyphs && !g.barsOn) ? 1 : 0
+                text: mods.row.glyphText.length > 0 ? mods.row.glyphText : (Flags.restGlyph.length > 0 ? Flags.restGlyph : "時")
                 color: Theme.cream
                 font.family: Theme.fontJp
                 font.weight: Font.Medium
@@ -58,7 +59,7 @@ QtObject {
 
             GlyphIcon {
                 anchors.centerIn: parent
-                opacity: (!Flags.showGlyphs && !g.barsOn) ? 1 : 0
+                opacity: (!g.glyphs && !g.barsOn) ? 1 : 0
                 width: 17 * mods.s * g.k
                 height: width
                 name: "clock"

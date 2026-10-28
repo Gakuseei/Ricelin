@@ -7,6 +7,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import "Singletons"
+import "App"
 
 /**
  * Washi pill top shell with one Overlay layer per monitor, masked to the pill rect while collapsed so the rest of the screen clicks through.
@@ -102,9 +103,43 @@ ShellRoot {
     }
 
     /**
+     * Settings surfaces open as pages of the settings window; an empty page keeps the window where it is, or starts on Pill.
+     */
+    readonly property var appRoutes: ({
+        settings: "", appearance: "appearance", fontpicker: "appearance", look: "windows",
+        display: "display", input: "input", animation: "animation", keybinds: "keybinds",
+        workspaces: "workspaces", stash: "workspaces", spaceapps: "workspaces",
+        idlelock: "idlelock", updates: "updates"
+    })
+    property string appPage: ""
+
+    function openApp(page) {
+        root.close();
+        root.appPage = page;
+        if (appLoader.item)
+            appLoader.item.present(page);
+        else
+            appLoader.active = true;
+    }
+
+    /** The settings window: built on first open, dropped again when it closes. */
+    LazyLoader {
+        id: appLoader
+        onItemChanged: if (item) item.present(root.appPage)
+
+        AppWindow {
+            onDismissed: Qt.callLater(() => appLoader.active = false)
+        }
+    }
+
+    /**
      * An empty monitor resolves to the focused one here so keybind scripts skip their own hyprctl+jq lookup.
      */
     function toggleSurface(mon, surface) {
+        if (root.appRoutes[surface] !== undefined) {
+            root.openApp(root.appRoutes[surface]);
+            return;
+        }
         if (!mon || mon.length === 0)
             mon = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "";
         if (root.openMon === mon && root.openSurface === surface) {
@@ -196,7 +231,7 @@ ShellRoot {
             readonly property real topGap: 8 * Flags.topGap * s
             readonly property string surface: root.openMon === modelData.name ? root.openSurface : ""
             readonly property bool surfaceOpen: surface.length > 0
-            readonly property bool modal: pill.authPending ? false : (surfaceOpen || pill.held || pill.quickChoosing)
+            readonly property bool modal: surfaceOpen || pill.held || pill.quickChoosing
 
             /**
              * True while this monitor's workspace has a fullscreen client, which retracts the pill and makes the layer click-through.
@@ -223,7 +258,7 @@ ShellRoot {
             exclusionMode: ExclusionMode.Normal
             exclusiveZone: Flags.gameMode ? 34 * s : reservedH
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: ((surfaceOpen || pill.quickChoosing) && !pill.authPending) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            WlrLayershell.keyboardFocus: (surfaceOpen || pill.quickChoosing) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             WlrLayershell.namespace: "pill"
 
             anchors { top: true; left: true; right: true }
