@@ -102,7 +102,7 @@ Item {
         spacing: Theme.sp.xs * chooser.s
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        model: chooser.screens ? ScreenRec.monitors : []
+        model: chooser.screens ? ScreenRec.screenTargets : []
 
         delegate: Rectangle {
             id: monTile
@@ -123,7 +123,7 @@ Item {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: monTile.modelData.name
+                    text: monTile.modelData.title
                     color: Theme.cream
                     font.family: Theme.font
                     font.pixelSize: Theme.fs.body * chooser.s
@@ -131,7 +131,7 @@ Item {
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: monTile.modelData.w + " × " + monTile.modelData.h
+                    text: monTile.modelData.detail
                     color: Theme.textFaint
                     font.family: Theme.font
                     font.pixelSize: Theme.fs.meta * chooser.s

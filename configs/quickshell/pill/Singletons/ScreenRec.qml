@@ -32,7 +32,7 @@ Singleton {
      */
     property int recorderOpenCount: 0
     readonly property bool recorderOpen: recorderOpenCount > 0
-    property string currentFile: ""
+    property var currentFiles: []
     property var recent: []
     readonly property int recentCount: recent.length
 
@@ -128,6 +128,15 @@ Singleton {
         return out;
     }
 
+    readonly property var screenTargets: {
+        var t = monitors.map(function(s) {
+            return { name: s.name, title: s.name, detail: s.w + " × " + s.h };
+        });
+        if (monitors.length > 1)
+            t.push({ name: "all", title: "All screens", detail: monitors.length + " files" });
+        return t;
+    }
+
     /**
      * UI labels sit one step above gsr's presets, so Ultra maps to `very_high` and Lossless to `ultra` because gsr has no lossless preset.
      */
@@ -220,15 +229,27 @@ Singleton {
     }
 
     /**
-     * Starts gsr on an already resolved token, which is a monitor name, `screen` or a `WxH+X+Y` geometry.
+     * One gsr per monitor under one shell, so recProc and the SIGINT stop cover every file and any failed recorder still fails the run.
+     */
+    function buildAll(files) {
+        var q = function(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; };
+        var lines = monitors.map(function(m, i) {
+            return buildArgs(m.name, files[i]).map(q).join(" ") + " & pids=\"$pids $!\"";
+        });
+        return ["sh", "-c", lines.join("\n") + "\nrc=0; for p in $pids; do wait \"$p\" || rc=$?; done; exit $rc"];
+    }
+
+    /**
+     * Starts gsr on an already resolved token, which is a monitor name, `screen`, `all` or a `WxH+X+Y` geometry.
      */
     function start(captureToken) {
         if (recording || recProc.running)
             return;
-        var file = outDir + "/recording_" + timestamp() + ".mp4";
+        stopGuard.stop();
+        forcedStop = false;
         mkdirProc.command = ["mkdir", "-p", outDir];
         mkdirProc.pendingToken = captureToken;
-        mkdirProc.pendingFile = file;
+        mkdirProc.pendingBase = outDir + "/recording_" + timestamp();
         mkdirProc.running = true;
     }
 
@@ -237,6 +258,26 @@ Singleton {
             return;
         stopProc.command = ["pkill", "-SIGINT", "-f", "(^|/)gpu-screen-recorder"];
         stopProc.running = true;
+        stopGuard.restart();
+    }
+
+    property bool forcedStop: false
+
+    /**
+     * gsr sometimes hangs after SIGINT with its file already finalized, and ignores SIGTERM too, so a stop still running after 5 s is killed.
+     */
+    Timer {
+        id: stopGuard
+        interval: 5000
+        onTriggered: {
+            root.forcedStop = true;
+            killProc.running = true;
+        }
+    }
+
+    Process {
+        id: killProc
+        command: ["pkill", "-KILL", "-f", "(^|/)gpu-screen-recorder"]
     }
 
     /**
@@ -318,10 +359,12 @@ Singleton {
     Process {
         id: mkdirProc
         property string pendingToken: ""
-        property string pendingFile: ""
+        property string pendingBase: ""
         onExited: {
-            root.currentFile = pendingFile;
-            recProc.command = root.buildArgs(pendingToken, pendingFile);
+            var all = pendingToken === "all";
+            var base = pendingBase;
+            root.currentFiles = all ? root.monitors.map(function(m) { return base + "_" + m.name + ".mp4"; }) : [base + ".mp4"];
+            recProc.command = all ? root.buildAll(root.currentFiles) : root.buildArgs(pendingToken, root.currentFiles[0]);
             recProc.running = true;
         }
     }
@@ -336,8 +379,11 @@ Singleton {
             root.recording = true;
         }
         onExited: function(exitCode) {
+            stopGuard.stop();
             root.recording = false;
-            if (exitCode !== 0) {
+            var forced = root.forcedStop;
+            root.forcedStop = false;
+            if (exitCode !== 0 && !forced) {
                 var msg = recErr.text.trim();
                 failProc.command = ["notify-send", "-a", "Ricelin", "-u", "critical",
                     "Recording failed", msg.length > 0 ? msg : "gpu-screen-recorder exited " + exitCode];
@@ -360,7 +406,7 @@ Singleton {
     Process {
         id: savedProc
         command: ["notify-send", "-a", "Ricelin", "Recording saved",
-            root.currentFile.substring(root.currentFile.lastIndexOf("/") + 1)]
+            root.currentFiles.map(function(f) { return f.substring(f.lastIndexOf("/") + 1); }).join("\n")]
     }
 
     Process {
