@@ -16,6 +16,8 @@ Singleton {
     property bool isDay: true
     property string city: ""
     property bool ready: false
+    /** Epoch ms of the last successful forecast fetch, 0 before the first. */
+    property real updatedAt: 0
 
     /** Fetched temperatures stay in Celsius so a unit switch converts at once without a refetch. */
     property real rawNow: 0
@@ -252,6 +254,7 @@ Singleton {
                     root.rawHourly = rows;
                     root.rawDaily = days;
                     root.ready = true;
+                    root.updatedAt = Date.now();
                     root.succeeded();
                 } catch (e) {
                     root.failed();
