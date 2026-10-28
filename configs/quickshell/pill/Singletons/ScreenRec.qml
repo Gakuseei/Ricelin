@@ -20,16 +20,11 @@ Singleton {
 
     onOutDirChanged: if (recorderOpen) refreshRecent()
 
-    property int fps: Flags.recordFps
-    onFpsChanged: Flags.recordFps = fps
-    property string quality: Flags.recordQuality
-    onQualityChanged: Flags.recordQuality = quality
-    property bool captureCursor: Flags.recordCursor
-    onCaptureCursorChanged: Flags.recordCursor = captureCursor
-    property bool micOn: Flags.recordMic
-    onMicOnChanged: Flags.recordMic = micOn
-    property bool desktopOn: Flags.recordDesktop
-    onDesktopOnChanged: Flags.recordDesktop = desktopOn
+    readonly property int fps: Flags.recordFps
+    readonly property string quality: Flags.recordQuality
+    readonly property bool captureCursor: Flags.recordCursor
+    readonly property bool micOn: Flags.recordMic
+    readonly property bool desktopOn: Flags.recordDesktop
 
     property bool recording: false
     /**

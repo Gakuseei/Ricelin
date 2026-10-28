@@ -44,7 +44,7 @@ PillSurface {
     }
     function activateRow(row) {
         if (row === cursorRow)
-            ScreenRec.captureCursor = !ScreenRec.captureCursor;
+            Flags.recordCursor = !Flags.recordCursor;
     }
 
     readonly property point recPoint: {
@@ -495,7 +495,7 @@ PillSurface {
                                 { label: "144", value: 144 }
                             ]
                             value: ScreenRec.fps
-                            onPicked: (v) => ScreenRec.fps = v
+                            onPicked: (v) => Flags.recordFps = v
                         }
                     }
                     SettingsRow {
@@ -511,7 +511,7 @@ PillSurface {
                                 { label: "Lossless", value: "lossless" }
                             ]
                             value: ScreenRec.quality
-                            onPicked: (v) => ScreenRec.quality = v
+                            onPicked: (v) => Flags.recordQuality = v
                         }
                     }
                     SettingsRow {
@@ -522,7 +522,7 @@ PillSurface {
                         LinkToggle {
                             s: root.s
                             on: ScreenRec.captureCursor
-                            onToggled: ScreenRec.captureCursor = !ScreenRec.captureCursor
+                            onToggled: Flags.recordCursor = !Flags.recordCursor
                         }
                     }
                     SettingsRow {
@@ -724,7 +724,7 @@ PillSurface {
             faderIndex: 0
             level: root.source && root.source.audio ? root.source.audio.volume : 0
             onFaderMoved: (v) => { if (root.source && root.source.audio) root.source.audio.volume = v; }
-            onToggled: ScreenRec.micOn = !ScreenRec.micOn
+            onToggled: Flags.recordMic = !Flags.recordMic
         }
 
         AudioRow {
@@ -734,7 +734,7 @@ PillSurface {
             faderIndex: 1
             level: root.sink && root.sink.audio ? root.sink.audio.volume : 0
             onFaderMoved: (v) => { if (root.sink && root.sink.audio) root.sink.audio.volume = v; }
-            onToggled: ScreenRec.desktopOn = !ScreenRec.desktopOn
+            onToggled: Flags.recordDesktop = !Flags.recordDesktop
         }
 
         Item { width: 1; height: Theme.sp.s * root.s }
