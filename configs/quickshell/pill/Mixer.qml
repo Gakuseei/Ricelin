@@ -17,9 +17,12 @@ PillSurface {
     property string openPicker: ""
 
     property int focusIndex: -1
+    /** Bumped as brightness faders arrive: a warm async load builds them after `count` has already changed. */
+    property int brItems: 0
     readonly property int faderCount: faders.length
     readonly property var faders: {
         void brRep.count;
+        void root.brItems;
         void blLoader.item;
         var out = [];
         for (var i = 0; i < brRep.count; i++) {
@@ -306,6 +309,8 @@ PillSurface {
         Repeater {
             id: brRep
             model: Devices.ddcMonitors
+            onItemAdded: root.brItems++
+            onItemRemoved: root.brItems++
 
             VFader {
                 id: brFader
