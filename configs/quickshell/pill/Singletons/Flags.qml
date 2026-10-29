@@ -95,6 +95,9 @@ Singleton {
         watchChanges: true
         printErrors: false
 
+        /** Read the file before any binding sees the defaults: a stroke width that changes before an icon's first frame never draws on Qt 6.12. */
+        Component.onCompleted: text()
+
         onFileChanged: reload()
         onAdapterUpdated: Qt.callLater(root.flush)
         onLoadFailed: function(error) {
