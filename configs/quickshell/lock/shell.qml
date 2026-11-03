@@ -34,15 +34,15 @@ ShellRoot {
     Auth {
         id: pamAuth
         user: root.currentUser
-        onSucceeded: {
+        onSucceeded: root.kickThen(1, () => {
             root.revealed = false;
             collapse.restart();
-        }
+        })
     }
 
     Timer {
         id: collapse
-        interval: 640
+        interval: 720
         onTriggered: {
             sessionLock.locked = false;
             Cava.enabled = false;
@@ -62,7 +62,30 @@ ShellRoot {
         root.revealed = false;
         sessionLock.locked = true;
         Cava.enabled = true;
-        reveal.restart();
+        root.kickThen(2, () => reveal.restart());
+    }
+
+    /** Hyprland leaves the lock surface's frame callback unanswered (hyprwm/Hyprland#16105), so forced repaints run before an animation starts, never during it. */
+    Timer {
+        id: renderKick
+        property int left: 0
+        property var after: null
+        interval: 80
+        repeat: true
+        onTriggered: {
+            if (left-- > 0) {
+                Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.force_renderer_reload()"]);
+                return;
+            }
+            stop();
+            if (after)
+                after();
+        }
+    }
+    function kickThen(times: int, after: var): void {
+        renderKick.left = times;
+        renderKick.after = after;
+        renderKick.restart();
     }
 
     /**
