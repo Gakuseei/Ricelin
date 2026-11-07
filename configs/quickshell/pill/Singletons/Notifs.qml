@@ -86,6 +86,30 @@ Singleton {
         return gs;
     }
 
+    function appOf(n) {
+        return (n && n.appName && n.appName.length) ? n.appName : "System";
+    }
+
+    function isMuted(app) {
+        return (Flags.notifMuted || []).indexOf(app) >= 0;
+    }
+
+    /** Apps seen this session plus every muted one, so a muted app stays switchable after its notifications are gone. */
+    readonly property var knownApps: {
+        var out = [];
+        var add = function(a) { if (a && out.indexOf(a) < 0) out.push(a); };
+        for (var i = 0; i < groups.length; i++) add(groups[i].app);
+        var m = Flags.notifMuted || [];
+        for (var j = 0; j < m.length; j++) add(m[j]);
+        return out.sort(function(a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; });
+    }
+
+    function setMuted(app, on) {
+        var m = (Flags.notifMuted || []).filter(function(a) { return a !== app; });
+        if (on) m.push(app);
+        Flags.notifMuted = m;
+    }
+
     /**
      * Notification text without terminal colour codes, which some CLI tools send along.
      */
@@ -297,10 +321,11 @@ Singleton {
             a[n.id] = Date.now();
             root.arrivalMs = a;
             var e = Object.assign({}, root.expireAt);
-            e[n.id] = Date.now() + (n.urgency === NotificationUrgency.Low ? 2500 : 4000);
+            var ms = Math.max(1, Flags.notifSecs || 4) * 1000;
+            e[n.id] = Date.now() + (n.urgency === NotificationUrgency.Low ? ms * 0.625 : ms);
             root.expireAt = e;
             var critical = n.urgency === NotificationUrgency.Critical;
-            if (!Flags.dnd || critical) {
+            if (critical || (!Flags.dnd && !root.isMuted(root.appOf(n)))) {
                 root.popups = root.popups.concat([n]).slice(-3);
                 root.flash = {
                     id: n.id,

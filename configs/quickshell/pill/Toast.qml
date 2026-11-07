@@ -24,7 +24,7 @@ Item {
      * Snapshotted once: a binding to Notifs.expireAt would restart the timer whenever another notification lands.
      */
     property double deadline: 0
-    function armDeadline() { deadline = notif ? (Notifs.expireAt[notif.id] || (Date.now() + 4000)) : 0; }
+    function armDeadline() { deadline = notif ? (Notifs.expireAt[notif.id] || (Date.now() + Math.max(1, Flags.notifSecs || 4) * 1000)) : 0; }
     Component.onCompleted: armDeadline()
 
     Timer {

@@ -80,6 +80,10 @@ Singleton {
     property alias lockUseFont: adapter.lockUseFont
     property alias lockSeconds: adapter.lockSeconds
     property alias appZoom: adapter.appZoom
+    property alias osdOff: adapter.osdOff
+    property alias osdTime: adapter.osdTime
+    property alias notifSecs: adapter.notifSecs
+    property alias notifMuted: adapter.notifMuted
 
     /** One write per event-loop turn, however many flags changed in it. */
     function flush() {
@@ -190,6 +194,14 @@ Singleton {
             property bool lockSeconds: false
             /** Settings app zoom on top of uiScale, set with Ctrl+wheel or Ctrl+-/+/0. */
             property real appZoom: 0.85
+            /** Pill flashes switched off: volume, brightness, battery, workspace, record, play (play and pause) and song. */
+            property var osdOff: []
+            /** Multiplier on how long every pill flash stays. */
+            property real osdTime: 1.0
+            /** Seconds a notification card stays in the pill; low urgency gets five eighths of it. */
+            property real notifSecs: 4
+            /** App names whose notifications skip the pill and only land in the inbox. */
+            property var notifMuted: []
         }
     }
 }

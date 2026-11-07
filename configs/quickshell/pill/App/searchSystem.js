@@ -1,7 +1,19 @@
 .pragma library
 
-/** Search rows for windows, workspaces, animation, display, input, keybinds, idlelock, recorder, weather and updates, shaped like searchIndex.js entries. */
+/** Search rows for notifications, windows, workspaces, animation, display, input, keybinds, idlelock, recorder, weather and updates, shaped like searchIndex.js entries. */
 var entries = [
+    { page: "notifications", tab: "", group: "Media", label: "Play and pause", sub: "When music starts or stops", keywords: "media music osd flash play pause resume song card", key: "notif.play", advanced: false },
+    { page: "notifications", tab: "", group: "Media", label: "New song", sub: "When the track changes", keywords: "media music osd flash track song next skip card", key: "notif.song", advanced: false },
+    { page: "notifications", tab: "", group: "Pill flashes", label: "Volume flash", sub: "When you change the volume or mute", keywords: "osd flash sound volume mute popup", key: "notif.volume", advanced: false },
+    { page: "notifications", tab: "", group: "Pill flashes", label: "Brightness flash", sub: "When the screen gets brighter or darker", keywords: "osd flash backlight brightness screen popup", key: "notif.brightness", advanced: false },
+    { page: "notifications", tab: "", group: "Pill flashes", label: "Workspace flash", sub: "The dots when you switch workspaces", keywords: "osd flash workspace switch dots popup", key: "notif.workspace", advanced: false },
+    { page: "notifications", tab: "", group: "Pill flashes", label: "Charging flash", sub: "When you plug in the charger", keywords: "osd flash battery charging charger plug popup", key: "notif.battery", advanced: false },
+    { page: "notifications", tab: "", group: "Pill flashes", label: "Recording flash", sub: "When a recording starts or stops", keywords: "osd flash screen recording record popup", key: "notif.record", advanced: false },
+    { page: "notifications", tab: "", group: "Pill flashes", label: "How long flashes stay", sub: "Scales every flash, the song card included", keywords: "osd flash duration time length seconds longer shorter", key: "notif.osdtime", advanced: false },
+    { page: "notifications", tab: "", group: "Pill flashes", label: "Do not disturb", sub: "Hides notifications and most flashes", keywords: "dnd quiet silence mute focus", key: "notif.dnd", advanced: false },
+    { page: "notifications", tab: "", group: "App notifications", label: "Notification time", sub: "How long a new notification stays in the pill", keywords: "notification toast duration seconds time length", key: "notif.secs", advanced: false },
+    { page: "notifications", tab: "", group: "Apps", label: "Mute an app", sub: "Keep an app's notifications out of the pill", keywords: "mute silence app notifications hide block inbox only", key: "notif.apps", advanced: false },
+
     { page: "keybinds", tab: "", group: "Shortcuts", label: "Add a bind", sub: "Runs a command when you press its keys", keywords: "new shortcut hotkey keybind create custom command launch app", key: "keys.add", advanced: false },
     { page: "keybinds", tab: "", group: "Shortcuts", label: "Edit a bind", sub: "Change the keys, name or command of a shortcut", keywords: "rebind change remap shortcut hotkey keybind delete remove rename", key: "", advanced: false },
 

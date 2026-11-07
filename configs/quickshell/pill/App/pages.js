@@ -1,7 +1,7 @@
 .pragma library
 
 var sections = [
-    { title: "Pill", pages: ["pill", "appearance", "clock", "presets"] },
+    { title: "Pill", pages: ["pill", "appearance", "clock", "notifications", "presets"] },
     { title: "Desktop", pages: ["windows", "workspaces", "animation"] },
     { title: "Devices", pages: ["display", "input"] },
     { title: "System", pages: ["keybinds", "idlelock", "recorder", "weather", "updates"] }
@@ -11,6 +11,7 @@ var pages = {
     pill:       { name: "Pill",         kanji: "丸", icon: "minimize",   file: "PagePill.qml",       preview: true,  desc: "The bar on top of every screen" },
     appearance: { name: "Appearance",   kanji: "相", icon: "sparkles",   file: "PageAppearance.qml", preview: true,  desc: "Palette, glyphs, font, icons and motion" },
     clock:      { name: "Clock & date", kanji: "暦", icon: "clock",      file: "PageClock.qml",      preview: true,  desc: "How time and date read in the pill" },
+    notifications: { name: "Notifications", kanji: "知", icon: "inbox", file: "PageNotifications.qml", preview: false, desc: "Pill flashes, media and app notifications" },
     presets:    { name: "Presets",      kanji: "型", icon: "palette",    file: "PagePresets.qml",    preview: true,  desc: "Whole pill looks you can switch between" },
     windows:    { name: "Windows",      kanji: "窓", icon: "app-window", file: "PageWindows.qml",    preview: false, desc: "Gaps, corners, blur, shadow and night light" },
     workspaces: { name: "Workspaces",   kanji: "場", icon: "layers",     file: "PageWorkspaces.qml", preview: false, desc: "Special spaces, their keys and apps" },

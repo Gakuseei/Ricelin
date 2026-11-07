@@ -132,8 +132,15 @@ Item {
 
     readonly property var views: [volView, brightView, battView, trackView, wsView, recView]
 
+    /** Volume and brightness answer a key press, so Do not disturb keeps them. */
+    function allowed(which) {
+        if ((Flags.osdOff || []).indexOf(which) >= 0)
+            return false;
+        return !Flags.dnd || which === "volume" || which === "brightness";
+    }
+
     function flash(which) {
-        if (!armed || suppressed)
+        if (!armed || suppressed || !allowed(which))
             return false;
         if (which !== "workspace" && !onFocusedMonitor)
             return false;
@@ -146,7 +153,7 @@ Item {
             present(which, fresh);
         kind = which;
         flashing = true;
-        hideTimer.interval = (which === "battery" || which === "record") ? 2000 : (which === "workspace" ? 1000 : 1800);
+        hideTimer.interval = Math.max(0.25, Flags.osdTime || 1) * ((which === "battery" || which === "record") ? 2000 : (which === "workspace" ? 1000 : 1800));
         hideTimer.restart();
         return true;
     }
@@ -221,7 +228,9 @@ Item {
 
     Connections {
         target: Players
-        function onAnnounce(player) {
+        function onAnnounce(player, why) {
+            if ((Flags.osdOff || []).indexOf(why) >= 0)
+                return;
             root.pendingSubject = player;
             root.dirty = true;
             root.tryShow();
@@ -329,7 +338,7 @@ Item {
                  * Art decoded near the end of the flash still earns a moment on screen.
                  */
                 onStatusChanged: if (status === Image.Ready && root.flashing && root.kind === "track") {
-                    hideTimer.interval = 1300;
+                    hideTimer.interval = Math.max(0.25, Flags.osdTime || 1) * 1300;
                     hideTimer.restart();
                 }
             }
