@@ -240,14 +240,25 @@ rename_appimage() {
 	update-desktop-database "$desktop_dir" 2>/dev/null || true
 }
 
-# Self-updating AppImages swap themselves for a newer file name, so repoint the entry at the newest same-slug file.
+channelless() {
+	printf '%s' "$1" | tr '-' '\n' | grep -vxE 'nightly|beta|alpha|canary|preview|insiders|dev|stable|rc[0-9]*' | paste -sd- - || true
+}
+
+# Self-updaters rename the file and may switch channel (nightly to stable), so repoint at the newest same-slug file, else the newest that differs only by channel word.
 heal_appimage() {
-	local missing="$1" slug newest="" f key desktop content tmp
+	local missing="$1" slug loose fslug newest="" fallback="" f key desktop content tmp
 	slug="$(slugify "$(basename "$missing")")"
+	loose="$(channelless "$slug")"
 	for f in "$apps_dir"/*.[Aa]pp[Ii]mage; do
-		[ -f "$f" ] && [ "$(slugify "$(basename "$f")")" = "$slug" ] || continue
-		[ -z "$newest" ] || [ "$f" -nt "$newest" ] && newest="$f"
+		[ -f "$f" ] || continue
+		fslug="$(slugify "$(basename "$f")")"
+		if [ "$fslug" = "$slug" ]; then
+			[ -z "$newest" ] || [ "$f" -nt "$newest" ] && newest="$f"
+		elif [ -n "$loose" ] && [ "$(channelless "$fslug")" = "$loose" ]; then
+			[ -z "$fallback" ] || [ "$f" -nt "$fallback" ] && fallback="$f"
+		fi
 	done
+	[ -n "$newest" ] || newest="$fallback"
 	[ -n "$newest" ] || die "no replacement for $missing"
 
 	key="$(jq -r --arg a "$missing" 'to_entries[] | select(.value.appimagePath == $a) | .key' "$registry" | head -1)"

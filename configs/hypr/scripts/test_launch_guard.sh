@@ -47,4 +47,14 @@ HOME="$fake" XDG_DATA_HOME="$fake/share" "$here/launch-guard.sh" Foo "" "" "$fak
 grep -q "Foo-1.1-x86_64.AppImage" "$fake/share/applications/ricelin-foo.desktop"
 [ "$(jq -r .foo.appimagePath "$fake/share/ricelin/appimages.json")" = "$fake/Applications/Foo-1.1-x86_64.AppImage" ]
 
+rm -f "$fake/ran" "$fake/notify.args"
+printf '#!/bin/sh\ntouch "%s/ran"\n' "$fake" >"$fake/Applications/Bar-2.0-x86_64.AppImage"
+chmod +x "$fake/Applications/Bar-2.0-x86_64.AppImage"
+printf '[Desktop Entry]\nExec="%s/Applications/Bar-2.0-nightly.20261109.4433-x86_64.AppImage" %%U\n' "$fake" >"$fake/share/applications/ricelin-bar-nightly.desktop"
+printf '{"bar-nightly":{"appimagePath":"%s/Applications/Bar-2.0-nightly.20261109.4433-x86_64.AppImage","desktopPath":"%s/share/applications/ricelin-bar-nightly.desktop"}}' "$fake" "$fake" >"$fake/share/ricelin/appimages.json"
+HOME="$fake" XDG_DATA_HOME="$fake/share" "$here/launch-guard.sh" Bar "" "" "$fake/Applications/Bar-2.0-nightly.20261109.4433-x86_64.AppImage"
+[ -e "$fake/ran" ]
+[ ! -e "$fake/notify.args" ]
+grep -q "Bar-2.0-x86_64.AppImage" "$fake/share/applications/ricelin-bar-nightly.desktop"
+
 echo ok
