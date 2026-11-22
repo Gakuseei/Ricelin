@@ -55,6 +55,15 @@
       "names": { "arch": "hyprsunset", "debian": "hyprsunset", "fedora": "hyprsunset", "suse": "hyprsunset", "gentoo": "gui-apps/hyprsunset" },
       "repo": { "gentoo": "overlay:hyproverlay", "fedora": "copr:solopasha/hyprland" }, "fallback": null },
 
+    { "id": "gcc", "group": "core", "required": false, "desc": "Compiles the vibrance helper for your NVIDIA driver", "aur": false,
+      "names": { "arch": "gcc", "debian": "g++", "fedora": "gcc-c++", "suse": "gcc-c++", "gentoo": null },
+      "note": "vibrance.sh builds nvibrant against the running driver's headers after every driver update; gentoo always ships gcc",
+      "fallback": null },
+
+    { "id": "git", "group": "core", "required": false, "desc": "Fetches the NVIDIA headers the vibrance helper is built from", "aur": false,
+      "names": { "arch": "git", "debian": "git", "fedora": "git", "suse": "git", "gentoo": "dev-vcs/git" },
+      "fallback": null },
+
     { "id": "dotool", "group": "core", "required": true, "desc": "Types and moves the pointer for the rice automations", "aur": true,
       "names": { "arch": "dotool", "debian": null, "fedora": null, "suse": null, "gentoo": "x11-misc/dotool" },
       "repo": { "gentoo": "overlay:guru" }, "fallback": "dotool" },

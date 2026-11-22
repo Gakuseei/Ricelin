@@ -13,6 +13,11 @@ Singleton {
 
     property int vibrance: 40
 
+    /** "" when vibrance applies, "building" while nvibrant compiles for a new driver, "unavailable" when it cannot be set. */
+    property string vibranceState: ""
+    property int pendingVibranceRaw: -1
+    readonly property string vibranceScript: Quickshell.env("HOME") + "/.config/hypr/scripts/vibrance.sh"
+
     /**
      * DDC monitors from `ddcutil detect` as `[{ bus, label }]`, labelled by DRM connector or else the I2C bus number.
      */
@@ -45,15 +50,14 @@ Singleton {
         saveVibrance(pct);
     }
 
-    /**
-     * nvibrant ignores extra connector slots, so every slot gets the same value instead of guessing which ones are lit.
-     */
     function applyVibrance(pct) {
         var raw = Math.round(Math.max(0, Math.min(100, pct)) * 1023 / 100);
-        var args = ["nvibrant"];
-        for (var i = 0; i < 16; i++)
-            args.push(String(raw));
-        Quickshell.execDetached(args);
+        if (vibProc.running) {
+            root.pendingVibranceRaw = raw;
+            return;
+        }
+        vibProc.command = [root.vibranceScript, String(raw)];
+        vibProc.running = true;
     }
 
     function saveVibrance(pct) {
@@ -96,6 +100,26 @@ Singleton {
     function parseBrightness(text) {
         var m = text.match(/C\s+(\d+)\s+/);
         return m ? parseInt(m[1], 10) : -1;
+    }
+
+    Process {
+        id: vibProc
+        running: false
+        stdout: SplitParser {
+            onRead: (line) => {
+                if (line.trim() === "building")
+                    root.vibranceState = "building";
+            }
+        }
+        onExited: (code) => {
+            root.vibranceState = code === 0 ? "" : "unavailable";
+            if (root.pendingVibranceRaw >= 0)
+                Qt.callLater(function() {
+                    var raw = root.pendingVibranceRaw;
+                    root.pendingVibranceRaw = -1;
+                    root.applyVibrance(raw * 100 / 1023);
+                });
+        }
     }
 
     Process {

@@ -369,7 +369,8 @@ PillSurface {
             width: faderRow.colW
             s: root.s
             icon: "monitor"
-            subLabel: "Vibrance"
+            subLabel: Devices.vibranceState === "building" ? "Updating…"
+                : Devices.vibranceState === "unavailable" ? "Unavailable" : "Vibrance"
             focused: root.focusIndex === root.faderCount - 3
             value: Devices.vibrance / 100
             valueLabel: Devices.vibrance + "%"
